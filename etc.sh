@@ -47,11 +47,7 @@ export LC_ALL=
 export XDG_CONFIG_HOME=/data/data/com.termux/files/home/.config
 export XMODIFIERS=@im=fcitx5
 export GTK_IM_MODULE=fcitx5
-export QT_IM_MODULE=fcitx5
-
-LD_PRELOAD=/system/lib64/libskcodec.so
-pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" --exit-idle-time=-1
-pacmd load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1' >> $PREFIX/etc/bash.bashrc
+export QT_IM_MODULE=fcitx5' >> $PREFIX/etc/bash.bashrc
 
     source $PREFIX/etc/bash.bashrc
 
@@ -179,6 +175,9 @@ sleep 1
 
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 
 sleep 1
+
+LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" --exit-idle-time=-1
+LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
 
 #env DISPLAY=:1.0 MESA_LOADER_DRIVER_OVERRIDE=kgsl TU_DEBUG=noconform dbus-launch --exit-with-session xfce4-session &
 #env DISPLAY=:1.0 MESA_LOADER_DRIVER_OVERRIDE=zink TU_DEBUG=noconform dbus-launch --exit-with-session xfce4-session &
