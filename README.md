@@ -1,4 +1,5 @@
 # Termux_XFCE
+25-11-21: 그동안 정말정말 바빠서 방치되었는데 재미나이와 힘을 합쳐서 최대한 빨리 모던하게 수정하겠습니다.
 
 https://github.com/phoenixbyrd/Termux_XFCE/tree/main의 debian proot에서 ubuntu proot로 변경하였습니다.
 이외 fcitx5-hangul 등의 설치를 추가하였습니다.
@@ -41,7 +42,7 @@ Join the Discord for any questions, help, suggestions, etc. [https://discord.gg/
 
 &nbsp;
 
-# Starting the desktop
+# 데스크탑을 사용하세요
 
 During install you will recieve a popup to allow installs from termux, this will open the APK for the Termux-X11 android app. While you do not have to allow installs from termux, you will still need to install manually by using a file browser and finding the APK in your downloads folder. 
   
