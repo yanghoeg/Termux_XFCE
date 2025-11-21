@@ -29,26 +29,15 @@ https://github.com/xMeM/termux-packages
 curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh -o install.sh && chmod +x install.sh && ./install.sh
 ```
 &nbsp;
-
-
-Join the Discord for any questions, help, suggestions, etc. [https://discord.gg/pNMVrZu5dm](https://discord.gg/pNMVrZu5dm)  
-위 디스코드는 코드 제작자의 디스코드 입니다.
-
-&nbsp;
-
-![Screenshot_20240716_163344_TermuxX11](https://github.com/user-attachments/assets/f6e46172-03e0-43c2-936f-9b5a07a1c26e)
-
-  
+ 
 
 &nbsp;
 
 # 데스크탑을 사용하세요
-
-During install you will recieve a popup to allow installs from termux, this will open the APK for the Termux-X11 android app. While you do not have to allow installs from termux, you will still need to install manually by using a file browser and finding the APK in your downloads folder. 
   
-Use the command ```startXFCE``` to initiate a Termux-X11 session
+Termux에서  ```startXFCE``` 를 입력하세요.
   
-This will start the termux-x11 server, XFCE4 desktop and open the Termux-X11 app right into the desktop. 
+이 명령어는 termux-x11 server, XFCE4 desktop and open the Termux-X11 app right into the desktop. 
 
 To enter the ubuntu proot install from terminal use the command ```ubuntu```
 
