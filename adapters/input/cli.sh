@@ -4,9 +4,9 @@
 # -----------------------------------------------------------------------------
 # Input Adapter — CLI/환경변수 기반 비대화형 실행
 # 사용법:
-#   DISTRO=archlinux USERNAME=lideok bash install.sh
+#   DISTRO=archlinux USERNAME=yanghoeg bash install.sh
 #   또는
-#   bash install.sh --distro archlinux --user lideok --no-gpu
+#   bash install.sh --distro archlinux --user yanghoeg --no-gpu
 # =============================================================================
 
 parse_cli_args() {
@@ -52,12 +52,12 @@ _cli_usage() {
 
 환경변수:
   DISTRO=archlinux        --distro 와 동일
-  USERNAME=lideok         --user 와 동일
+  USERNAME=yanghoeg       --user 와 동일
   INSTALL_GPU=true        --gpu 와 동일
   SKIP_PROOT=true         --no-proot 와 동일
 
 예시:
-  bash install.sh --user lideok --distro archlinux --gpu
+  bash install.sh --user yanghoeg --distro archlinux --gpu
   DISTRO=ubuntu USERNAME=user bash install.sh
 EOF
 }

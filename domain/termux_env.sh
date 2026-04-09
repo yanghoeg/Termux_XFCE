@@ -28,6 +28,7 @@ setup_termux_gpu() {
     for p in "${PKGS_TERMUX_GPU[@]}"; do
         pkg_is_installed "$p" || pkg_install "$p"
     done
+    _detect_and_log_gpu
 }
 
 setup_termux_gpu_dev() {
@@ -126,8 +127,14 @@ _setup_aliases() {
 alias ll='ls -alhF'
 alias ls='eza -lF --icons'
 alias cat='bat'
-alias zink='MESA_LOADER_DRIVER_OVERRIDE=zink TU_DEBUG=noconform '
+# Zink(OpenGL→Vulkan) 드라이버로 앱 실행: zink glxgears
+alias zink='MESA_LOADER_DRIVER_OVERRIDE=zink TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy '
+# FPS HUD 오버레이: hud glxgears
 alias hud='GALLIUM_HUD=fps '
+# proot 앱을 FPS HUD + GPU 가속으로 실행: zrunhud glxgears
+alias zrunhud='GALLIUM_HUD=fps MESA_LOADER_DRIVER_OVERRIDE=zink TU_DEBUG=noconform ZINK_DESCRIPTORS=lazy prun '
+# GPU 모델 확인
+alias gpu-info='cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "KGSL 미감지 (비-Adreno?)"'
 alias shutdown='kill -9 -1'
 ALIASES
 }
@@ -189,14 +196,54 @@ LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
 LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
     module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
 
+# Adreno GPU 세대 자동 감지
+# /sys/class/kgsl/kgsl-3d0/gpu_model 예: "Adreno (TM) 750"
+GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
+if [[ "$GPU_MODEL" =~ [Aa]dreno.*[Tt][Mm].*[678][0-9]{2} ]]; then
+    # Adreno 6xx/7xx/8xx → KGSL(Adreno 네이티브) 드라이버
+    MESA_DRIVER=kgsl
+else
+    # 비-Adreno 또는 감지 실패 → Zink(OpenGL→Vulkan) 폴백
+    MESA_DRIVER=zink
+fi
+
 env DISPLAY=:1.0 \
-    MESA_LOADER_DRIVER_OVERRIDE=kgsl \
+    MESA_LOADER_DRIVER_OVERRIDE=${MESA_DRIVER} \
     TU_DEBUG=noconform \
+    MESA_NO_ERROR=1 \
+    MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
+    MESA_GLES_VERSION_OVERRIDE=3.2 \
+    MESA_VK_WSI_PRESENT_MODE=immediate \
     dbus-launch --exit-with-session xfce4-session &
 EOF
 
     chmod +x "$shortcut"
     ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
+}
+
+# GPU 모델 감지 및 로그 출력
+_detect_and_log_gpu() {
+    local gpu_model
+    gpu_model=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
+
+    if [ -z "$gpu_model" ]; then
+        ui_warn "KGSL GPU 미감지 — virglrenderer-android(소프트 렌더) 폴백 사용"
+        return 0
+    fi
+
+    ui_info "감지된 GPU: ${gpu_model}"
+
+    # Adreno 세대별 안내
+    if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
+        ui_info "Adreno 8xx (Snapdragon 8 Elite) 감지 — Mesa 26+ KGSL 드라이버 권장"
+        ui_warn "구형 mesa-vulkan-kgsl deb는 8xx와 호환되지 않을 수 있습니다."
+    elif [[ "$gpu_model" =~ [Aa]dreno.*7[0-9]{2} ]]; then
+        ui_info "Adreno 7xx (Snapdragon 8 Gen1~3) 감지 — KGSL 드라이버 최적 지원"
+    elif [[ "$gpu_model" =~ [Aa]dreno.*6[0-9]{2} ]]; then
+        ui_info "Adreno 6xx 감지 — KGSL 드라이버 지원"
+    else
+        ui_warn "미확인 GPU 모델: ${gpu_model} — Zink 폴백 권장"
+    fi
 }
 
 _setup_kill_termux_x11() {
