@@ -83,6 +83,33 @@ cp2menu
 app-installer
 ```
 
+### Wine (Windows 앱 실행)
+
+app-installer에서 Wine을 설치하면 Box64 + Wine-Staging이 구성됩니다.
+
+```bash
+# Windows 앱 실행
+wine kakao.exe
+wine hancom.exe
+
+# Wine 환경 설정
+wine winecfg
+
+# DLL·런타임 설치 (vcrun, dotnet 등)
+winetricks vcrun2019
+winetricks dotnet48
+
+# FPS HUD와 함께 실행
+GALLIUM_HUD=fps wine game.exe
+```
+
+| 상황 | 구성 |
+|------|------|
+| proot Ubuntu/Arch | Box64(ARM64) + Wine-Staging x86_64 tarball |
+| proot 없음 | glibc-runner + box64-glibc + Wine-Staging tarball |
+
+> **한계**: 안티치트 게임, 커널 드라이버 의존 앱, 최신 .NET 복잡 앱은 동작하지 않습니다.
+
 ### GPU 관련 별칭
 
 ```bash
