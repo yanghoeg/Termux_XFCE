@@ -13,7 +13,6 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스
 - **proot 선택 가능**: Ubuntu / Arch Linux / 없음
 - **헥사고날 아키텍처(Ports & Adapters)**: distro 추상화로 Ubuntu·Arch 공통 코드 유지
 - **멱등성**: 이미 설치된 항목은 자동으로 건너뜀
-- **Adreno GPU 자동 감지**: 세대(6xx/7xx/8xx)에 따라 최적 드라이버 자동 선택
 - **실기기 검증**: 실제 Termux 환경에서 단계별 설치 + 122개 자동화 테스트로 검증
 
 ---
@@ -163,46 +162,38 @@ INSTALL_ARCH=aarch64
 
 ## GPU 가속
 
-### 드라이버 선택 로직
+### 현재 상태 (Termux X11 환경 제약)
 
-`startXFCE` 실행 시 `/sys/class/kgsl/kgsl-3d0/gpu_model`을 읽어 자동으로 드라이버를 선택합니다.
+Termux X11에서 Adreno GPU 하드웨어 가속은 현재 작동하지 않습니다. **llvmpipe (소프트웨어 렌더링)** 으로 동작합니다.
 
-| GPU 세대 | 칩셋 예시 | 드라이버 | 비고 |
-|----------|-----------|---------|------|
-| Adreno 6xx | SD 865, SD 888 | KGSL (네이티브) | 완전 지원 |
-| Adreno 7xx | SD 8 Gen1~3 | KGSL (네이티브) | 최적 지원 |
-| Adreno 8xx | SD 8 Elite | KGSL (네이티브) | Mesa 26+ 권장 |
-| 기타 / 비감지 | — | Zink (폴백) | virglrenderer-android 참고 |
+**근본 원인 3가지**:
 
-> GPU 모델명이 `Adreno750v2`처럼 "(TM)" 없는 형식이어도 올바르게 감지됩니다.
+| 항목 | 상태 | 설명 |
+|------|------|------|
+| `/dev/dri/renderD128` | Permission denied | root 없이 DRM 렌더 노드 접근 불가 |
+| Termux X11 | DRI3 미지원 | Zink/Turnip이 X11 창에 GPU 직접 렌더링 불가 |
+| `virgl_test_server` | 초기화 실패 | 호스트 OpenGL 없어 `failed to initialise renderer` |
+
+**조사 결과** (Galaxy Fold6, Adreno 750):
+- `/dev/kgsl-3d0` 접근 가능 (666) — 하지만 `libvulkan_freedreno.so` 26.0.4는 DRM 경유
+- `mesa-zink-vulkan-icd-freedreno` 22.0.5는 kgsl 직접 접근 지원하나, DRI3 없이 Zink EGL 초기화 불가
+- `virgl_test_server_android --angle-vulkan` 실행해도 vtest 프로토콜 버전 불일치로 스택 충돌
+
+**GPU 가속 활성화 조건** (미래):
+- root 권한으로 `chmod 666 /dev/dri/renderD128` → freedreno kgsl ICD(22.0.5) 사용 가능
+- 또는 Termux X11이 DRI3 지원 추가 시 → Zink + Turnip 경로 가능
 
 ### 환경변수 (startXFCE)
 
 ```bash
-MESA_LOADER_DRIVER_OVERRIDE=kgsl   # 또는 zink (자동 감지)
-TU_DEBUG=noconform
 MESA_NO_ERROR=1                    # GL 에러 체크 비활성 (성능)
 MESA_GL_VERSION_OVERRIDE=4.6COMPAT
 MESA_GLES_VERSION_OVERRIDE=3.2
-MESA_VK_WSI_PRESENT_MODE=immediate # Vulkan 프레젠테이션 레이턴시 최소화
-```
-
-### proot GPU (Zink)
-
-proot 내부는 항상 Zink 드라이버를 사용합니다. Ubuntu proot에는 `mesa-vulkan-kgsl` deb가 추가로 설치되어 Adreno 6xx/7xx에서 KGSL 백엔드를 활성화합니다 (Adreno 8xx 미지원).
-
-```bash
-# proot ~/.bashrc 설정값
-MESA_LOADER_DRIVER_OVERRIDE=zink
-ZINK_DESCRIPTORS=lazy               # Zink 성능 최적화
-MESA_VK_WSI_PRESENT_MODE=immediate
-vblank_mode=0                       # vsync 비활성
 ```
 
 ### 참고 자료
 
 - [xMeM/termux-packages](https://github.com/xMeM/termux-packages) — Termux용 GPU 패키지 빌드
-- [lfdevs/mesa-for-android-container](https://github.com/lfdevs/mesa-for-android-container) — 최신 Mesa 빌드 (Adreno 8xx 포함)
 - [Mesa 환경변수 문서](https://docs.mesa3d.org/envvars.html)
 
 ---
