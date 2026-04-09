@@ -53,15 +53,15 @@ PKGS_TERMUX_KOREAN=(
 )
 
 # GPU 가속 (Adreno/Turnip)
+# 패키지명: Termux 26.x 기준 (2024년 이후 tur-repo 구조 변경 반영)
 PKGS_TERMUX_GPU=(
-    mesa
+    mesa-zink                      # OpenGL → Vulkan 레이어 (tur-repo)
     mesa-dev
     mesa-demos
-    osmesa
-    osmesa-demos
-    mesa-vulkan-icd-freedreno-dri3
-    vulkan-loader-android
-    mesa-vulkan-icd-lavapipe       # 소프트웨어 Vulkan 폴백 (비-Adreno 기기)
+    osmesa-zink                    # osmesa → osmesa-zink 으로 이름 변경 (tur-repo)
+    mesa-vulkan-icd-freedreno      # freedreno-dri3 → freedreno 로 이름 변경
+    vulkan-loader-generic          # vulkan-loader-android → vulkan-loader-generic
+    mesa-vulkan-icd-swrast         # lavapipe → swrast 로 이름 변경 (소프트웨어 폴백)
 )
 
 # GPU 개발 도구 (선택적)

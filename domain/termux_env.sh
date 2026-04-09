@@ -199,8 +199,9 @@ LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
 # Adreno GPU 세대 자동 감지
 # /sys/class/kgsl/kgsl-3d0/gpu_model 예: "Adreno (TM) 750"
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
-if [[ "$GPU_MODEL" =~ [Aa]dreno.*[Tt][Mm].*[678][0-9]{2} ]]; then
+if [[ "$GPU_MODEL" =~ [Aa]dreno.*[678][0-9]{2} ]]; then
     # Adreno 6xx/7xx/8xx → KGSL(Adreno 네이티브) 드라이버
+    # 모델명 형식: "Adreno (TM) 750" 또는 "Adreno750v2" 모두 커버
     MESA_DRIVER=kgsl
 else
     # 비-Adreno 또는 감지 실패 → Zink(OpenGL→Vulkan) 폴백
@@ -249,6 +250,8 @@ _detect_and_log_gpu() {
 _setup_kill_termux_x11() {
     local bin="$PREFIX/bin/kill_termux_x11"
     [ -f "$bin" ] && return 0
+
+    mkdir -p "$PREFIX/share/applications"
 
     cat > "$bin" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
@@ -308,6 +311,8 @@ EOF
 _setup_cp2menu() {
     local bin="$PREFIX/bin/cp2menu"
     [ -f "$bin" ] && return 0
+
+    mkdir -p "$PREFIX/share/applications"
 
     cat > "$bin" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
