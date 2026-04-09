@@ -1,0 +1,15 @@
+# Claude Code
+.claude/
+
+# 설치 중 생성되는 임시 파일
+*.zip
+WhiteSur-gtk-theme-*/
+WhiteSur-Dark/
+WhiteSur-Light/
+
+# Termux 설정 (개인 정보 포함)
+.config/
+
+# 기타
+*.deb
+*.tar.gz
