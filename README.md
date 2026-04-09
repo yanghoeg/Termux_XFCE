@@ -1,9 +1,9 @@
 # Termux XFCE
 
-Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스크립트입니다.
+Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스크립트입니다.  
 [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFCE) 에서 파생되었습니다.
 
-**테스트 기기**: Galaxy Fold6 (SD 8 Gen3), Galaxy Tab S9 Ultra (SD 8 Gen2)
+**테스트 기기**: Galaxy Fold6 (Adreno 750, SD 8 Gen3), Galaxy Tab S9 Ultra (Adreno 740, SD 8 Gen2)
 
 ---
 
@@ -14,7 +14,7 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스
 - **헥사고날 아키텍처(Ports & Adapters)**: distro 추상화로 Ubuntu·Arch 공통 코드 유지
 - **멱등성**: 이미 설치된 항목은 자동으로 건너뜀
 - **Adreno GPU 자동 감지**: 세대(6xx/7xx/8xx)에 따라 최적 드라이버 자동 선택
-- **성능 GPU 환경변수**: `MESA_NO_ERROR`, `MESA_VK_WSI_PRESENT_MODE=immediate`, `ZINK_DESCRIPTORS=lazy` 등 적용
+- **실기기 검증**: 실제 Termux 환경에서 단계별 설치 + 100개 자동화 테스트로 검증
 
 ---
 
@@ -138,7 +138,9 @@ gpu-info
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
 | CLI | git, eza, bat, jq, neofetch |
 | 한글 입력 | fcitx5, fcitx5-hangul, fcitx5-configtool |
-| GPU (옵션) | mesa, mesa-dev, mesa-vulkan-icd-freedreno-dri3, vulkan-loader-android, mesa-vulkan-icd-lavapipe |
+| GPU (옵션) | mesa-zink, osmesa-zink, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
+
+> GPU 패키지명은 Termux tur-repo 2024년 이후 구조 기준입니다. (mesa → mesa-zink, osmesa → osmesa-zink 등)
 
 ### proot (선택)
 
@@ -169,8 +171,10 @@ INSTALL_ARCH=aarch64
 |----------|-----------|---------|------|
 | Adreno 6xx | SD 865, SD 888 | KGSL (네이티브) | 완전 지원 |
 | Adreno 7xx | SD 8 Gen1~3 | KGSL (네이티브) | 최적 지원 |
-| Adreno 8xx | SD 8 Elite | Zink (폴백) | Mesa 26+ 필요 |
+| Adreno 8xx | SD 8 Elite | KGSL (네이티브) | Mesa 26+ 권장 |
 | 기타 / 비감지 | — | Zink (폴백) | virglrenderer-android 참고 |
+
+> GPU 모델명이 `Adreno750v2`처럼 "(TM)" 없는 형식이어도 올바르게 감지됩니다.
 
 ### 환경변수 (startXFCE)
 
@@ -194,8 +198,6 @@ ZINK_DESCRIPTORS=lazy               # Zink 성능 최적화
 MESA_VK_WSI_PRESENT_MODE=immediate
 vblank_mode=0                       # vsync 비활성
 ```
-
-> zenity가 실행되지 않으면 `pkg install mesa-zink` 후 zenity 실행, 이후 원래 mesa로 재설치
 
 ### 참고 자료
 
@@ -228,7 +230,22 @@ Termux_XFCE/
 │   ├── termux_env.sh             ← Termux 환경 설정 로직
 │   ├── xfce_env.sh               ← XFCE 설치 로직
 │   └── proot_env.sh              ← proot 환경 로직 (Ubuntu/Arch 공통)
+├── tests/                        ← 자동화 테스트 (100개)
+│   ├── run_tests.sh              ← 전체 실행 진입점
+│   ├── framework.sh              ← 테스트 러너 (describe/it/assert)
+│   ├── mocks.sh                  ← Mock 어댑터 + 파일시스템 샌드박스
+│   ├── test_ports.sh             ← 포트 계약 검증
+│   ├── test_adapters.sh          ← 어댑터 유닛 테스트
+│   ├── test_domain_termux.sh     ← termux_env 도메인 테스트
+│   ├── test_domain_xfce.sh       ← xfce_env 도메인 테스트
+│   ├── test_domain_proot.sh      ← proot_env 도메인 테스트
+│   └── test_app_installer.sh     ← app-installer 테스트
 └── app-installer/                ← 앱 추가 설치 GUI (Git Submodule)
+    ├── install.sh                ← zenity GUI 메인
+    ├── install_vlc.sh
+    ├── install_thunderbird.sh
+    ├── install_wine.sh           ← Box64 + Wine-Staging (proot/native 분기)
+    └── ...                       ← 총 14개 앱 설치 스크립트
 ```
 
 **아키텍처 흐름:**
@@ -244,15 +261,35 @@ install.sh (DI)
 
 ---
 
-## dev 브랜치 테스트
+## 테스트
 
 ```bash
-# dev 브랜치에서 설치 테스트
-curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/dev/install.sh | INSTALL_BRANCH=dev bash
+# 전체 테스트 실행
+bash tests/run_tests.sh
 
-# 옵션 포함
-curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/dev/install.sh | INSTALL_BRANCH=dev bash -s -- --distro ubuntu --user yanghoeg --gpu
+# 특정 스위트만
+bash tests/run_tests.sh domain_termux
+bash tests/run_tests.sh app_installer
 ```
+
+| 스위트 | 테스트 수 | 내용 |
+|--------|----------|------|
+| ports | 7 | 어댑터 계약 준수 검증 |
+| adapters | 9 | pkg_termux, ui_terminal 유닛 테스트 |
+| domain_termux | 21 | termux_env 도메인 로직 + 멱등성 |
+| domain_xfce | 12 | xfce_env 도메인 로직 + 멱등성 |
+| domain_proot | 16 | proot_env 도메인 로직 + 멱등성 |
+| app_installer | 35 | shebang, 타이포, 경로, 설치 상태 |
+| **합계** | **100** | **Adreno750v2 실기기에서 전체 통과** |
+
+---
+
+## 브랜치 전략
+
+| 브랜치 | 용도 |
+|--------|------|
+| `main` | 안정 버전 — 실기기 테스트 완료, 최종 사용자용 |
+| `dev` | 개발 중 — 기능 추가·버그 수정 후 테스트 통과 시 main에 머지 |
 
 ---
 
