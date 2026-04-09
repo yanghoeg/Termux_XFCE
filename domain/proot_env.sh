@@ -98,10 +98,13 @@ export DISPLAY=:1.0
 export LD_PRELOAD=/system/lib64/libskcodec.so
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 export MESA_NO_ERROR=1
-export MESA_LOADER_DRIVER_OVERRIDE=zink
+export MESA_LOADER_DRIVER_OVERRIDE=zink    # proot는 Zink(OpenGL→Vulkan) 사용
 export TU_DEBUG=noconform
 export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
 export MESA_GLES_VERSION_OVERRIDE=3.2
+export MESA_VK_WSI_PRESENT_MODE=immediate  # Vulkan 프레젠테이션 레이턴시 감소
+export ZINK_DESCRIPTORS=lazy               # Zink 디스크립터 성능 최적화
+export vblank_mode=0                       # vsync 비활성화 (FPS 측정용)
 
 # aliases
 alias hud='GALLIUM_HUD=fps '
@@ -153,17 +156,31 @@ setup_proot_hardware_accel() {
 
     case "$PROOT_DISTRO" in
         ubuntu)
+            # Adreno 세대 확인: 8xx는 구형 deb 비호환 → Zink 사용
+            local gpu_model
+            gpu_model=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
+            if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
+                ui_warn "Adreno 8xx 감지 — 구형 kgsl deb 미지원. Zink(MESA_LOADER_DRIVER_OVERRIDE=zink) 사용."
+                ui_warn "최신 드라이버: https://github.com/lfdevs/mesa-for-android-container"
+                return 0
+            fi
+
             local deb="mesa-vulkan-kgsl_24.1.0-devel-20240120_arm64.deb"
             local url="https://github.com/yanghoeg/Termux_XFCE/raw/main/${deb}"
 
-            proot_exec bash -c "
-                wget -q '${url}' -O /tmp/${deb}
-                apt install -y /tmp/${deb}
+            if proot_exec bash -c "
+                wget -q '${url}' -O /tmp/${deb} &&
+                apt install -y /tmp/${deb} &&
                 rm -f /tmp/${deb}
-            "
+            "; then
+                ui_info "mesa-vulkan-kgsl 설치 완료 (Adreno 6xx/7xx KGSL 드라이버)"
+            else
+                ui_warn "kgsl deb 설치 실패 — Zink(소프트웨어) 폴백으로 계속 진행합니다."
+            fi
             ;;
         archlinux)
-            ui_warn "Arch Linux용 mesa-vulkan-kgsl 패키지가 없습니다. Termux native mesa를 사용합니다."
+            ui_warn "Arch Linux용 mesa-vulkan-kgsl 패키지가 없습니다."
+            ui_info "proot Arch는 Zink(MESA_LOADER_DRIVER_OVERRIDE=zink)로 동작합니다."
             ;;
     esac
 }

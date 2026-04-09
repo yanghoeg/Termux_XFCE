@@ -52,7 +52,7 @@ PKGS_TERMUX_KOREAN=(
     libhangul-static
 )
 
-# GPU 가속 (Adreno)
+# GPU 가속 (Adreno/Turnip)
 PKGS_TERMUX_GPU=(
     mesa
     mesa-dev
@@ -60,6 +60,8 @@ PKGS_TERMUX_GPU=(
     osmesa
     osmesa-demos
     mesa-vulkan-icd-freedreno-dri3
+    vulkan-loader-android
+    mesa-vulkan-icd-lavapipe       # 소프트웨어 Vulkan 폴백 (비-Adreno 기기)
 )
 
 # GPU 개발 도구 (선택적)
