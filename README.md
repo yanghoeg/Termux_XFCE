@@ -14,7 +14,7 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스
 - **헥사고날 아키텍처(Ports & Adapters)**: distro 추상화로 Ubuntu·Arch 공통 코드 유지
 - **멱등성**: 이미 설치된 항목은 자동으로 건너뜀
 - **Adreno GPU 자동 감지**: 세대(6xx/7xx/8xx)에 따라 최적 드라이버 자동 선택
-- **실기기 검증**: 실제 Termux 환경에서 단계별 설치 + 100개 자동화 테스트로 검증
+- **실기기 검증**: 실제 Termux 환경에서 단계별 설치 + 122개 자동화 테스트로 검증
 
 ---
 
@@ -230,7 +230,7 @@ Termux_XFCE/
 │   ├── termux_env.sh             ← Termux 환경 설정 로직
 │   ├── xfce_env.sh               ← XFCE 설치 로직
 │   └── proot_env.sh              ← proot 환경 로직 (Ubuntu/Arch 공통)
-├── tests/                        ← 자동화 테스트 (100개)
+├── tests/                        ← 자동화 테스트 (122개)
 │   ├── run_tests.sh              ← 전체 실행 진입점
 │   ├── framework.sh              ← 테스트 러너 (describe/it/assert)
 │   ├── mocks.sh                  ← Mock 어댑터 + 파일시스템 샌드박스
@@ -245,7 +245,7 @@ Termux_XFCE/
     ├── install_vlc.sh
     ├── install_thunderbird.sh
     ├── install_wine.sh           ← Box64 + Wine-Staging (proot/native 분기)
-    └── ...                       ← 총 14개 앱 설치 스크립트
+    └── ...                       ← 총 13개 앱 설치 스크립트
 ```
 
 **아키텍처 흐름:**
@@ -275,12 +275,12 @@ bash tests/run_tests.sh app_installer
 | 스위트 | 테스트 수 | 내용 |
 |--------|----------|------|
 | ports | 7 | 어댑터 계약 준수 검증 |
-| adapters | 9 | pkg_termux, ui_terminal 유닛 테스트 |
-| domain_termux | 21 | termux_env 도메인 로직 + 멱등성 |
-| domain_xfce | 12 | xfce_env 도메인 로직 + 멱등성 |
-| domain_proot | 16 | proot_env 도메인 로직 + 멱등성 |
-| app_installer | 35 | shebang, 타이포, 경로, 설치 상태 |
-| **합계** | **100** | **Adreno750v2 실기기에서 전체 통과** |
+| adapters | 12 | pkg_termux stub 에러 반환, ui_terminal 유닛 테스트 |
+| domain_termux | 25 | termux_env 도메인 로직 + tur_multilib sed + kill_x11 |
+| domain_xfce | 19 | xfce_env 도메인 로직 + autostart cp + 폰트·커서 멱등성 |
+| domain_proot | 25 | proot_env 도메인 로직 + conky cp + korean locale 경로 검증 |
+| app_installer | 34 | shebang, 타이포, 경로, 설치 상태 |
+| **합계** | **122** | **Adreno750v2 실기기에서 전체 통과** |
 
 ---
 

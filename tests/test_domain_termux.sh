@@ -355,4 +355,89 @@ _test_setup_gpu_skips_installed() {
 }
 it "멱등성 — GPU 패키지가 이미 설치된 경우 pkg_install을 호출하지 않는다" _test_setup_gpu_skips_installed
 
+# =============================================================================
+# _setup_tur_multilib — sed '/^deb /' 패턴 검증
+# =============================================================================
+
+describe "termux_env — _setup_tur_multilib"
+
+_test_tur_multilib_only_deb_lines() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 빈 줄·주석 포함한 tur.list 생성
+    cat > "${PREFIX}/etc/apt/sources.list.d/tur.list" << 'EOF'
+deb https://tur.kcubeterm.com tur-packages tur
+
+# this is a comment
+EOF
+
+    _setup_tur_multilib 2>/dev/null || true
+
+    local result
+    result=$(cat "${PREFIX}/etc/apt/sources.list.d/tur.list")
+
+    # deb 줄에만 추가됐는지
+    assert_output_contains "$result" "deb https://tur.kcubeterm.com tur-packages tur tur-multilib tur-hacking"
+    # 빈 줄에 붙지 않았는지
+    local blank_line
+    blank_line=$(echo "$result" | grep "^[[:space:]]*tur-multilib" || echo "none")
+    assert_eq "none" "$blank_line" "빈 줄에 tur-multilib이 붙으면 안 된다"
+    # 주석 줄에 붙지 않았는지
+    local comment_line
+    comment_line=$(echo "$result" | grep "^#.*tur-multilib" || echo "none")
+    assert_eq "none" "$comment_line" "주석 줄에 tur-multilib이 붙으면 안 된다"
+    cleanup_sandbox "$sb"
+}
+it "deb 줄에만 tur-multilib/tur-hacking을 추가한다" _test_tur_multilib_only_deb_lines
+
+_test_tur_multilib_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    echo "deb https://tur.kcubeterm.com tur-packages tur tur-multilib tur-hacking" \
+        > "${PREFIX}/etc/apt/sources.list.d/tur.list"
+
+    _setup_tur_multilib 2>/dev/null || true
+
+    local count
+    count=$(grep -c "tur-multilib" "${PREFIX}/etc/apt/sources.list.d/tur.list")
+    assert_eq "1" "$count" "멱등성: tur-multilib이 1번만 있어야 한다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — tur-multilib이 이미 있으면 중복 추가하지 않는다" _test_tur_multilib_idempotent
+
+# =============================================================================
+# _setup_kill_termux_x11 — bin 생성 및 desktop entry
+# =============================================================================
+
+describe "termux_env — _setup_kill_termux_x11"
+
+_test_kill_x11_created() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_kill_termux_x11 2>/dev/null || true
+
+    assert_file_exists "${PREFIX}/bin/kill_termux_x11"
+    assert_file_exists "${PREFIX}/share/applications/kill_termux_x11.desktop"
+    cleanup_sandbox "$sb"
+}
+it "kill_termux_x11 스크립트와 desktop 파일을 생성한다" _test_kill_x11_created
+
+_test_kill_x11_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_kill_termux_x11 2>/dev/null || true
+    local mtime1; mtime1=$(stat -c %Y "${PREFIX}/bin/kill_termux_x11")
+    sleep 1
+    _setup_kill_termux_x11 2>/dev/null || true
+    local mtime2; mtime2=$(stat -c %Y "${PREFIX}/bin/kill_termux_x11")
+
+    assert_eq "$mtime1" "$mtime2" "멱등성: 이미 있으면 덮어쓰지 않는다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — kill_termux_x11이 이미 있으면 덮어쓰지 않는다" _test_kill_x11_idempotent
+
 print_results

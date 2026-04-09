@@ -22,11 +22,12 @@ declare -A SUITES=(
     [domain_termux]="${SCRIPT_DIR}/test_domain_termux.sh"
     [domain_xfce]="${SCRIPT_DIR}/test_domain_xfce.sh"
     [domain_proot]="${SCRIPT_DIR}/test_domain_proot.sh"
+    [app_installer]="${SCRIPT_DIR}/test_app_installer.sh"
 )
 
 # 실행할 스위트 결정
 if [ $# -eq 0 ]; then
-    selected_suites=("ports" "adapters" "domain_termux" "domain_xfce" "domain_proot")
+    selected_suites=("ports" "adapters" "domain_termux" "domain_xfce" "domain_proot" "app_installer")
 else
     selected_suites=("$@")
 fi

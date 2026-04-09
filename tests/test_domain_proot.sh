@@ -307,4 +307,171 @@ _test_fancybash_idempotent() {
 }
 it "멱등성 — proot .fancybash.sh가 이미 있으면 덮어쓰지 않는다" _test_fancybash_idempotent
 
+# =============================================================================
+# setup_proot_update — proot_pkg_update 호출 확인
+# =============================================================================
+
+describe "proot_env — setup_proot_update"
+
+_test_proot_update_calls_pkg_update() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    reset_mock_calls
+
+    setup_proot_update 2>/dev/null || true
+    assert_was_called "proot_pkg_update"
+    cleanup_sandbox "$sb"
+}
+it "setup_proot_update는 proot_pkg_update를 호출한다" _test_proot_update_calls_pkg_update
+
+# =============================================================================
+# setup_proot_korean — distro 분기 확인
+# =============================================================================
+
+describe "proot_env — setup_proot_korean"
+
+_test_korean_ubuntu_installs_pkgs() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS=""
+
+    setup_proot_korean 2>/dev/null || true
+    assert_was_called "proot_pkg_install"
+    cleanup_sandbox "$sb"
+}
+it "Ubuntu: proot 한글 패키지 설치를 호출한다" _test_korean_ubuntu_installs_pkgs
+
+_test_korean_arch_installs_pkgs() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS=""
+
+    setup_proot_korean 2>/dev/null || true
+    assert_was_called "proot_pkg_install"
+    cleanup_sandbox "$sb"
+}
+it "Arch: proot 한글 패키지 설치를 호출한다" _test_korean_arch_installs_pkgs
+
+# =============================================================================
+# _setup_ubuntu_korean_locale — PROOT_DISTRO 변수 사용 (하드코딩 수정 검증)
+# =============================================================================
+
+describe "proot_env — _setup_ubuntu_korean_locale 경로 검증"
+
+_test_ubuntu_korean_locale_uses_distro_var() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    _setup_ubuntu_korean_locale 2>/dev/null || true
+
+    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile"
+    local locale_file="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/default/locale"
+    assert_file_exists "$profile"
+    assert_file_contains "$profile" "termux-xfce-korean"
+    assert_file_exists "$locale_file"
+    assert_file_contains "$locale_file" "ko_KR.UTF-8"
+    cleanup_sandbox "$sb"
+}
+it "ubuntu: .profile과 /etc/default/locale을 올바른 경로에 작성한다" _test_ubuntu_korean_locale_uses_distro_var
+
+_test_ubuntu_korean_locale_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    _setup_ubuntu_korean_locale 2>/dev/null || true
+    _setup_ubuntu_korean_locale 2>/dev/null || true
+
+    local count
+    count=$(grep -c "termux-xfce-korean" \
+        "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile")
+    assert_eq "1" "$count" "멱등성: korean 블록이 1번만 있어야 한다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — korean locale 블록이 중복 추가되지 않는다" _test_ubuntu_korean_locale_idempotent
+
+# =============================================================================
+# _setup_arch_korean_locale — PROOT_DISTRO 변수 사용 (하드코딩 수정 검증)
+# =============================================================================
+
+describe "proot_env — _setup_arch_korean_locale 경로 검증"
+
+_test_arch_korean_locale_uses_distro_var() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux" "testuser"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+
+    local locale_gen="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/etc/locale.gen"
+    touch "$locale_gen"
+
+    _setup_arch_korean_locale 2>/dev/null || true
+
+    assert_file_contains "$locale_gen" "ko_KR.UTF-8"
+    cleanup_sandbox "$sb"
+}
+it "archlinux: locale.gen을 올바른 경로에 작성한다" _test_arch_korean_locale_uses_distro_var
+
+# =============================================================================
+# setup_proot_conky — SCRIPT_DIR cp / 멱등성 / emoji 폰트 복사
+# =============================================================================
+
+describe "proot_env — setup_proot_conky"
+
+_REAL_PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+_test_conky_copies_from_repo() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    export SCRIPT_DIR="${_REAL_PROJECT_DIR}"
+
+    setup_proot_conky 2>/dev/null || true
+
+    assert_dir_exists \
+        "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.config/conky"
+    cleanup_sandbox "$sb"
+}
+it "SCRIPT_DIR 있으면 tar/conky에서 직접 복사한다" _test_conky_copies_from_repo
+
+_test_conky_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    export SCRIPT_DIR="${_REAL_PROJECT_DIR}"
+
+    setup_proot_conky 2>/dev/null || true
+    local conky_dir="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.config/conky"
+    local mtime1; mtime1=$(stat -c %Y "$conky_dir")
+    sleep 1
+    setup_proot_conky 2>/dev/null || true
+    local mtime2; mtime2=$(stat -c %Y "$conky_dir")
+
+    assert_eq "$mtime1" "$mtime2" "멱등성: conky 디렉토리가 재복사되면 안 된다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — conky가 이미 있으면 재복사하지 않는다" _test_conky_idempotent
+
+_test_conky_copies_emoji_font() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    export SCRIPT_DIR="${_REAL_PROJECT_DIR}"
+
+    # NotoColorEmoji 준비
+    mkdir -p "${HOME}/.fonts"
+    touch "${HOME}/.fonts/NotoColorEmoji-Regular.ttf"
+
+    setup_proot_conky 2>/dev/null || true
+
+    assert_file_exists \
+        "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.fonts/NotoColorEmoji-Regular.ttf"
+    cleanup_sandbox "$sb"
+}
+it "NotoColorEmoji를 proot 홈 .fonts에 복사한다" _test_conky_copies_emoji_font
+
 print_results
