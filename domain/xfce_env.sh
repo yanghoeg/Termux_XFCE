@@ -148,12 +148,21 @@ _setup_autostart_config() {
     [ -d "$autostart_dir" ] && \
         [ -f "$autostart_dir/conky.desktop" ] && return 0  # 멱등성
 
-    # config.tar.gz: conky, flameshot autostart 포함
-    # HOME 기준으로 압축 해제 (-C $HOME)
-    wget -q "${REPO_BASE}/config.tar.gz" -O "${TMPDIR}/config.tar.gz"
     mkdir -p "$autostart_dir"
-    tar -xzf "${TMPDIR}/config.tar.gz" -C "$HOME"
-    rm -f "${TMPDIR}/config.tar.gz"
+
+    local config_src="${SCRIPT_DIR:-}/tar/config/.config"
+    if [ -d "$config_src" ]; then
+        # 로컬 repo에서 직접 복사 (외부 다운로드 불필요)
+        cp -rn "$config_src/." "$HOME/.config/"
+    else
+        # curl 파이프 실행 시 원격 다운로드
+        local tmp="${HOME}/.cache/termux-xfce-install"
+        mkdir -p "$tmp"
+        wget -q "${REPO_BASE}/config.tar.gz" -O "${tmp}/config.tar.gz"
+        tar -xzf "${tmp}/config.tar.gz" -C "$HOME"
+        rm -f "${tmp}/config.tar.gz"
+    fi
+
     chmod +x "$autostart_dir/conky.desktop" 2>/dev/null || true
     chmod +x "$autostart_dir/org.flameshot.Flameshot.desktop" 2>/dev/null || true
 }

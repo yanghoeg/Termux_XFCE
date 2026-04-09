@@ -97,7 +97,7 @@ _setup_termux_repos() {
 _setup_tur_multilib() {
     local tur_list="$PREFIX/etc/apt/sources.list.d/tur.list"
     grep -q "tur-multilib" "$tur_list" 2>/dev/null || \
-        sed -i 's/$/ tur-multilib tur-hacking/' "$tur_list"
+        sed -i '/^deb /s/$/ tur-multilib tur-hacking/' "$tur_list"
     pkg_update
 }
 

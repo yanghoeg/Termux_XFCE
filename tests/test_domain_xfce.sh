@@ -233,4 +233,108 @@ _test_noto_emoji_skipped_if_exists() {
 }
 it "멱등성 — NotoColorEmoji가 이미 있으면 재다운로드하지 않는다" _test_noto_emoji_skipped_if_exists
 
+# =============================================================================
+# _install_fluent_cursor / _install_cascadia_code / _install_meslo_nerd /
+# _install_termux_font — 멱등성
+# =============================================================================
+
+describe "xfce_env — 폰트·커서 멱등성"
+
+_test_fluent_cursor_skipped_if_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    mkdir -p "${PREFIX}/share/icons/dist-dark"
+    _install_fluent_cursor 2>/dev/null || true
+    assert_not_called "wget"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — dist-dark 커서가 이미 있으면 재다운로드하지 않는다" _test_fluent_cursor_skipped_if_exists
+
+_test_cascadia_skipped_if_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    touch "${HOME}/.fonts/CascadiaCode.otf"
+    _install_cascadia_code 2>/dev/null || true
+    assert_not_called "wget"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — CascadiaCode가 이미 있으면 재다운로드하지 않는다" _test_cascadia_skipped_if_exists
+
+_test_meslo_skipped_if_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    touch "${HOME}/.fonts/MesloLGS NF Regular.ttf"
+    _install_meslo_nerd 2>/dev/null || true
+    assert_not_called "wget"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — MesloLGS NF가 이미 있으면 재다운로드하지 않는다" _test_meslo_skipped_if_exists
+
+_test_termux_font_skipped_if_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    touch "${HOME}/.termux/font.ttf"
+    _install_termux_font 2>/dev/null || true
+    assert_not_called "wget"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — termux font.ttf가 이미 있으면 재다운로드하지 않는다" _test_termux_font_skipped_if_exists
+
+# =============================================================================
+# _setup_autostart_config — SCRIPT_DIR cp / wget 폴백 / 멱등성
+# =============================================================================
+
+describe "xfce_env — _setup_autostart_config"
+
+# 실제 프로젝트 루트 (tar/config/ 포함)
+_REAL_PROJECT_DIR="$(cd "${SCRIPT_DIR}/.." && pwd)"
+
+_test_autostart_copies_from_repo() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    export SCRIPT_DIR="${_REAL_PROJECT_DIR}"
+
+    _setup_autostart_config 2>/dev/null || true
+
+    assert_file_exists "${HOME}/.config/autostart/conky.desktop"
+    assert_file_exists "${HOME}/.config/autostart/org.flameshot.Flameshot.desktop"
+    assert_file_exists "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xsettings.xml"
+    assert_file_exists "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfwm4.xml"
+    cleanup_sandbox "$sb"
+}
+it "SCRIPT_DIR 있으면 tar/config에서 직접 복사한다" _test_autostart_copies_from_repo
+
+_test_autostart_wget_fallback() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    unset SCRIPT_DIR
+    reset_mock_calls
+    mock_wget
+
+    _setup_autostart_config 2>/dev/null || true
+    assert_was_called "wget"
+    cleanup_sandbox "$sb"
+}
+it "SCRIPT_DIR 없으면 wget 폴백을 사용한다" _test_autostart_wget_fallback
+
+_test_autostart_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    export SCRIPT_DIR="${_REAL_PROJECT_DIR}"
+
+    _setup_autostart_config 2>/dev/null || true
+    local mtime1; mtime1=$(stat -c %Y "${HOME}/.config/autostart/conky.desktop")
+    sleep 1
+    _setup_autostart_config 2>/dev/null || true
+    local mtime2; mtime2=$(stat -c %Y "${HOME}/.config/autostart/conky.desktop")
+
+    assert_eq "$mtime1" "$mtime2" "멱등성: conky.desktop이 덮어쓰이면 안 된다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — conky.desktop이 이미 있으면 재복사하지 않는다" _test_autostart_idempotent
+
 print_results

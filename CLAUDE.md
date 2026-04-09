@@ -79,7 +79,22 @@ Termux_XFCE/
 
 ## 다음 세션에서 할 일
 
-1. **구 파일 제거**: `etc.sh`, `xfce.sh`, `proot.sh`, `ubuntu_etc.sh`, `utils.sh`
+1. **Termux 쉘 환경 설정**:
+   - bash → zsh 전환: `pkg install zsh` 후 `chsh -s zsh`
+   - 프롬프트 테마: **Powerlevel10k** 권장 (zsh 네이티브, fancybash 대체)
+     ```bash
+     pkg install zsh git
+     git clone --depth=1 https://github.com/romkatv/powerlevel10k.git ~/powerlevel10k
+     echo 'source ~/powerlevel10k/powerlevel10k.zsh-theme' >> ~/.zshrc
+     chsh -s zsh
+     # 재시작 후 p10k 설정 마법사 자동 실행 (Nerd Font 없어도 동작)
+     # 이후 재설정: p10k configure
+     ```
+   - p10k 특징: git branch/status, 실행시간, exit code, 배터리 표시 기본 제공, 매우 빠름
+   - install.sh에 `_setup_zsh_p10k` 함수 추가 예정 (domain/termux_env.sh)
+   - zsh 전환 후 `.zshrc`에 기존 `.bashrc` aliases/exports 이식 필요
+   - (fancybash 계속 쓸 경우) `~/.fancybash.sh` line 326 `" user "` → `" yanghoeg "`, line 372 `user:` → `yanghoeg:`
+2. **구 파일 제거**: `etc.sh`, `xfce.sh`, `proot.sh`, `ubuntu_etc.sh`, `utils.sh`
 2. **App-Installer를 Git Submodule로 추가**:
    ```bash
    git submodule add https://github.com/yanghoeg/App-Installer.git app-installer

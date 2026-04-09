@@ -179,7 +179,7 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     setup_proot_conky
 
     # proot alias (termux bashrc에 추가)
-    local bashrc="$PREFIX/etc/bash.bashrc"
+    bashrc="$PREFIX/etc/bash.bashrc"
     grep -q "alias ${PROOT_DISTRO}=" "$bashrc" 2>/dev/null || \
         echo "alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'" \
         >> "$bashrc"

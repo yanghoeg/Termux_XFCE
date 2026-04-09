@@ -29,6 +29,9 @@ _test_pkg_termux_contract() {
     assert_cmd_exists pkg_autoremove
     assert_cmd_exists proot_exec
     assert_cmd_exists proot_pkg_install
+    assert_cmd_exists proot_pkg_update
+    assert_cmd_exists proot_pkg_remove
+    assert_cmd_exists proot_pkg_autoremove
     assert_cmd_exists proot_pkg_is_installed
 }
 it "모든 계약 함수가 선언되어 있다" _test_pkg_termux_contract
@@ -109,5 +112,35 @@ _test_ui_input_default() {
     assert_output_contains "$out" "기본값"
 }
 it "ui_input은 빈 입력 시 기본값을 반환한다" _test_ui_input_default
+
+# =============================================================================
+# pkg_termux.sh — proot 신규 stub 에러 반환 검증
+# =============================================================================
+
+describe "pkg_termux.sh — proot stub 에러 반환"
+
+_test_proot_pkg_update_error() {
+    source "${ADAPTER_DIR}/pkg_termux.sh"
+    local out
+    out=$(proot_pkg_update 2>&1) || true
+    assert_output_contains "$out" "ERROR"
+}
+it "proot_pkg_update는 에러 메시지를 출력한다" _test_proot_pkg_update_error
+
+_test_proot_pkg_remove_error() {
+    source "${ADAPTER_DIR}/pkg_termux.sh"
+    local out
+    out=$(proot_pkg_remove vim 2>&1) || true
+    assert_output_contains "$out" "ERROR"
+}
+it "proot_pkg_remove는 에러 메시지를 출력한다" _test_proot_pkg_remove_error
+
+_test_proot_pkg_autoremove_error() {
+    source "${ADAPTER_DIR}/pkg_termux.sh"
+    local out
+    out=$(proot_pkg_autoremove 2>&1) || true
+    assert_output_contains "$out" "ERROR"
+}
+it "proot_pkg_autoremove는 에러 메시지를 출력한다" _test_proot_pkg_autoremove_error
 
 print_results

@@ -210,15 +210,26 @@ setup_proot_conky() {
 
     [ -d "${config_dst}/conky" ] && return 0  # 멱등성
 
-    # conky.tar.gz: conky + neofetch config 포함
-    local repo_base="https://github.com/yanghoeg/Termux_XFCE/raw/main"
-    wget -q "${repo_base}/conky.tar.gz" -O conky.tar.gz
-    tar -xzf conky.tar.gz
-    rm conky.tar.gz
-
     mkdir -p "$config_dst"
-    [ -d ".config/conky" ]   && mv .config/conky   "$config_dst/"
-    [ -d ".config/neofetch" ] && mv .config/neofetch "$config_dst/"
+
+    local conky_src="${SCRIPT_DIR:-}/tar/conky/.config"
+    if [ -d "$conky_src" ]; then
+        # 로컬 repo에서 직접 복사
+        cp -rn "$conky_src/." "$config_dst/"
+    else
+        # curl 파이프 실행 시 원격 다운로드
+        local repo_base="https://github.com/yanghoeg/Termux_XFCE/raw/main"
+        local tmp="${HOME}/.cache/termux-xfce-install"
+        mkdir -p "$tmp"
+        wget -q "${repo_base}/conky.tar.gz" -O "${tmp}/conky.tar.gz"
+        local tmpextract
+        tmpextract=$(mktemp -d "${tmp}/conky-XXXXXX")
+        tar -xzf "${tmp}/conky.tar.gz" -C "$tmpextract"
+        rm -f "${tmp}/conky.tar.gz"
+        [ -d "${tmpextract}/.config/conky" ]    && cp -r "${tmpextract}/.config/conky"    "$config_dst/"
+        [ -d "${tmpextract}/.config/neofetch" ] && cp -r "${tmpextract}/.config/neofetch" "$config_dst/"
+        rm -rf "$tmpextract"
+    fi
 
     # 이모지 폰트 복사
     local emoji_src="$HOME/.fonts/NotoColorEmoji-Regular.ttf"
@@ -243,7 +254,7 @@ _setup_proot_sudoers() {
 }
 
 _setup_ubuntu_korean_locale() {
-    local profile="${PROOT_ROOTFS}/ubuntu/home/${PROOT_USER}/.profile"
+    local profile="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${PROOT_USER}/.profile"
     grep -q "# termux-xfce-korean" "$profile" 2>/dev/null && return 0
 
     cat >> "$profile" << 'EOF'
@@ -259,7 +270,7 @@ nimf
 EOF
 
     # /etc/default/locale
-    cat > "${PROOT_ROOTFS}/ubuntu/etc/default/locale" << 'EOF'
+    cat > "${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/default/locale" << 'EOF'
 LANG=ko_KR.UTF-8
 LANGUAGE=ko_KR.UTF-8
 EOF
@@ -275,7 +286,7 @@ _setup_ubuntu_nimf() {
 }
 
 _setup_arch_korean_locale() {
-    local locale_gen="${PROOT_ROOTFS}/archlinux/etc/locale.gen"
+    local locale_gen="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/locale.gen"
     grep -q "ko_KR.UTF-8" "$locale_gen" 2>/dev/null || \
         echo "ko_KR.UTF-8 UTF-8" >> "$locale_gen"
     proot_exec locale-gen
