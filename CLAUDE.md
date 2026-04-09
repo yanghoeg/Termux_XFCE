@@ -86,6 +86,16 @@ Termux_XFCE/
    ```
 3. **App-Installer 헥사고날 리팩토링**: `install.sh`의 `PKG_MAP`, distro 추상화
 4. **실제 기기 테스트** 후 버그 수정
+   - **테스트 방법**: Termux에 Claude Code 설치 후 직접 테스트
+     ```bash
+     pkg install nodejs git
+     npm install -g @anthropic-ai/claude-code
+     echo 'export ANTHROPIC_API_KEY="sk-ant-..."' >> ~/.bashrc
+     git clone https://github.com/yanghoeg/Termux_XFCE.git ~/Termux_XFCE
+     cd ~/Termux_XFCE && claude
+     ```
+   - 전체 install.sh 실행 대신 **단위 함수 테스트** 권장: `source domain/termux_env.sh && some_func`
+   - PC에서 수정 → `git push` → Termux에서 `git pull` → Claude로 테스트
 5. **README.md 업데이트**: 새 구조 설명, 설치 방법
 
 ## 주의사항
