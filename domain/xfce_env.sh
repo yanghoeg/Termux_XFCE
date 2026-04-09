@@ -73,8 +73,10 @@ _install_whitesur_theme() {
     [ -d "$theme_dir" ] && return 0  # 멱등성
 
     local zip="2024-11-18.zip"
+    # 잔류 파일 정리 후 다운로드
+    rm -rf "WhiteSur-gtk-theme-2024-11-18" "WhiteSur-Dark" "$zip"
     wget -q "https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${zip}" -O "$zip"
-    unzip -q "$zip"
+    unzip -o -q "$zip"   # -o: 기존 파일 덮어쓰기 (프롬프트 없음)
     tar -xf "WhiteSur-gtk-theme-2024-11-18/release/WhiteSur-Dark.tar.xz"
     mv WhiteSur-Dark/ "$PREFIX/share/themes/"
     rm -rf "WhiteSur-gtk-theme-2024-11-18" "$zip"
@@ -85,8 +87,9 @@ _install_fluent_cursor() {
     [ -d "$cursor_dir" ] && return 0  # 멱등성
 
     local zip="2024-02-25.zip"
+    rm -rf "Fluent-icon-theme-2024-02-25" "$zip"
     wget -q "https://github.com/vinceliuice/Fluent-icon-theme/archive/refs/tags/${zip}" -O "$zip"
-    unzip -q "$zip"
+    unzip -o -q "$zip"   # -o: 덮어쓰기
     mv "Fluent-icon-theme-2024-02-25/cursors/dist"      "$PREFIX/share/icons/"
     mv "Fluent-icon-theme-2024-02-25/cursors/dist-dark" "$PREFIX/share/icons/"
     rm -rf "Fluent-icon-theme-2024-02-25" "$zip"
@@ -146,9 +149,11 @@ _setup_autostart_config() {
         [ -f "$autostart_dir/conky.desktop" ] && return 0  # 멱등성
 
     # config.tar.gz: conky, flameshot autostart 포함
-    wget -q "${REPO_BASE}/config.tar.gz" -O config.tar.gz
-    tar -xzf config.tar.gz
-    rm config.tar.gz
-    chmod +x "$HOME/.config/autostart/conky.desktop" 2>/dev/null || true
-    chmod +x "$HOME/.config/autostart/org.flameshot.Flameshot.desktop" 2>/dev/null || true
+    # HOME 기준으로 압축 해제 (-C $HOME)
+    wget -q "${REPO_BASE}/config.tar.gz" -O "${TMPDIR}/config.tar.gz"
+    mkdir -p "$autostart_dir"
+    tar -xzf "${TMPDIR}/config.tar.gz" -C "$HOME"
+    rm -f "${TMPDIR}/config.tar.gz"
+    chmod +x "$autostart_dir/conky.desktop" 2>/dev/null || true
+    chmod +x "$autostart_dir/org.flameshot.Flameshot.desktop" 2>/dev/null || true
 }
