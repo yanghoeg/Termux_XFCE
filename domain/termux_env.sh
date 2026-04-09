@@ -196,25 +196,17 @@ LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
 LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
     module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
 
-# Adreno GPU 세대 자동 감지
-# /sys/class/kgsl/kgsl-3d0/gpu_model 예: "Adreno (TM) 750"
-GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
-if [[ "$GPU_MODEL" =~ [Aa]dreno.*[678][0-9]{2} ]]; then
-    # Adreno 6xx/7xx/8xx → KGSL(Adreno 네이티브) 드라이버
-    # 모델명 형식: "Adreno (TM) 750" 또는 "Adreno750v2" 모두 커버
-    MESA_DRIVER=kgsl
-else
-    # 비-Adreno 또는 감지 실패 → Zink(OpenGL→Vulkan) 폴백
-    MESA_DRIVER=zink
-fi
+# Termux X11 환경 제약:
+# - /dev/dri/renderD128: Permission denied (root 없이 접근 불가)
+# - Termux X11: DRI3 미지원 → Zink/Turnip이 X11 창에 GPU 렌더링 불가
+# - virgl_test_server: 호스트 OpenGL 없어 초기화 실패
+# 결론: llvmpipe(소프트웨어) 렌더링이 현재 유일하게 안정 작동
 
 env DISPLAY=:1.0 \
-    MESA_LOADER_DRIVER_OVERRIDE=${MESA_DRIVER} \
-    TU_DEBUG=noconform \
+    PULSE_SERVER=tcp:127.0.0.1:4713 \
     MESA_NO_ERROR=1 \
     MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
     MESA_GLES_VERSION_OVERRIDE=3.2 \
-    MESA_VK_WSI_PRESENT_MODE=immediate \
     dbus-launch --exit-with-session xfce4-session &
 EOF
 
