@@ -1,0 +1,265 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# =============================================================================
+# DOMAIN: proot_env.sh
+# -----------------------------------------------------------------------------
+# proot-distro 환경 구성 도메인 로직
+# - Ubuntu / Arch Linux 공통 로직
+# - distro별 차이는 어댑터(pkg_ubuntu.sh / pkg_arch.sh)가 흡수
+# - 기존 proot.sh + ubuntu_etc.sh 통합
+# 환경변수: PROOT_DISTRO, PROOT_USER 필요
+# =============================================================================
+
+readonly PROOT_ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs"
+
+# -----------------------------------------------------------------------------
+# Public API
+# -----------------------------------------------------------------------------
+
+setup_proot_install() {
+    ui_info "${PROOT_DISTRO} proot-distro 설치"
+    # 이미 설치된 경우 건너뜀
+    [ -d "${PROOT_ROOTFS}/${PROOT_DISTRO}" ] && {
+        ui_warn "${PROOT_DISTRO}가 이미 설치되어 있습니다. 건너뜁니다."
+        return 0
+    }
+    proot-distro install "$PROOT_DISTRO"
+}
+
+setup_proot_update() {
+    ui_info "${PROOT_DISTRO} 패키지 업데이트"
+    proot_pkg_update
+}
+
+setup_proot_user() {
+    local username="$PROOT_USER"
+    ui_info "${PROOT_DISTRO} 사용자 생성: ${username}"
+
+    local home_dir="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}"
+    [ -d "$home_dir" ] && {
+        ui_warn "사용자 ${username}이 이미 존재합니다. 건너뜁니다."
+        return 0
+    }
+
+    proot_exec groupadd storage  2>/dev/null || true
+    proot_exec groupadd wheel    2>/dev/null || true
+    proot_exec useradd -m -g users -G wheel,audio,video,storage -s /bin/bash "$username"
+
+    _setup_proot_sudoers "$username"
+}
+
+setup_proot_base_packages() {
+    ui_info "${PROOT_DISTRO} 기본 패키지 설치"
+
+    case "$PROOT_DISTRO" in
+        ubuntu)
+            for p in "${PKGS_PROOT_UBUNTU_BASE[@]}" "${PKGS_PROOT_UBUNTU_DESKTOP[@]}"; do
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+            done
+            ;;
+        archlinux)
+            proot_pkg_update
+            for p in "${PKGS_PROOT_ARCH_BASE[@]}" "${PKGS_PROOT_ARCH_DESKTOP[@]}"; do
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+            done
+            ;;
+    esac
+}
+
+setup_proot_korean() {
+    ui_info "${PROOT_DISTRO} 한글 환경 설정"
+
+    case "$PROOT_DISTRO" in
+        ubuntu)
+            for p in "${PKGS_PROOT_UBUNTU_KOREAN[@]}"; do
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+            done
+            _setup_ubuntu_korean_locale
+            _setup_ubuntu_nimf
+            ;;
+        archlinux)
+            for p in "${PKGS_PROOT_ARCH_KOREAN[@]}"; do
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+            done
+            _setup_arch_korean_locale
+            ;;
+    esac
+}
+
+setup_proot_env() {
+    ui_info "${PROOT_DISTRO} 환경변수 설정"
+    local bashrc="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${PROOT_USER}/.bashrc"
+
+    grep -q "# termux-xfce-proot-env" "$bashrc" 2>/dev/null && return 0
+
+    cat >> "$bashrc" << EOF
+
+# termux-xfce-proot-env
+export DISPLAY=:1.0
+export LD_PRELOAD=/system/lib64/libskcodec.so
+export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+export MESA_NO_ERROR=1
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export TU_DEBUG=noconform
+export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
+export MESA_GLES_VERSION_OVERRIDE=3.2
+
+# aliases
+alias hud='GALLIUM_HUD=fps '
+alias ls='eza -lF --icons'
+alias ll='ls -alhF'
+alias shutdown='kill -9 -1'
+alias cat='bat'
+alias python='/usr/bin/python3'
+alias pip='/usr/bin/pip'
+alias start='echo "Termux에서 실행하세요."'
+EOF
+}
+
+setup_proot_timezone() {
+    ui_info "${PROOT_DISTRO} 시간대 설정"
+    local tz
+    tz=$(getprop persist.sys.timezone 2>/dev/null || echo "Asia/Seoul")
+
+    proot_exec rm -f /etc/localtime
+    proot_exec ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
+}
+
+setup_proot_fancybash() {
+    local username="$PROOT_USER"
+    local distro_label="${PROOT_DISTRO}"
+    ui_info "${PROOT_DISTRO} fancybash 설정"
+
+    local src="$HOME/.fancybash.sh"
+    local dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fancybash.sh"
+
+    [ -f "$src" ] || {
+        ui_warn "Termux의 .fancybash.sh가 없습니다. setup_xfce_fancybash를 먼저 실행하세요."
+        return 1
+    }
+
+    [ -f "$dst" ] && return 0  # 멱등성
+
+    cp "$src" "$dst"
+    # 호스트명을 distro명으로 변경
+    sed -i "s/termux/${distro_label}/" "$dst"
+
+    local bashrc="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.bashrc"
+    grep -q "source.*\.fancybash\.sh" "$bashrc" 2>/dev/null || \
+        echo "source ~/.fancybash.sh" >> "$bashrc"
+}
+
+setup_proot_hardware_accel() {
+    ui_info "${PROOT_DISTRO} GPU 가속(mesa-vulkan-kgsl) 설치"
+
+    case "$PROOT_DISTRO" in
+        ubuntu)
+            local deb="mesa-vulkan-kgsl_24.1.0-devel-20240120_arm64.deb"
+            local url="https://github.com/yanghoeg/Termux_XFCE/raw/main/${deb}"
+
+            proot_exec bash -c "
+                wget -q '${url}' -O /tmp/${deb}
+                apt install -y /tmp/${deb}
+                rm -f /tmp/${deb}
+            "
+            ;;
+        archlinux)
+            ui_warn "Arch Linux용 mesa-vulkan-kgsl 패키지가 없습니다. Termux native mesa를 사용합니다."
+            ;;
+    esac
+}
+
+setup_proot_cursor_theme() {
+    ui_info "${PROOT_DISTRO} 커서 테마(dist-dark) 적용"
+    local src="$PREFIX/share/icons/dist-dark"
+    local dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/usr/share/icons/dist-dark"
+
+    [ -d "$dst" ] && return 0
+    [ -d "$src" ] || {
+        ui_warn "dist-dark 커서 테마가 없습니다. setup_xfce_theme를 먼저 실행하세요."
+        return 1
+    }
+
+    cp -r "$src" "$dst"
+
+    local xresources="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${PROOT_USER}/.Xresources"
+    grep -q "Xcursor.theme" "$xresources" 2>/dev/null || \
+        echo "Xcursor.theme: dist-dark" >> "$xresources"
+}
+
+setup_proot_conky() {
+    ui_info "${PROOT_DISTRO} Conky 설정 복사"
+    local username="$PROOT_USER"
+    local config_dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.config"
+
+    [ -d "${config_dst}/conky" ] && return 0  # 멱등성
+
+    # conky.tar.gz: conky + neofetch config 포함
+    local repo_base="https://github.com/yanghoeg/Termux_XFCE/raw/main"
+    wget -q "${repo_base}/conky.tar.gz" -O conky.tar.gz
+    tar -xzf conky.tar.gz
+    rm conky.tar.gz
+
+    mkdir -p "$config_dst"
+    [ -d ".config/conky" ]   && mv .config/conky   "$config_dst/"
+    [ -d ".config/neofetch" ] && mv .config/neofetch "$config_dst/"
+
+    # 이모지 폰트 복사
+    local emoji_src="$HOME/.fonts/NotoColorEmoji-Regular.ttf"
+    local emoji_dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fonts/"
+    mkdir -p "$emoji_dst"
+    [ -f "$emoji_src" ] && cp "$emoji_src" "$emoji_dst"
+}
+
+# -----------------------------------------------------------------------------
+# Private
+# -----------------------------------------------------------------------------
+
+_setup_proot_sudoers() {
+    local username="$1"
+    local sudoers="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers"
+
+    grep -q "^${username}" "$sudoers" 2>/dev/null && return 0
+
+    chmod u+rw "$sudoers"
+    echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
+    chmod 440 "$sudoers"
+}
+
+_setup_ubuntu_korean_locale() {
+    local profile="${PROOT_ROOTFS}/ubuntu/home/${PROOT_USER}/.profile"
+    grep -q "# termux-xfce-korean" "$profile" 2>/dev/null && return 0
+
+    cat >> "$profile" << 'EOF'
+
+# termux-xfce-korean
+LANG=ko_KR.UTF-8
+LANGUAGE=ko_KR.UTF-8
+LC_ALL=ko_KR.UTF-8
+export GTK_IM_MODULE=nimf
+export QT_IM_MODULE=nimf
+export XMODIFIERS="@im=nimf"
+nimf
+EOF
+
+    # /etc/default/locale
+    cat > "${PROOT_ROOTFS}/ubuntu/etc/default/locale" << 'EOF'
+LANG=ko_KR.UTF-8
+LANGUAGE=ko_KR.UTF-8
+EOF
+}
+
+_setup_ubuntu_nimf() {
+    # 하모니카 repo 추가 후 nimf 설치
+    proot_exec bash -c "
+        wget -qO- https://update.hamonikr.org/add-update-repo.apt | bash - 2>/dev/null || true
+        apt install -y nimf nimf-libhangul 2>/dev/null || true
+        im-config -n nimf 2>/dev/null || true
+    "
+}
+
+_setup_arch_korean_locale() {
+    local locale_gen="${PROOT_ROOTFS}/archlinux/etc/locale.gen"
+    grep -q "ko_KR.UTF-8" "$locale_gen" 2>/dev/null || \
+        echo "ko_KR.UTF-8 UTF-8" >> "$locale_gen"
+    proot_exec locale-gen
+}
