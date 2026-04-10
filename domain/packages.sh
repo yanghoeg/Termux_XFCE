@@ -25,7 +25,6 @@ PKGS_TERMUX_XFCE=(
     xfce4
     xfce4-goodies
     firefox
-    virglrenderer-android
     papirus-icon-theme
     termux-x11-nightly
     libuv
@@ -52,16 +51,17 @@ PKGS_TERMUX_KOREAN=(
     libhangul-static
 )
 
-# GPU 가속 (Adreno/Turnip)
-# 패키지명: Termux 26.x 기준 (2024년 이후 tur-repo 구조 변경 반영)
+# GPU 가속 (Adreno/Turnip + Zink)
+# 패키지명: Termux 26.x 기준 (2025년 이후 최신 메인라인 Mesa 반영)
+# DRI3 지원: Termux:X11 최신 + mesa-vulkan-icd-freedreno 24.1+ 조합으로 활성화
 PKGS_TERMUX_GPU=(
-    mesa-zink                      # OpenGL → Vulkan 레이어 (tur-repo)
+    mesa-zink                      # OpenGL → Vulkan 레이어 (Zink 드라이버)
     mesa-dev
     mesa-demos
-    osmesa-zink                    # osmesa → osmesa-zink 으로 이름 변경 (tur-repo)
-    mesa-vulkan-icd-freedreno      # freedreno-dri3 → freedreno 로 이름 변경
+    osmesa-zink                    # osmosa → osmesa-zink 로 이름 변경
+    mesa-vulkan-icd-freedreno      # Turnip Vulkan 드라이버 (DRI3 포함, -dri3 패키지 폐기됨)
     vulkan-loader-generic          # vulkan-loader-android → vulkan-loader-generic
-    mesa-vulkan-icd-swrast         # lavapipe → swrast 로 이름 변경 (소프트웨어 폴백)
+    mesa-vulkan-icd-swrast         # 소프트웨어 Vulkan 폴백 (lavapipe → swrast)
 )
 
 # GPU 개발 도구 (선택적)

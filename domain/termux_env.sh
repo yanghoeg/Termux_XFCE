@@ -21,6 +21,7 @@ setup_termux_base() {
     _install_base_packages
     _setup_aliases
     _setup_locale
+    _setup_gpu_env
 }
 
 setup_termux_gpu() {
@@ -155,6 +156,24 @@ export QT_IM_MODULE=fcitx5
 LOCALE
 }
 
+_setup_gpu_env() {
+    local bashrc="$PREFIX/etc/bash.bashrc"
+    grep -q "# termux-xfce-gpu" "$bashrc" 2>/dev/null && return 0
+
+    cat >> "$bashrc" << 'GPU'
+
+# termux-xfce-gpu — Adreno 감지 시 Zink 상시 활성화
+if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export TU_DEBUG=noconform
+    export ZINK_DESCRIPTORS=lazy
+    export MESA_NO_ERROR=1
+    export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
+    export MESA_GLES_VERSION_OVERRIDE=3.2
+fi
+GPU
+}
+
 _setup_korean_env() {
     # fcitx5 자동시작 설정
     local autostart_dir="$HOME/.config/autostart"
@@ -180,7 +199,7 @@ _setup_start_xfce() {
 
     cat > "$shortcut" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-killall -9 termux-x11 Xwayland pulseaudio virgl_test_server_android 2>/dev/null || true
+killall -9 termux-x11 Xwayland pulseaudio 2>/dev/null || true
 
 termux-wake-lock
 XDG_RUNTIME_DIR="${TMPDIR}" termux-x11 :1.0 &
@@ -196,18 +215,37 @@ LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
 LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
     module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
 
-# Termux X11 환경 제약:
-# - /dev/dri/renderD128: Permission denied (root 없이 접근 불가)
-# - Termux X11: DRI3 미지원 → Zink/Turnip이 X11 창에 GPU 렌더링 불가
-# - virgl_test_server: 호스트 OpenGL 없어 초기화 실패
-# 결론: llvmpipe(소프트웨어) 렌더링이 현재 유일하게 안정 작동
+# GPU 자동 감지 (런타임)
+# - /dev/kgsl-3d0: 루팅 없이 접근 가능 (Adreno KGSL 커널 드라이버)
+# - Termux:X11 최신 버전 + mesa-vulkan-icd-freedreno 24.1+ → DRI3 지원
+# - DRI3 활성화 시 Zink+Turnip이 X11 창에 직접 GPU 렌더링 가능
+GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
-env DISPLAY=:1.0 \
-    PULSE_SERVER=tcp:127.0.0.1:4713 \
-    MESA_NO_ERROR=1 \
-    MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
-    MESA_GLES_VERSION_OVERRIDE=3.2 \
-    dbus-launch --exit-with-session xfce4-session &
+if [ -n "$GPU_MODEL" ]; then
+    # Zink + Turnip 하드웨어 가속 (Adreno 6xx/7xx/8xx)
+    # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
+    #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
+    MESA_DRIVER=zink
+    env DISPLAY=:1.0 \
+        PULSE_SERVER=tcp:127.0.0.1:4713 \
+        MESA_NO_ERROR=1 \
+        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
+        MESA_GLES_VERSION_OVERRIDE=3.2 \
+        MESA_LOADER_DRIVER_OVERRIDE=zink \
+        TU_DEBUG=noconform \
+        ZINK_DESCRIPTORS=lazy \
+        dbus-launch --exit-with-session xfce4-session &
+else
+    # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
+    MESA_DRIVER=llvmpipe
+    env DISPLAY=:1.0 \
+        PULSE_SERVER=tcp:127.0.0.1:4713 \
+        MESA_NO_ERROR=1 \
+        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
+        MESA_GLES_VERSION_OVERRIDE=3.2 \
+        LIBGL_ALWAYS_SOFTWARE=1 \
+        dbus-launch --exit-with-session xfce4-session &
+fi
 EOF
 
     chmod +x "$shortcut"

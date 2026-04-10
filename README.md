@@ -111,8 +111,11 @@ GALLIUM_HUD=fps wine game.exe
 
 ### GPU 관련 별칭
 
+Adreno GPU가 있으면 bash 세션에서 Zink가 이미 상시 활성화됩니다.  
+별칭은 추가 env var를 덧씌우거나 FPS HUD를 붙일 때 유용합니다.
+
 ```bash
-# Zink(OpenGL→Vulkan) 드라이버로 앱 실행
+# Zink 명시적 지정 (상시 Zink와 동일 효과, 덮어쓰기용)
 zink glxgears
 
 # FPS HUD 오버레이
@@ -162,34 +165,45 @@ INSTALL_ARCH=aarch64
 
 ## GPU 가속
 
-### 현재 상태 (Termux X11 환경 제약)
+### 현재 상태 (Zink + Turnip, Adreno)
 
-Termux X11에서 Adreno GPU 하드웨어 가속은 현재 작동하지 않습니다. **llvmpipe (소프트웨어 렌더링)** 으로 동작합니다.
-
-**근본 원인 3가지**:
+Adreno GPU(Snapdragon 6xx/7xx/8xx)에서 **Zink(OpenGL→Vulkan) + Turnip 드라이버**로 하드웨어 가속이 동작합니다.
 
 | 항목 | 상태 | 설명 |
 |------|------|------|
-| `/dev/dri/renderD128` | Permission denied | root 없이 DRM 렌더 노드 접근 불가 |
-| Termux X11 | DRI3 미지원 | Zink/Turnip이 X11 창에 GPU 직접 렌더링 불가 |
-| `virgl_test_server` | 초기화 실패 | 호스트 OpenGL 없어 `failed to initialise renderer` |
+| `/dev/kgsl-3d0` | 접근 가능 (666) | 루팅 불필요, KGSL 커널 드라이버 |
+| Termux X11 + DRI3 | 지원 | `mesa-vulkan-icd-freedreno` 24.1+ 조합으로 활성화 |
+| Zink + Turnip | 동작 | XFCE 세션 및 모든 터미널에서 자동 적용 |
 
-**조사 결과** (Galaxy Fold6, Adreno 750):
-- `/dev/kgsl-3d0` 접근 가능 (666) — 하지만 `libvulkan_freedreno.so` 26.0.4는 DRM 경유
-- `mesa-zink-vulkan-icd-freedreno` 22.0.5는 kgsl 직접 접근 지원하나, DRI3 없이 Zink EGL 초기화 불가
-- `virgl_test_server_android --angle-vulkan` 실행해도 vtest 프로토콜 버전 불일치로 스택 충돌
+**GPU 자동 감지**: `startXFCE` 실행 시 `/dev/kgsl-3d0` 감지 여부에 따라 자동 분기합니다.
 
-**GPU 가속 활성화 조건** (미래):
-- root 권한으로 `chmod 666 /dev/dri/renderD128` → freedreno kgsl ICD(22.0.5) 사용 가능
-- 또는 Termux X11이 DRI3 지원 추가 시 → Zink + Turnip 경로 가능
+- Adreno 감지 → Zink + Turnip 하드웨어 가속
+- 미감지 → llvmpipe 소프트웨어 렌더링 폴백
 
-### 환경변수 (startXFCE)
+**상시 Zink**: 설치 후 모든 bash 세션에서 자동으로 Zink 환경변수가 적용됩니다 (`~/.config/termux-xfce/` 무관).
 
 ```bash
-MESA_NO_ERROR=1                    # GL 에러 체크 비활성 (성능)
-MESA_GL_VERSION_OVERRIDE=4.6COMPAT
-MESA_GLES_VERSION_OVERRIDE=3.2
+# Adreno 감지 시 자동 설정됨 (bash.bashrc)
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+export TU_DEBUG=noconform
+export ZINK_DESCRIPTORS=lazy
+export MESA_NO_ERROR=1
+export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
+export MESA_GLES_VERSION_OVERRIDE=3.2
 ```
+
+> **주의**: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우  
+> 설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
+
+### GPU 관련 환경변수 설명
+
+| 변수 | 값 | 역할 |
+|------|----|------|
+| `MESA_LOADER_DRIVER_OVERRIDE` | `zink` | OpenGL → Vulkan(Zink) 강제 |
+| `TU_DEBUG` | `noconform` | Turnip 드라이버 conformance 체크 비활성 (성능) |
+| `ZINK_DESCRIPTORS` | `lazy` | 디스크립터 업데이트 최적화 |
+| `MESA_NO_ERROR` | `1` | GL 에러 체크 비활성 (성능) |
+| `GALLIUM_HUD` | `fps` | FPS 오버레이 표시 (`hud` 별칭) |
 
 ### 참고 자료
 
