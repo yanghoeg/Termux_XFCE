@@ -1,138 +1,104 @@
 # Termux XFCE
 
-Android 기기(Termux)에서 XFCE 데스크탑 환경을 자동 설치하는 스크립트입니다.  
+<div align="center">
+
+**[한국어](#한국어) · [English](#english)**
+
+[![Android](https://img.shields.io/badge/Android-Termux-3DDC84?logo=android)](https://termux.dev)
+[![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/Termux_XFCE)
+[![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
+
+</div>
+
+---
+
+## 한국어
+
+Android 기기의 Termux에서 **XFCE 데스크탑 환경**을 자동 설치하는 Bash 스크립트입니다.  
 [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFCE) 에서 파생되었습니다.
 
 **테스트 기기**: Galaxy Fold6 (Adreno 750, SD 8 Gen3), Galaxy Tab S9 Ultra (Adreno 740, SD 8 Gen2)
 
----
+### 특징
 
-## 특징
+- **Termux native 우선** — XFCE, Firefox, fcitx5-hangul, GPU 가속 모두 Termux 네이티브 설치
+- **proot 선택 가능** — Ubuntu / Arch Linux / 없음
+- **헥사고날 아키텍처** — distro 추상화로 Ubuntu·Arch 공통 코드 유지
+- **멱등성** — 이미 설치된 항목은 자동으로 건너뜀
+- **GPU 가속** — Adreno 6xx/7xx/8xx에서 Zink + Turnip 자동 활성화
 
-- **Termux native 우선**: XFCE, Firefox, fcitx5-hangul, GPU 가속 모두 Termux 네이티브로 설치
-- **proot 선택 가능**: Ubuntu / Arch Linux / 없음
-- **헥사고날 아키텍처(Ports & Adapters)**: distro 추상화로 Ubuntu·Arch 공통 코드 유지
-- **멱등성**: 이미 설치된 항목은 자동으로 건너뜀
-- **실기기 검증**: 실제 Termux 환경에서 단계별 설치 + 122개 자동화 테스트로 검증
-
----
-
-## 설치
-
-### 기본 (curl one-liner)
+### 설치
 
 ```bash
+# one-liner (자동 clone 후 실행)
 curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
 ```
 
-`domain/` 디렉토리가 없으면 자동으로 전체 저장소를 clone 후 실행합니다.
-
-### 옵션 지정
-
 ```bash
-# Ubuntu proot + GPU 가속
+# 옵션 지정
 bash install.sh --distro ubuntu --user yanghoeg --gpu
-
-# Arch Linux proot
 bash install.sh --distro archlinux --user yanghoeg
-
-# Termux native only (proot 없음)
-bash install.sh --no-proot
-
-# GPU 개발 도구 포함
+bash install.sh --no-proot          # Termux native만
 bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
 ```
 
-### 환경변수로 지정
-
 ```bash
+# 환경변수로 지정
 DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 ```
-
-### 전체 옵션
 
 | 옵션 | 환경변수 | 설명 |
 |------|----------|------|
 | `--distro ubuntu\|archlinux` | `DISTRO=` | proot distro 선택 |
 | `--user <이름>` | `USERNAME=` | proot 사용자 이름 |
-| `--no-proot` | `SKIP_PROOT=true` | proot 없이 Termux native만 설치 |
+| `--no-proot` | `SKIP_PROOT=true` | proot 없이 native만 |
 | `--gpu` | `INSTALL_GPU=true` | GPU 가속 패키지 설치 |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | GPU 개발 도구 설치 |
 
----
-
-## 사용법
+### 사용법
 
 ```bash
-# XFCE 데스크탑 시작
-startXFCE
-
-# proot 진입
-ubuntu        # Ubuntu proot
-archlinux     # Arch Linux proot
-
-# proot 앱을 Termux 터미널에서 직접 실행
-prun code
-prun libreoffice
-
-# proot .desktop 파일을 XFCE 메뉴에 복사
-cp2menu
-
-# 앱 추가 설치/제거 GUI
-app-installer
+startXFCE          # XFCE 데스크탑 시작
+ubuntu             # Ubuntu proot 진입
+archlinux          # Arch Linux proot 진입
+prun code          # proot 앱을 Termux에서 직접 실행
+cp2menu            # proot .desktop 파일을 XFCE 메뉴에 복사
+app-installer      # 앱 추가 설치/제거 GUI
 ```
 
-### Wine (Windows 앱 실행)
+### GPU 가속
 
-app-installer에서 Wine을 설치하면 Box64 + Wine-Staging이 구성됩니다.
-
-```bash
-# Windows 앱 실행
-wine kakao.exe
-wine hancom.exe
-
-# Wine 환경 설정
-wine winecfg
-
-# DLL·런타임 설치 (vcrun, dotnet 등)
-winetricks vcrun2019
-winetricks dotnet48
-
-# FPS HUD와 함께 실행
-GALLIUM_HUD=fps wine game.exe
-```
-
-| 상황 | 구성 |
-|------|------|
-| proot Ubuntu/Arch | Box64(ARM64) + Wine-Staging x86_64 tarball |
-| proot 없음 | glibc-runner + box64-glibc + Wine-Staging tarball |
-
-> **한계**: 안티치트 게임, 커널 드라이버 의존 앱, 최신 .NET 복잡 앱은 동작하지 않습니다.
-
-### GPU 관련 별칭
-
-Adreno GPU가 있으면 bash 세션에서 Zink가 이미 상시 활성화됩니다.  
-별칭은 추가 env var를 덧씌우거나 FPS HUD를 붙일 때 유용합니다.
+Adreno GPU(Snapdragon 6xx/7xx/8xx)에서 **Zink(OpenGL→Vulkan) + Turnip** 드라이버로 하드웨어 가속이 동작합니다.  
+설치 후 모든 터미널 세션에서 자동 적용됩니다.
 
 ```bash
-# Zink 명시적 지정 (상시 Zink와 동일 효과, 덮어쓰기용)
-zink glxgears
+# 터미널에서 Zink 환경 확인
+echo $MESA_LOADER_DRIVER_OVERRIDE   # → zink
+
+# GPU 모델 확인
+gpu-info
 
 # FPS HUD 오버레이
 hud glxgears
 
-# proot 앱을 GPU 가속 + FPS HUD로 실행
-zrunhud glxgears
-
-# 감지된 GPU 모델 확인
-gpu-info
+# Zink 명시 지정 (상시 Zink와 동일, 덮어쓰기용)
+zink glxgears
 ```
 
----
+| 변수 | 값 | 역할 |
+|------|----|------|
+| `MESA_LOADER_DRIVER_OVERRIDE` | `zink` | OpenGL → Vulkan(Zink) 강제 |
+| `TU_DEBUG` | `noconform` | Turnip conformance 체크 비활성 |
+| `ZINK_DESCRIPTORS` | `lazy` | 디스크립터 업데이트 최적화 |
+| `MESA_NO_ERROR` | `1` | GL 에러 체크 비활성 |
+| `GALLIUM_HUD` | `fps` | FPS 오버레이 (`hud` 별칭) |
 
-## 설치 구성
+> **주의**: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우  
+> 설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
 
-### Termux Native (항상 설치)
+### 설치 구성
+
+#### Termux Native (항상 설치)
 
 | 분류 | 패키지 |
 |------|--------|
@@ -140,177 +106,212 @@ gpu-info
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
 | CLI | git, eza, bat, jq, neofetch |
 | 한글 입력 | fcitx5, fcitx5-hangul, fcitx5-configtool |
-| GPU (옵션) | mesa-zink, osmesa-zink, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
+| GPU (옵션) | mesa-zink, osmesa-zink, mesa-vulkan-icd-freedreno, vulkan-loader-generic |
 
-> GPU 패키지명은 Termux tur-repo 2024년 이후 구조 기준입니다. (mesa → mesa-zink, osmesa → osmesa-zink 등)
-
-### proot (선택)
+#### proot (선택)
 
 | distro | 기반 | 진입 명령 |
 |--------|------|-----------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
 
-설치 완료 후 설정은 `~/.config/termux-xfce/config`에 저장됩니다.
-
-```
-PROOT_DISTRO=ubuntu
-PROOT_USER=yanghoeg
-INSTALL_ARCH=aarch64
-```
-
-`prun`, `cp2menu`, `app-installer` 는 이 파일을 읽어 동작합니다.
-
----
-
-## GPU 가속
-
-### 현재 상태 (Zink + Turnip, Adreno)
-
-Adreno GPU(Snapdragon 6xx/7xx/8xx)에서 **Zink(OpenGL→Vulkan) + Turnip 드라이버**로 하드웨어 가속이 동작합니다.
-
-| 항목 | 상태 | 설명 |
-|------|------|------|
-| `/dev/kgsl-3d0` | 접근 가능 (666) | 루팅 불필요, KGSL 커널 드라이버 |
-| Termux X11 + DRI3 | 지원 | `mesa-vulkan-icd-freedreno` 24.1+ 조합으로 활성화 |
-| Zink + Turnip | 동작 | XFCE 세션 및 모든 터미널에서 자동 적용 |
-
-**GPU 자동 감지**: `startXFCE` 실행 시 `/dev/kgsl-3d0` 감지 여부에 따라 자동 분기합니다.
-
-- Adreno 감지 → Zink + Turnip 하드웨어 가속
-- 미감지 → llvmpipe 소프트웨어 렌더링 폴백
-
-**상시 Zink**: 설치 후 모든 bash 세션에서 자동으로 Zink 환경변수가 적용됩니다 (`~/.config/termux-xfce/` 무관).
+### 테스트
 
 ```bash
-# Adreno 감지 시 자동 설정됨 (bash.bashrc)
-export MESA_LOADER_DRIVER_OVERRIDE=zink
-export TU_DEBUG=noconform
-export ZINK_DESCRIPTORS=lazy
-export MESA_NO_ERROR=1
-export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
-export MESA_GLES_VERSION_OVERRIDE=3.2
-```
-
-> **주의**: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우  
-> 설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
-
-### GPU 관련 환경변수 설명
-
-| 변수 | 값 | 역할 |
-|------|----|------|
-| `MESA_LOADER_DRIVER_OVERRIDE` | `zink` | OpenGL → Vulkan(Zink) 강제 |
-| `TU_DEBUG` | `noconform` | Turnip 드라이버 conformance 체크 비활성 (성능) |
-| `ZINK_DESCRIPTORS` | `lazy` | 디스크립터 업데이트 최적화 |
-| `MESA_NO_ERROR` | `1` | GL 에러 체크 비활성 (성능) |
-| `GALLIUM_HUD` | `fps` | FPS 오버레이 표시 (`hud` 별칭) |
-
-### 참고 자료
-
-- [xMeM/termux-packages](https://github.com/xMeM/termux-packages) — Termux용 GPU 패키지 빌드
-- [Mesa 환경변수 문서](https://docs.mesa3d.org/envvars.html)
-
----
-
-## 프로젝트 구조
-
-```
-Termux_XFCE/
-├── install.sh                    ← 진입점 + DI 컨테이너
-├── ports/
-│   ├── pkg_manager.sh            ← 패키지 관리 계약 (인터페이스)
-│   └── ui.sh                     ← UI 계약 (인터페이스)
-├── adapters/
-│   ├── input/
-│   │   ├── cli.sh                ← CLI 인자 / 환경변수 파싱
-│   │   └── interactive.sh        ← 대화형 입력 (distro, username)
-│   └── output/
-│       ├── pkg_termux.sh         ← Termux pkg 구현체
-│       ├── pkg_ubuntu.sh         ← Ubuntu apt 구현체
-│       ├── pkg_arch.sh           ← Arch pacman 구현체
-│       ├── ui_terminal.sh        ← 터미널 echo UI
-│       └── ui_zenity.sh          ← zenity GUI UI
-├── domain/
-│   ├── packages.sh               ← 패키지 정의 목록
-│   ├── termux_env.sh             ← Termux 환경 설정 로직
-│   ├── xfce_env.sh               ← XFCE 설치 로직
-│   └── proot_env.sh              ← proot 환경 로직 (Ubuntu/Arch 공통)
-├── tests/                        ← 자동화 테스트 (122개)
-│   ├── run_tests.sh              ← 전체 실행 진입점
-│   ├── framework.sh              ← 테스트 러너 (describe/it/assert)
-│   ├── mocks.sh                  ← Mock 어댑터 + 파일시스템 샌드박스
-│   ├── test_ports.sh             ← 포트 계약 검증
-│   ├── test_adapters.sh          ← 어댑터 유닛 테스트
-│   ├── test_domain_termux.sh     ← termux_env 도메인 테스트
-│   ├── test_domain_xfce.sh       ← xfce_env 도메인 테스트
-│   ├── test_domain_proot.sh      ← proot_env 도메인 테스트
-│   └── test_app_installer.sh     ← app-installer 테스트
-└── app-installer/                ← 앱 추가 설치 GUI (Git Submodule)
-    ├── install.sh                ← zenity GUI 메인
-    ├── install_vlc.sh
-    ├── install_thunderbird.sh
-    ├── install_wine.sh           ← Box64 + Wine-Staging (proot/native 분기)
-    └── ...                       ← 총 13개 앱 설치 스크립트
-```
-
-**아키텍처 흐름:**
-```
-install.sh (DI)
-  ├── ports/ 로드 (계약)
-  ├── adapters/output/ 선택 (UI: terminal or zenity, pkg: termux/ubuntu/arch)
-  ├── adapters/input/ 실행 (CLI 파싱 → 대화형 보완)
-  └── domain/ 실행 (비즈니스 로직)
-```
-
-도메인 로직은 `pkg_install()`, `ui_info()` 등 포트 함수만 호출하며 어댑터 구현을 모릅니다.
-
----
-
-## 테스트
-
-```bash
-# 전체 테스트 실행
-bash tests/run_tests.sh
-
-# 특정 스위트만
+bash tests/run_tests.sh              # 전체 (122개)
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
 
-| 스위트 | 테스트 수 | 내용 |
-|--------|----------|------|
-| ports | 7 | 어댑터 계약 준수 검증 |
-| adapters | 12 | pkg_termux stub 에러 반환, ui_terminal 유닛 테스트 |
-| domain_termux | 25 | termux_env 도메인 로직 + tur_multilib sed + kill_x11 |
-| domain_xfce | 19 | xfce_env 도메인 로직 + autostart cp + 폰트·커서 멱등성 |
-| domain_proot | 25 | proot_env 도메인 로직 + conky cp + korean locale 경로 검증 |
-| app_installer | 34 | shebang, 타이포, 경로, 설치 상태 |
-| **합계** | **122** | **Adreno750v2 실기기에서 전체 통과** |
+| 스위트 | 수 | 내용 |
+|--------|---|------|
+| ports | 7 | 어댑터 계약 준수 |
+| adapters | 12 | pkg_termux, ui_terminal |
+| domain_termux | 25 | termux_env 로직 |
+| domain_xfce | 19 | xfce_env 로직 |
+| domain_proot | 25 | proot_env 로직 |
+| app_installer | 34 | 설치 스크립트 검증 |
+| **합계** | **122** | **실기기 전체 통과** |
 
----
+### Signal 9 오류 해결
 
-## 브랜치 전략
-
-| 브랜치 | 용도 |
-|--------|------|
-| `main` | 안정 버전 — 실기기 테스트 완료, 최종 사용자용 |
-| `dev` | 개발 중 — 기능 추가·버그 수정 후 테스트 통과 시 main에 머지 |
-
----
-
-## Signal 9 오류 해결
-
-Termux가 강제 종료되는 경우 ADB로 phantom process 제한 해제:
+Termux 강제 종료 시 ADB로 phantom process 제한 해제:
 
 ```bash
 adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
 ```
 
-[LADB](https://github.com/hyperio546/ladb-builds/releases) 또는 Termux에서 직접 ADB 연결 후 실행.  
-참고 영상: https://www.youtube.com/watch?v=BHc7uvX34bM
+[LADB](https://github.com/hyperio546/ladb-builds/releases) 또는 Termux에서 직접 ADB 연결 후 실행.
 
 ---
 
-## 기여
+## English
 
-오류나 개선 아이디어는 Pull Request 또는 Issue로 남겨주세요.
+Bash script that automatically installs **XFCE desktop environment** on Termux for Android.  
+Derived from [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFCE).
+
+**Tested devices**: Galaxy Fold6 (Adreno 750, SD 8 Gen3), Galaxy Tab S9 Ultra (Adreno 740, SD 8 Gen2)
+
+### Features
+
+- **Termux native first** — XFCE, Firefox, fcitx5-hangul, GPU acceleration all installed as Termux native
+- **Optional proot** — Ubuntu / Arch Linux / none
+- **Hexagonal Architecture** — distro abstraction keeps Ubuntu & Arch code unified
+- **Idempotent** — already installed items are skipped automatically
+- **GPU acceleration** — Zink + Turnip auto-activated for Adreno 6xx/7xx/8xx
+
+### Installation
+
+```bash
+# one-liner (auto clones repo then runs)
+curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
+```
+
+```bash
+# with options
+bash install.sh --distro ubuntu --user yanghoeg --gpu
+bash install.sh --distro archlinux --user yanghoeg
+bash install.sh --no-proot          # Termux native only
+bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
+```
+
+```bash
+# via environment variables
+DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
+```
+
+| Option | Env var | Description |
+|--------|---------|-------------|
+| `--distro ubuntu\|archlinux` | `DISTRO=` | proot distro |
+| `--user <name>` | `USERNAME=` | proot username |
+| `--no-proot` | `SKIP_PROOT=true` | Termux native only |
+| `--gpu` | `INSTALL_GPU=true` | Install GPU acceleration |
+| `--gpu-dev` | `INSTALL_GPU_DEV=true` | Install GPU dev tools |
+
+### Usage
+
+```bash
+startXFCE          # Start XFCE desktop
+ubuntu             # Enter Ubuntu proot
+archlinux          # Enter Arch Linux proot
+prun code          # Run proot app from Termux terminal
+cp2menu            # Copy proot .desktop files to XFCE menu
+app-installer      # GUI for installing/removing extra apps
+```
+
+### GPU Acceleration
+
+Hardware acceleration via **Zink (OpenGL→Vulkan) + Turnip driver** on Adreno GPUs (Snapdragon 6xx/7xx/8xx).  
+Applied automatically to every terminal session after installation.
+
+```bash
+# Verify Zink is active
+echo $MESA_LOADER_DRIVER_OVERRIDE   # → zink
+
+# Show GPU model
+gpu-info
+
+# FPS overlay
+hud glxgears
+
+# Explicit Zink (same as always-on, useful for overrides)
+zink glxgears
+```
+
+| Variable | Value | Role |
+|----------|-------|------|
+| `MESA_LOADER_DRIVER_OVERRIDE` | `zink` | Force OpenGL → Vulkan (Zink) |
+| `TU_DEBUG` | `noconform` | Disable Turnip conformance checks |
+| `ZINK_DESCRIPTORS` | `lazy` | Optimize descriptor updates |
+| `MESA_NO_ERROR` | `1` | Disable GL error checks |
+| `GALLIUM_HUD` | `fps` | FPS overlay (`hud` alias) |
+
+> **Note**: If the XFCE4 compositor (xfwm4) causes a black screen,  
+> go to Settings → Window Manager Tweaks → Compositor → uncheck "Enable display compositing"
+
+### What Gets Installed
+
+#### Termux Native (always)
+
+| Category | Packages |
+|----------|----------|
+| Base utils | wget, unzip, dbus, pulseaudio |
+| XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
+| CLI | git, eza, bat, jq, neofetch |
+| Korean IME | fcitx5, fcitx5-hangul, fcitx5-configtool |
+| GPU (optional) | mesa-zink, osmesa-zink, mesa-vulkan-icd-freedreno, vulkan-loader-generic |
+
+#### proot (optional)
+
+| distro | base | entry command |
+|--------|------|---------------|
+| ubuntu | Ubuntu (proot-distro) | `ubuntu` |
+| archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+### Tests
+
+```bash
+bash tests/run_tests.sh              # all 122 tests
+bash tests/run_tests.sh domain_termux
+bash tests/run_tests.sh app_installer
+```
+
+| Suite | Count | Coverage |
+|-------|-------|----------|
+| ports | 7 | adapter contract compliance |
+| adapters | 12 | pkg_termux, ui_terminal |
+| domain_termux | 25 | termux_env logic |
+| domain_xfce | 19 | xfce_env logic |
+| domain_proot | 25 | proot_env logic |
+| app_installer | 34 | installer script validation |
+| **Total** | **122** | **All pass on real device** |
+
+### Fix Signal 9 Crashes
+
+If Termux is force-killed, disable phantom process limit via ADB:
+
+```bash
+adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
+```
+
+Run via [LADB](https://github.com/hyperio546/ladb-builds/releases) or a direct ADB connection in Termux.
+
+---
+
+## Project Structure
+
+```
+Termux_XFCE/
+├── install.sh                    ← entry point + DI container
+├── ports/
+│   ├── pkg_manager.sh            ← package manager contract
+│   └── ui.sh                     ← UI contract
+├── adapters/
+│   ├── input/
+│   │   ├── cli.sh                ← CLI arg / env var parsing
+│   │   └── interactive.sh        ← interactive prompts
+│   └── output/
+│       ├── pkg_termux.sh         ← Termux pkg adapter
+│       ├── pkg_ubuntu.sh         ← Ubuntu apt adapter
+│       ├── pkg_arch.sh           ← Arch pacman adapter
+│       ├── ui_terminal.sh        ← echo-based UI
+│       └── ui_zenity.sh          ← zenity GUI UI
+├── domain/
+│   ├── packages.sh               ← package list definitions
+│   ├── termux_env.sh             ← Termux environment logic
+│   ├── xfce_env.sh               ← XFCE setup logic
+│   └── proot_env.sh              ← proot logic (Ubuntu/Arch common)
+├── tests/                        ← 122 automated tests
+└── app-installer/                ← extra app GUI (Git Submodule)
+```
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable — real-device tested, for end users |
+| `dev` | Development — merged to main after tests pass |
+
+## Contributing
+
+Bug reports and PRs are welcome via GitHub Issues / Pull Requests.
