@@ -164,6 +164,8 @@ _setup_gpu_env() {
     cat >> "$bashrc" << 'GPU'
 
 # termux-xfce-gpu — Adreno 감지 시 Zink 상시 활성화
+# DRI3 지원: Termux:X11 nightly APK 최신 버전 필요
+# DRI3 없으면 glmark2 크래시, glmark2-es2 검정화면 발생
 if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
     export MESA_LOADER_DRIVER_OVERRIDE=zink
     export TU_DEBUG=noconform
@@ -171,6 +173,7 @@ if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
     export MESA_NO_ERROR=1
     export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
     export MESA_GLES_VERSION_OVERRIDE=3.2
+    export MESA_VK_WSI_PRESENT_MODE=immediate
 fi
 GPU
 }
@@ -200,45 +203,45 @@ _setup_start_xfce() {
 
     cat > "$shortcut" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-killall -9 termux-x11 Xwayland pulseaudio 2>/dev/null || true
+killall -9 Xwayland xfce4-session pulseaudio 2>/dev/null || true
+sleep 1
+
+# 잔류 X 소켓 파일 삭제
+rm -f "${TMPDIR}/.X11-unix/X1" "${TMPDIR}/.X1-lock" 2>/dev/null || true
 
 termux-wake-lock
-XDG_RUNTIME_DIR="${TMPDIR}" termux-x11 :1.0 &
-sleep 1
 
+# Termux:X11 nightly — APK 자체가 X 서버 실행
+# (구버전은 CLI `termux-x11 :1.0`을 직접 실행했으나
+#  nightly는 APK가 자체 X 서버를 소유하므로 am start만 호출)
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
-sleep 1
+sleep 3
 
 LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
     --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
     --exit-idle-time=-1
 
 LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
-    module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1
+    module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1 2>/dev/null || true
 
-# GPU 자동 감지 (런타임)
-# - /dev/kgsl-3d0: 루팅 없이 접근 가능 (Adreno KGSL 커널 드라이버)
-# - Termux:X11 최신 버전 + mesa-vulkan-icd-freedreno 24.1+ → DRI3 지원
-# - DRI3 활성화 시 Zink+Turnip이 X11 창에 직접 GPU 렌더링 가능
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
 if [ -n "$GPU_MODEL" ]; then
-    # Zink + Turnip 하드웨어 가속 (Adreno 6xx/7xx/8xx)
+    # Adreno GPU 감지 → Zink(OpenGL→Vulkan) + Turnip
     # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
     #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
-    MESA_DRIVER=zink
     env DISPLAY=:1.0 \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
-        MESA_NO_ERROR=1 \
-        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
-        MESA_GLES_VERSION_OVERRIDE=3.2 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         TU_DEBUG=noconform \
         ZINK_DESCRIPTORS=lazy \
+        MESA_NO_ERROR=1 \
+        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
+        MESA_GLES_VERSION_OVERRIDE=3.2 \
+        MESA_VK_WSI_PRESENT_MODE=immediate \
         dbus-launch --exit-with-session xfce4-session &
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
-    MESA_DRIVER=llvmpipe
     env DISPLAY=:1.0 \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_NO_ERROR=1 \
@@ -264,6 +267,15 @@ _detect_and_log_gpu() {
     fi
 
     ui_info "감지된 GPU: ${gpu_model}"
+
+    # DRI3 접근 가능 여부 — Termux:X11 nightly APK DRI3 지원 필요
+    if [ -r /dev/dri/renderD128 ]; then
+        ui_info "DRI3 활성 — Zink+Turnip X11 직접 렌더링 가능"
+    else
+        ui_warn "DRI3 비활성 (/dev/dri/renderD128 접근 불가)"
+        ui_warn "→ Termux:X11 nightly APK를 최신 버전으로 업데이트하세요"
+        ui_warn "  미업데이트 시: glmark2 크래시, glmark2-es2 검정화면"
+    fi
 
     # Adreno 세대별 안내
     if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
@@ -352,20 +364,38 @@ EOF
         chmod +x "$bin"
     fi
 
-    [ -f "$desktop" ] && return 0
-
-    mkdir -p "$PREFIX/share/applications"
-    cat > "$desktop" << 'EOF'
+    if [ ! -f "$desktop" ]; then
+        mkdir -p "$PREFIX/share/applications"
+        cat > "$desktop" << 'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
 Name=App Installer
 Exec=app-installer
-Icon=system-software-install
+Icon=appimagekit-pioneer_install_icon
 Categories=System;
 Terminal=false
 StartupNotify=false
 EOF
+    fi
+
+    # 데스크탑 바탕화면 아이콘 (phoenixbyrd 방식)
+    local desktop_icon="$HOME/Desktop/App-Installer.desktop"
+    if [ ! -f "$desktop_icon" ]; then
+        mkdir -p "$HOME/Desktop"
+        cat > "$desktop_icon" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=App Installer
+Exec=app-installer
+Icon=appimagekit-pioneer_install_icon
+Categories=System;
+Terminal=false
+StartupNotify=false
+EOF
+        chmod +x "$desktop_icon"
+    fi
 }
 
 _setup_cp2menu() {
