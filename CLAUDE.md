@@ -99,7 +99,12 @@ Termux_XFCE/
    ```bash
    git submodule add https://github.com/yanghoeg/App-Installer.git app-installer
    ```
-3. **App-Installer 헥사고날 리팩토링**: `install.sh`의 `PKG_MAP`, distro 추상화
+3. **App-Installer Termux native 우선 리팩토링**:
+   - 각 앱마다 Termux native 패키지가 있으면 proot 대신 `pkg install`로 설치
+   - 판단 기준: `pkg search <앱>` 결과가 있으면 native, 없으면 proot fallback
+   - 예시: Thunderbird는 이미 native, VLC·LibreOffice는 proot 유지
+   - `install.sh` GUI에 설치 위치(native/proot) 표시 추가 예정
+4. **App-Installer 헥사고날 리팩토링**: `install.sh`의 `PKG_MAP`, distro 추상화
 4. **실제 기기 테스트** 후 버그 수정
    - **테스트 방법**: Termux에 Claude Code 설치 후 직접 테스트
      ```bash

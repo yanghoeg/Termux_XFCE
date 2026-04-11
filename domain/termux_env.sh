@@ -56,6 +56,7 @@ setup_termux_shortcuts() {
     _setup_kill_termux_x11
     _setup_prun
     _setup_cp2menu
+    _setup_app_installer
 }
 
 setup_termux_widget() {
@@ -336,6 +337,35 @@ proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp -- env DISPLAY=:1.
 EOF
 
     chmod +x "$bin"
+}
+
+_setup_app_installer() {
+    local bin="$PREFIX/bin/app-installer"
+    local desktop="$PREFIX/share/applications/app-installer.desktop"
+
+    if [ ! -f "$bin" ]; then
+        cat > "$bin" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+exec bash /data/data/com.termux/files/home/Termux_XFCE/app-installer/install.sh "$@"
+EOF
+        chmod +x "$bin"
+    fi
+
+    [ -f "$desktop" ] && return 0
+
+    mkdir -p "$PREFIX/share/applications"
+    cat > "$desktop" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=App Installer
+Exec=app-installer
+Icon=system-software-install
+Categories=System;
+Terminal=false
+StartupNotify=false
+EOF
 }
 
 _setup_cp2menu() {
