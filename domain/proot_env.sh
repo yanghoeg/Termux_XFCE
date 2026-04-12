@@ -78,6 +78,8 @@ setup_proot_base_packages() {
             # proot_pkg_install 이 "sudo pacman" 을 쓰므로 sudo 바이너리가 먼저 필요.
             # setup_proot_user 가 멱등성으로 건너뛴 경우도 있으므로 여기서 항상 보장.
             proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
+            # sudo 설치 후 sudoers 재구성 (wheel NOPASSWD + 유저 직접 항목)
+            _setup_proot_sudoers "$PROOT_USER"
             proot_pkg_update
             for p in "${PKGS_PROOT_ARCH_BASE[@]}" "${PKGS_PROOT_ARCH_DESKTOP[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
@@ -309,18 +311,26 @@ _setup_proot_sudoers() {
     local sudoers="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers"
     local sudoers_d="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers.d"
 
-    # sudo가 아직 설치 안 된 경우(Arch 기본) /etc/sudoers가 없음 → sudoers.d 방식
     if [ ! -f "$sudoers" ]; then
+        # sudo 미설치(Arch 기본): sudoers.d에 미리 작성 → sudo 설치 후 활성화
         mkdir -p "$sudoers_d"
         echo "${username} ALL=(ALL) NOPASSWD:ALL" > "${sudoers_d}/${username}"
         chmod 440 "${sudoers_d}/${username}"
         return 0
     fi
 
-    grep -q "^${username}" "$sudoers" 2>/dev/null && return 0
-
+    # /etc/sudoers 존재: wheel 그룹 NOPASSWD 활성화 + 유저 직접 추가
     chmod u+rw "$sudoers"
-    echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
+
+    # Arch: "# %wheel ALL=(ALL:ALL) NOPASSWD: ALL" 주석 해제
+    sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL:ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL:ALL) NOPASSWD:/' "$sudoers"
+    # Ubuntu: "# %wheel ALL=(ALL) NOPASSWD:ALL"
+    sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL) NOPASSWD:/' "$sudoers"
+
+    # 유저 직접 항목 (wheel 그룹 설정 없을 때 폴백)
+    grep -q "^${username}" "$sudoers" || \
+        echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
+
     chmod 440 "$sudoers"
 }
 
