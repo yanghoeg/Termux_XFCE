@@ -75,6 +75,9 @@ setup_proot_base_packages() {
             done
             ;;
         archlinux)
+            # proot_pkg_install 이 "sudo pacman" 을 쓰므로 sudo 바이너리가 먼저 필요.
+            # setup_proot_user 가 멱등성으로 건너뛴 경우도 있으므로 여기서 항상 보장.
+            proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
             proot_pkg_update
             for p in "${PKGS_PROOT_ARCH_BASE[@]}" "${PKGS_PROOT_ARCH_DESKTOP[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
