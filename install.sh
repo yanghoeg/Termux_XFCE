@@ -143,7 +143,10 @@ setup_xfce_packages
 setup_xfce_theme
 setup_xfce_fonts
 setup_xfce_wallpaper
-setup_xfce_fancybash "$PROOT_USER"
+# zsh가 기본 쉘이면 fancybash 건너뜀 (p10k가 대체)
+if ! command -v zsh &>/dev/null || [ "$(basename "${SHELL:-}")" != "zsh" ]; then
+    setup_xfce_fancybash "$PROOT_USER"
+fi
 setup_xfce_autostart
 
 ui_info "=== [3/4] 한글 입력기 설치 ==="
@@ -178,11 +181,13 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     setup_proot_cursor_theme
     setup_proot_conky
 
-    # proot alias (termux bashrc에 추가)
-    bashrc="$PREFIX/etc/bash.bashrc"
-    grep -q "alias ${PROOT_DISTRO}=" "$bashrc" 2>/dev/null || \
-        echo "alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'" \
-        >> "$bashrc"
+    # proot alias (bash.bashrc + ~/.zshrc)
+    local _proot_alias="alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'"
+    local _bashrc="$PREFIX/etc/bash.bashrc"
+    grep -q "alias ${PROOT_DISTRO}=" "$_bashrc" 2>/dev/null || echo "$_proot_alias" >> "$_bashrc"
+    if command -v zsh &>/dev/null && [ -f "$HOME/.zshrc" ]; then
+        grep -q "alias ${PROOT_DISTRO}=" "$HOME/.zshrc" 2>/dev/null || echo "$_proot_alias" >> "$HOME/.zshrc"
+    fi
 fi
 
 # -----------------------------------------------------------------------------
