@@ -137,7 +137,7 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 |------|--------|
 | 기본 유틸 | wget, unzip, dbus, pulseaudio |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, btop, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, htop, jq, neofetch |
 | 한글 입력 | fcitx5, fcitx5-hangul, fcitx5-configtool |
 | GPU (옵션) | mesa, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
 

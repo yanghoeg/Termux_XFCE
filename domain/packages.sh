@@ -39,7 +39,7 @@ PKGS_TERMUX_CLI=(
     eza
     bat
     fzf
-    btop
+    htop
     jq
     netcat-openbsd
     neofetch

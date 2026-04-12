@@ -137,7 +137,7 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 |----------|----------|
 | Base utils | wget, unzip, dbus, pulseaudio |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, btop, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, htop, jq, neofetch |
 | Korean IME | fcitx5, fcitx5-hangul, fcitx5-configtool |
 | GPU (optional) | mesa, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
 
