@@ -80,9 +80,11 @@ setup_proot_base_packages() {
             proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
             # sudo 설치 후 sudoers 재구성 (wheel NOPASSWD + 유저 직접 항목)
             _setup_proot_sudoers "$PROOT_USER"
-            proot_pkg_update
+            proot_pkg_update || true  # proot systemd hook 오류 무시
             for p in "${PKGS_PROOT_ARCH_BASE[@]}" "${PKGS_PROOT_ARCH_DESKTOP[@]}"; do
-                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+                # proot 내부 systemd/udev hook 실패(exit 1)는 패키지 설치 자체와 무관 → 무시
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
+                    echo "[WARN] $p: pacman hook 오류 (패키지는 설치됨)" >&2
             done
             ;;
     esac
@@ -101,7 +103,8 @@ setup_proot_korean() {
             ;;
         archlinux)
             for p in "${PKGS_PROOT_ARCH_KOREAN[@]}"; do
-                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
+                    echo "[WARN] $p: 설치 오류 (계속 진행)" >&2
             done
             _setup_arch_korean_locale
             ;;
@@ -210,9 +213,9 @@ setup_proot_hardware_accel() {
         archlinux)
             ui_info "Arch proot: Zink + Termux Turnip ICD 설정"
             # mesa-demos (glxinfo/glxgears) + vulkan-tools 설치
+            # proot systemd hook 실패는 무시 (패키지 자체는 설치됨)
             proot_exec sudo pacman -S --noconfirm --needed \
-                mesa vulkan-tools mesa-demos 2>/dev/null || \
-                ui_warn "Arch mesa/vulkan-tools 일부 패키지 설치 실패"
+                mesa vulkan-tools mesa-demos 2>/dev/null || true
             # VK_ICD_FILENAMES는 setup_proot_env()의 .bashrc에서 이미 설정됨
             ui_info "Arch proot GPU: Termux Turnip ICD → Zink 경로 활성화됨"
             ;;

@@ -160,8 +160,8 @@ PKGS_PROOT_ARCH_DESKTOP=(
 )
 
 PKGS_PROOT_ARCH_KOREAN=(
-    noto-fonts-cjk
-    ttf-nanum
+    noto-fonts-cjk   # 한국어 폰트 (공식 repo)
+    # ttf-nanum: AUR 전용, proot makepkg 미지원 → noto-fonts-cjk로 대체
     fcitx5-hangul
     fcitx5-configtool
     libhangul
