@@ -43,7 +43,7 @@ proot_exec() {
     proot-distro login "$PROOT_DISTRO" \
         --user "$PROOT_USER" \
         --shared-tmp \
-        -- env DISPLAY=:1.0 "$@"
+        -- env DISPLAY="${DISPLAY:-:1.0}" "$@"
 }
 
 proot_pkg_install() {
@@ -51,7 +51,7 @@ proot_pkg_install() {
 }
 
 proot_pkg_update() {
-    proot_exec sudo apt update -y
+    proot_exec sudo apt update
     proot_exec sudo apt upgrade -y -o Dpkg::Options::="--force-confold"
 }
 

@@ -91,10 +91,13 @@ setup_proot_env() {
 
     grep -q "# termux-xfce-proot-env" "$bashrc" 2>/dev/null && return 0
 
+    # Termux Turnip(freedreno) Vulkan ICD 절대경로
+    local _vk_icd="/data/data/com.termux/files/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+
     cat >> "$bashrc" << EOF
 
 # termux-xfce-proot-env
-export DISPLAY=:1.0
+export DISPLAY=\${DISPLAY:-:1.0}
 export LD_PRELOAD=/system/lib64/libskcodec.so
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 export MESA_NO_ERROR=1
@@ -105,6 +108,9 @@ export MESA_GLES_VERSION_OVERRIDE=3.2
 export MESA_VK_WSI_PRESENT_MODE=immediate  # Vulkan 프레젠테이션 레이턴시 감소
 export ZINK_DESCRIPTORS=lazy               # Zink 디스크립터 성능 최적화
 export vblank_mode=0                       # vsync 비활성화 (FPS 측정용)
+# Termux Turnip Vulkan ICD → proot Zink 백엔드 드라이버
+export VK_ICD_FILENAMES=${_vk_icd}
+export VK_DRIVER_FILES=${_vk_icd}          # Mesa 23+ 별칭
 
 # aliases
 alias hud='GALLIUM_HUD=fps '
@@ -179,8 +185,13 @@ setup_proot_hardware_accel() {
             fi
             ;;
         archlinux)
-            ui_warn "Arch Linux용 mesa-vulkan-kgsl 패키지가 없습니다."
-            ui_info "proot Arch는 Zink(MESA_LOADER_DRIVER_OVERRIDE=zink)로 동작합니다."
+            ui_info "Arch proot: Zink + Termux Turnip ICD 설정"
+            # mesa-demos (glxinfo/glxgears) + vulkan-tools 설치
+            proot_exec sudo pacman -S --noconfirm --needed \
+                mesa vulkan-tools mesa-demos 2>/dev/null || \
+                ui_warn "Arch mesa/vulkan-tools 일부 패키지 설치 실패"
+            # VK_ICD_FILENAMES는 setup_proot_env()의 .bashrc에서 이미 설정됨
+            ui_info "Arch proot GPU: Termux Turnip ICD → Zink 경로 활성화됨"
             ;;
     esac
 }

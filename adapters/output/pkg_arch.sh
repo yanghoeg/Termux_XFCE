@@ -43,7 +43,7 @@ proot_exec() {
     proot-distro login "$PROOT_DISTRO" \
         --user "$PROOT_USER" \
         --shared-tmp \
-        -- env DISPLAY=:1.0 "$@"
+        -- env DISPLAY="${DISPLAY:-:1.0}" "$@"
 }
 
 proot_pkg_install() {

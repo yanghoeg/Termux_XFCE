@@ -155,6 +155,8 @@ PKGS_PROOT_ARCH_DESKTOP=(
     zenity
     onboard
     xorg-xeyes   # x11-apps 대체
+    mesa-demos   # glxinfo/glxgears — GPU 가속 테스트
+    vulkan-tools # vulkaninfo — Vulkan 가속 확인
 )
 
 PKGS_PROOT_ARCH_KOREAN=(
