@@ -215,7 +215,7 @@ _setup_zsh_p10k() {
     local zsh_path
     zsh_path=$(command -v zsh)
     local current_shell
-    current_shell=$(getent passwd "$USER" 2>/dev/null | cut -d: -f7 || echo "")
+    current_shell=$(getent passwd "${USER:-$(id -un)}" 2>/dev/null | cut -d: -f7 || echo "")
     if [ -n "$current_shell" ] && [ "$current_shell" != "$zsh_path" ]; then
         chsh -s "$zsh_path" 2>/dev/null || true
     fi

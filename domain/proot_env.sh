@@ -27,7 +27,16 @@ setup_proot_install() {
 
 setup_proot_update() {
     ui_info "${PROOT_DISTRO} 패키지 업데이트"
-    proot_pkg_update
+    # 사용자 생성 전 단계이므로 root로 실행
+    case "$PROOT_DISTRO" in
+        ubuntu)
+            proot_exec_root apt update
+            proot_exec_root apt upgrade -y -o Dpkg::Options::="--force-confold"
+            ;;
+        archlinux)
+            proot_exec_root pacman -Syu --noconfirm
+            ;;
+    esac
 }
 
 setup_proot_user() {
@@ -40,11 +49,20 @@ setup_proot_user() {
         return 0
     }
 
-    proot_exec groupadd storage  2>/dev/null || true
-    proot_exec groupadd wheel    2>/dev/null || true
-    proot_exec useradd -m -g users -G wheel,audio,video,storage -s /bin/bash "$username"
+    # 사용자 생성 전이므로 root로 실행
+    proot_exec_root groupadd storage  2>/dev/null || true
+    proot_exec_root groupadd wheel    2>/dev/null || true
+    proot_exec_root useradd -m -g users -G wheel,audio,video,storage -s /bin/bash "$username"
 
     _setup_proot_sudoers "$username"
+
+    # Arch: sudo가 base에 없음 → 사용자 생성 직후 root로 설치
+    # 이후 proot_exec sudo pacman ... 이 작동하려면 sudo 바이너리가 필요
+    case "${PROOT_DISTRO}" in
+        archlinux)
+            proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
+            ;;
+    esac
 }
 
 setup_proot_base_packages() {
@@ -286,6 +304,15 @@ teardown_proot() {
 _setup_proot_sudoers() {
     local username="$1"
     local sudoers="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers"
+    local sudoers_d="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers.d"
+
+    # sudo가 아직 설치 안 된 경우(Arch 기본) /etc/sudoers가 없음 → sudoers.d 방식
+    if [ ! -f "$sudoers" ]; then
+        mkdir -p "$sudoers_d"
+        echo "${username} ALL=(ALL) NOPASSWD:ALL" > "${sudoers_d}/${username}"
+        chmod 440 "${sudoers_d}/${username}"
+        return 0
+    fi
 
     grep -q "^${username}" "$sudoers" 2>/dev/null && return 0
 
