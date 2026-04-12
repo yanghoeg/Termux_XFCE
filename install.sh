@@ -187,8 +187,8 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     setup_proot_conky
 
     # proot alias (bash.bashrc + ~/.zshrc)
-    local _proot_alias="alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'"
-    local _bashrc="$PREFIX/etc/bash.bashrc"
+    _proot_alias="alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'"
+    _bashrc="$PREFIX/etc/bash.bashrc"
     grep -q "alias ${PROOT_DISTRO}=" "$_bashrc" 2>/dev/null || echo "$_proot_alias" >> "$_bashrc"
     if command -v zsh &>/dev/null && [ -f "$HOME/.zshrc" ]; then
         grep -q "alias ${PROOT_DISTRO}=" "$HOME/.zshrc" 2>/dev/null || echo "$_proot_alias" >> "$HOME/.zshrc"

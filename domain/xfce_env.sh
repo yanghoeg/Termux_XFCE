@@ -20,10 +20,11 @@ setup_xfce_packages() {
     done
 
     # Firefox 데스크탑 아이콘
+    mkdir -p "$HOME/Desktop"
     local firefox_desktop="$HOME/Desktop/firefox.desktop"
     [ -f "$firefox_desktop" ] || \
-        cp "$PREFIX/share/applications/firefox.desktop" "$firefox_desktop"
-    chmod +x "$firefox_desktop"
+        cp "$PREFIX/share/applications/firefox.desktop" "$firefox_desktop" 2>/dev/null || true
+    [ -f "$firefox_desktop" ] && chmod +x "$firefox_desktop"
 }
 
 setup_xfce_theme() {
