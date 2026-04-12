@@ -38,6 +38,8 @@ PKGS_TERMUX_CLI=(
     zsh
     eza
     bat
+    fzf
+    btop
     jq
     netcat-openbsd
     neofetch
