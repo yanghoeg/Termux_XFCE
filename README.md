@@ -137,7 +137,7 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 |----------|----------|
 | Base utils | wget, unzip, dbus, pulseaudio |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, btop, jq, neofetch |
 | Korean IME | fcitx5, fcitx5-hangul, fcitx5-configtool |
 | GPU (optional) | mesa, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
 
@@ -176,15 +176,27 @@ bash tests/run_tests.sh app_installer
 | app_installer | 34 | installer script validation |
 | **Total** | **122** | **All pass on real device** |
 
-## Fix Signal 9 Crashes
+## Android System Optimization
 
-If Termux is force-killed, disable phantom process limit via ADB:
+For a stable, smooth desktop experience, apply the following system-level settings.
+
+### Disable Phantom Process Killer (Android 12+)
+
+Android 12+ aggressively kills background child processes, which can force-terminate the desktop session.  
+Run via [LADB](https://github.com/hyperio546/ladb-builds/releases) or a PC ADB connection:
 
 ```bash
 adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
 ```
 
-Run via [LADB](https://github.com/hyperio546/ladb-builds/releases) or a direct ADB connection in Termux.
+### Disable Battery Optimization
+
+Go to **Android Settings → Apps → Termux** (and **Termux:X11**) → Battery → set to **Unrestricted**.  
+Without this, Android throttles CPU usage in the background, causing frame drops even with Zink active.
+
+### Wakelock
+
+`startXFCE` calls `termux-wake-lock` automatically. For extended sessions, also enable it from the Termux notification: tap **"Acquire wakelock"**.
 
 ---
 

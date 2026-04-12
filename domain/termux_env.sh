@@ -168,6 +168,7 @@ _setup_locale() {
 export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
+export XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 export XMODIFIERS=@im=fcitx5
 export GTK_IM_MODULE=fcitx5
 export QT_IM_MODULE=fcitx5
@@ -374,6 +375,7 @@ if [ -n "$GPU_MODEL" ]; then
     # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
     #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
     env DISPLAY="$XDISPLAY" \
+        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         TU_DEBUG=noconform \
@@ -387,6 +389,7 @@ if [ -n "$GPU_MODEL" ]; then
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
     env DISPLAY="$XDISPLAY" \
+        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_NO_ERROR=1 \
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
@@ -407,7 +410,15 @@ _detect_and_log_gpu() {
     gpu_model=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
     if [ -z "$gpu_model" ]; then
-        ui_warn "KGSL GPU 미감지 — virglrenderer-android(소프트 렌더) 폴백 사용"
+        ui_warn "KGSL GPU 미감지 (비-Adreno 기기이거나 /dev/kgsl-3d0 접근 불가)"
+        # Mali 등 비-Adreno GPU 안내
+        if [ -d /sys/class/misc/mali0 ] || [ -c /dev/mali0 ]; then
+            ui_warn "Mali GPU 감지 — mesa-zink + GALLIUM_DRIVER=zink 시도 가능"
+            ui_warn "단, Mali용 Vulkan ICD가 없으면 llvmpipe로 폴백됩니다."
+            ui_warn "시도: pkg install mesa && GALLIUM_DRIVER=zink glxinfo | grep renderer"
+        else
+            ui_warn "→ llvmpipe 소프트웨어 렌더링으로 실행됩니다."
+        fi
         return 0
     fi
 

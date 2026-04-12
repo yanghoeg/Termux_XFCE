@@ -137,7 +137,7 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 |------|--------|
 | 기본 유틸 | wget, unzip, dbus, pulseaudio |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, btop, jq, neofetch |
 | 한글 입력 | fcitx5, fcitx5-hangul, fcitx5-configtool |
 | GPU (옵션) | mesa, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
 
@@ -176,15 +176,27 @@ bash tests/run_tests.sh app_installer
 | app_installer | 34 | 설치 스크립트 검증 |
 | **합계** | **122** | **실기기 전체 통과** |
 
-## Signal 9 오류 해결
+## Android 시스템 최적화
 
-Termux 강제 종료 시 ADB로 phantom process 제한 해제:
+안정적이고 부드러운 데스크탑 환경을 위해 아래 시스템 설정을 적용하세요.
+
+### 팬텀 프로세스 킬러 비활성화 (Android 12+)
+
+Android 12부터 백그라운드 자식 프로세스를 강제 종료하는 정책이 도입되어 데스크탑 세션이 끊길 수 있습니다.  
+[LADB](https://github.com/hyperio546/ladb-builds/releases) 또는 PC ADB 연결 후 실행:
 
 ```bash
 adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
 ```
 
-[LADB](https://github.com/hyperio546/ladb-builds/releases) 또는 Termux에서 직접 ADB 연결 후 실행.
+### 배터리 최적화 해제
+
+**안드로이드 설정 → 앱 → Termux** (및 **Termux:X11**) → 배터리 → **제한 없음** 으로 설정.  
+이 설정이 없으면 백그라운드 CPU 사용량이 제한되어 Zink 가속이 활성화되어도 프레임 드랍이 발생할 수 있습니다.
+
+### Wakelock
+
+`startXFCE` 실행 시 `termux-wake-lock`이 자동으로 호출됩니다. 장시간 작업 시 Termux 알림에서 **"Acquire wakelock"** 을 탭해 유지하세요.
 
 ---
 
