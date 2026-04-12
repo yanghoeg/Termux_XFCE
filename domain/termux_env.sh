@@ -22,6 +22,7 @@ setup_termux_base() {
     _setup_aliases
     _setup_locale
     _setup_gpu_env
+    _setup_zsh_p10k
 }
 
 setup_termux_gpu() {
@@ -79,6 +80,22 @@ setup_termux_widget() {
 # Private
 # -----------------------------------------------------------------------------
 
+# RC 파일 목록 반환: bash.bashrc + ~/.zshrc (zsh 설치/존재 시)
+_rc_targets() {
+    echo "$PREFIX/etc/bash.bashrc"
+    if command -v zsh &>/dev/null && [ -f "$HOME/.zshrc" ]; then
+        echo "$HOME/.zshrc"
+    fi
+}
+
+# 마커가 없으면 내용을 RC 파일에 추가 (멱등성)
+_append_to_rc() {
+    local marker="$1"
+    local content="$2"
+    local file="$3"
+    grep -q "$marker" "$file" 2>/dev/null || printf '%s\n' "$content" >> "$file"
+}
+
 _setup_termux_properties() {
     local props="$HOME/.termux/termux.properties"
     # 멱등성: 이미 설정된 경우 건너뜀
@@ -119,14 +136,11 @@ _install_base_packages() {
 }
 
 _setup_aliases() {
-    local bashrc="$PREFIX/etc/bash.bashrc"
-    # 멱등성: alias 블록이 이미 있으면 건너뜀
-    grep -q "# termux-xfce-aliases" "$bashrc" 2>/dev/null && return 0
-
-    cat >> "$bashrc" << 'ALIASES'
+    local block
+    block=$(cat << 'ALIASES'
 
 # termux-xfce-aliases
-alias ll='ls -alhF'
+alias ll='eza -alhgF'
 alias ls='eza -lF --icons'
 alias cat='bat'
 # Zink(OpenGL→Vulkan) 드라이버로 앱 실행: zink glxgears
@@ -139,13 +153,16 @@ alias zrunhud='GALLIUM_HUD=fps MESA_LOADER_DRIVER_OVERRIDE=zink TU_DEBUG=noconfo
 alias gpu-info='cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "KGSL 미감지 (비-Adreno?)"'
 alias shutdown='kill -9 -1'
 ALIASES
+)
+
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-aliases" "$block" "$rc"
+    done < <(_rc_targets)
 }
 
 _setup_locale() {
-    local bashrc="$PREFIX/etc/bash.bashrc"
-    grep -q "# termux-xfce-locale" "$bashrc" 2>/dev/null && return 0
-
-    cat >> "$bashrc" << 'LOCALE'
+    local block
+    block=$(cat << 'LOCALE'
 
 # termux-xfce-locale
 export LANG=ko_KR.UTF-8
@@ -155,17 +172,22 @@ export XMODIFIERS=@im=fcitx5
 export GTK_IM_MODULE=fcitx5
 export QT_IM_MODULE=fcitx5
 LOCALE
+)
+
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-locale" "$block" "$rc"
+    done < <(_rc_targets)
 }
 
 _setup_gpu_env() {
-    local bashrc="$PREFIX/etc/bash.bashrc"
-    grep -q "# termux-xfce-gpu" "$bashrc" 2>/dev/null && return 0
-
-    cat >> "$bashrc" << 'GPU'
+    local block
+    block=$(cat << 'GPU'
 
 # termux-xfce-gpu — Adreno 감지 시 Zink 상시 활성화
-# DRI3 지원: Termux:X11 nightly APK 최신 버전 필요
-# DRI3 없으면 glmark2 크래시, glmark2-es2 검정화면 발생
+# Termux:X11 nightly APK: Zink+Turnip이 GLX 스왑체인 생성 실패
+#   → glmark2(GLX) 크래시, GTK4 앱(zenity 등) GLXBadCurrentWindow 크래시
+# 해결: GSK_RENDERER=cairo (GTK4 Cairo 렌더러), glmark2 → glmark2-es2 사용
+# glmark2-es2 는 EGL 사용으로 정상 동작, glmark2(GLX)는 --off-screen 에서만 동작
 if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
     export MESA_LOADER_DRIVER_OVERRIDE=zink
     export TU_DEBUG=noconform
@@ -174,8 +196,105 @@ if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
     export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
     export MESA_GLES_VERSION_OVERRIDE=3.2
     export MESA_VK_WSI_PRESENT_MODE=immediate
+    # GTK4 GLX 스왑체인 크래시 방지 — Cairo 소프트 렌더러 강제
+    export GSK_RENDERER=cairo
 fi
 GPU
+)
+
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-gpu" "$block" "$rc"
+    done < <(_rc_targets)
+}
+
+_setup_zsh_p10k() {
+    command -v zsh &>/dev/null || return 0
+
+    # zsh를 기본 쉘로 설정 (chsh 가능한 경우)
+    local zsh_path
+    zsh_path=$(command -v zsh)
+    local current_shell
+    current_shell=$(getent passwd "$USER" 2>/dev/null | cut -d: -f7 || echo "")
+    if [ -n "$current_shell" ] && [ "$current_shell" != "$zsh_path" ]; then
+        chsh -s "$zsh_path" 2>/dev/null || true
+    fi
+
+    # Powerlevel10k 설치
+    local p10k_dir="$HOME/powerlevel10k"
+    if [ ! -d "$p10k_dir" ]; then
+        ui_info "Powerlevel10k 설치 중..."
+        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
+    fi
+
+    # zsh 플러그인 설치
+    local plugin_dir="$HOME/.zsh/plugins"
+    mkdir -p "$plugin_dir"
+    if [ ! -d "$plugin_dir/zsh-autosuggestions" ]; then
+        ui_info "zsh-autosuggestions 설치 중..."
+        git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions \
+            "$plugin_dir/zsh-autosuggestions"
+    fi
+    if [ ! -d "$plugin_dir/zsh-syntax-highlighting" ]; then
+        ui_info "zsh-syntax-highlighting 설치 중..."
+        git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting \
+            "$plugin_dir/zsh-syntax-highlighting"
+    fi
+
+    # ~/.zshrc 생성 (없는 경우에만)
+    local zshrc="$HOME/.zshrc"
+    [ -f "$zshrc" ] && return 0
+
+    ui_info "~/.zshrc 생성"
+    cat > "$zshrc" << 'ZSHRC'
+# Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
+if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
+  source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
+fi
+
+# =============================================================================
+# 히스토리
+# =============================================================================
+HISTFILE=~/.zsh_history
+HISTSIZE=100000
+SAVEHIST=100000
+setopt EXTENDED_HISTORY
+setopt SHARE_HISTORY
+setopt HIST_EXPIRE_DUPS_FIRST
+setopt HIST_IGNORE_ALL_DUPS
+setopt HIST_IGNORE_SPACE
+setopt HIST_SAVE_NO_DUPS
+setopt HIST_REDUCE_BLANKS
+
+# =============================================================================
+# 자동 완성
+# =============================================================================
+fpath=(~/.zsh/completions $fpath)
+autoload -Uz compinit && compinit
+autoload -U +X bashcompinit && bashcompinit
+
+# =============================================================================
+# 플러그인
+# =============================================================================
+[[ -f ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && \
+    source ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+
+# syntax-highlighting은 반드시 마지막에 로드
+[[ -f ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+    source ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+
+# =============================================================================
+# Powerlevel10k
+# =============================================================================
+source ~/powerlevel10k/powerlevel10k.zsh-theme
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+
+# =============================================================================
+# 환경변수
+# =============================================================================
+export EDITOR=nano
+export VISUAL=nano
+export PATH="$HOME/.local/bin:$PREFIX/bin:$PATH"
+ZSHRC
 }
 
 _setup_korean_env() {
@@ -203,19 +322,43 @@ _setup_start_xfce() {
 
     cat > "$shortcut" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-killall -9 Xwayland xfce4-session pulseaudio 2>/dev/null || true
+# shortcut 실행 시 TMPDIR 미상속 방지
+TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+
+killall -9 termux-x11 Xwayland xfce4-session pulseaudio 2>/dev/null || true
 sleep 1
 
-# 잔류 X 소켓 파일 삭제
-rm -f "${TMPDIR}/.X11-unix/X1" "${TMPDIR}/.X1-lock" 2>/dev/null || true
+# 잔류 X 소켓/락 파일 전체 삭제
+rm -f "${TMPDIR}/.X11-unix/X"* "${TMPDIR}/.X"*"-lock" 2>/dev/null || true
 
 termux-wake-lock
 
-# Termux:X11 nightly — APK 자체가 X 서버 실행
-# (구버전은 CLI `termux-x11 :1.0`을 직접 실행했으나
-#  nightly는 APK가 자체 X 서버를 소유하므로 am start만 호출)
+# X 서버 실행 (소켓 생성) — :1은 nightly APK 내부 점유, :0 사용
+termux-x11 :0 &
+TX11_PID=$!
+
+# Termux:X11 APK 열기 (화면 표시)
+sleep 2
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
-sleep 3
+
+# X 소켓이 생길 때까지 최대 20초 대기 후 DISPLAY 자동 감지
+DISPLAY_NUM=""
+for i in $(seq 1 20); do
+    sleep 1
+    SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
+    if [ -n "$SOCK" ]; then
+        DISPLAY_NUM=$(basename "$SOCK" | sed 's/^X//')
+        break
+    fi
+done
+
+if [ -z "$DISPLAY_NUM" ]; then
+    echo "ERROR: Termux:X11 X 소켓을 찾을 수 없습니다. Termux:X11 앱을 먼저 열어주세요." >&2
+    exit 1
+fi
+
+XDISPLAY=":${DISPLAY_NUM}"
+echo "Detected DISPLAY=${XDISPLAY}"
 
 LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
     --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
@@ -230,7 +373,7 @@ if [ -n "$GPU_MODEL" ]; then
     # Adreno GPU 감지 → Zink(OpenGL→Vulkan) + Turnip
     # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
     #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
-    env DISPLAY=:1.0 \
+    env DISPLAY="$XDISPLAY" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         TU_DEBUG=noconform \
@@ -239,15 +382,17 @@ if [ -n "$GPU_MODEL" ]; then
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
         MESA_GLES_VERSION_OVERRIDE=3.2 \
         MESA_VK_WSI_PRESENT_MODE=immediate \
+        GSK_RENDERER=cairo \
         dbus-launch --exit-with-session xfce4-session &
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
-    env DISPLAY=:1.0 \
+    env DISPLAY="$XDISPLAY" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_NO_ERROR=1 \
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
         MESA_GLES_VERSION_OVERRIDE=3.2 \
         LIBGL_ALWAYS_SOFTWARE=1 \
+        GSK_RENDERER=cairo \
         dbus-launch --exit-with-session xfce4-session &
 fi
 EOF
@@ -358,7 +503,8 @@ _setup_app_installer() {
     if [ ! -f "$bin" ]; then
         cat > "$bin" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+# GTK4 zenity: Zink+Turnip GLX 스왑체인 크래시 방지
+export GSK_RENDERER=cairo
 exec bash /data/data/com.termux/files/home/Termux_XFCE/app-installer/install.sh "$@"
 EOF
         chmod +x "$bin"

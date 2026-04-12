@@ -125,6 +125,7 @@ Termux_XFCE/
 - Termux 패키지: `--force-confold` 옵션으로 설정 파일 충돌 방지
 - fancybash line 번호(326, 327)는 원본 파일 기준 — 버전 바뀌면 재확인 필요
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
-- **Termux:X11 nightly APK**: X 서버를 APK 내부에서 직접 실행 — CLI `termux-x11 :1.0` 불필요/충돌
-  - startXFCE에서 `am start`만 호출, `DISPLAY=:1.0`으로 바로 연결
-  - 구버전(stable) APK는 CLI `termux-x11 :1.0` 필요 (현재 스크립트는 nightly 기준)
+- **Termux:X11 실행 순서**: `termux-x11 :1 &` → 소켓 생성 → `am start` (APK 화면 표시)
+  - `am start`만 호출하면 APK가 이미 태스크에 있을 경우 X 소켓이 생성되지 않음
+  - `termux-x11 :1 &`이 실제 X 서버(소켓 생성), APK는 화면 출력 담당
+  - DISPLAY는 `:1` 고정이 아니라 소켓 자동 감지로 결정 (`${TMPDIR}/.X11-unix/X*`)

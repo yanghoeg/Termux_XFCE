@@ -35,6 +35,7 @@ PKGS_TERMUX_XFCE=(
 # CLI 강화 도구
 PKGS_TERMUX_CLI=(
     git
+    zsh
     eza
     bat
     jq
@@ -52,16 +53,15 @@ PKGS_TERMUX_KOREAN=(
 )
 
 # GPU 가속 (Adreno/Turnip + Zink)
-# 패키지명: Termux 26.x 기준 (2025년 이후 최신 메인라인 Mesa 반영)
-# DRI3 지원: Termux:X11 최신 + mesa-vulkan-icd-freedreno 24.1+ 조합으로 활성화
+# mesa 26.x (메인 저장소)에 zink_dri.so 내장 — TUR의 mesa-zink/osmesa-zink 불필요
+# mesa-zink(TUR)는 mesa와 Conflicts/Replaces 관계라 설치 시 xfce4 의존성 체인이 깨짐
 PKGS_TERMUX_GPU=(
-    mesa-zink                      # OpenGL → Vulkan 레이어 (Zink 드라이버)
+    mesa                           # OpenGL (zink_dri.so 내장) — 메인 저장소 26.x
     mesa-dev
     mesa-demos
-    osmesa-zink                    # osmosa → osmesa-zink 로 이름 변경
-    mesa-vulkan-icd-freedreno      # Turnip Vulkan 드라이버 (DRI3 포함, -dri3 패키지 폐기됨)
-    vulkan-loader-generic          # vulkan-loader-android → vulkan-loader-generic
-    mesa-vulkan-icd-swrast         # 소프트웨어 Vulkan 폴백 (lavapipe → swrast)
+    mesa-vulkan-icd-freedreno      # Turnip Vulkan 드라이버 (Adreno Zink 백엔드)
+    vulkan-loader-generic          # Vulkan 로더
+    mesa-vulkan-icd-swrast         # 소프트웨어 Vulkan 폴백
 )
 
 # GPU 개발 도구 (선택적)
