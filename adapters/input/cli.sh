@@ -16,6 +16,7 @@ parse_cli_args() {
     export INSTALL_GPU="${INSTALL_GPU:-}"
     export INSTALL_GPU_DEV="${INSTALL_GPU_DEV:-}"
     export SKIP_PROOT="${SKIP_PROOT:-false}"
+    export PROOT_ONLY="${PROOT_ONLY:-false}"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -25,6 +26,8 @@ parse_cli_args() {
                 PROOT_USER="$2"; shift 2 ;;
             --no-proot)
                 SKIP_PROOT=true; shift ;;
+            --proot-only)
+                PROOT_ONLY=true; shift ;;
             --gpu)
                 INSTALL_GPU=true; shift ;;
             --gpu-dev)
@@ -46,6 +49,7 @@ _cli_usage() {
   -u, --user <이름>       proot 사용자 이름 (기본: 대화형 입력)
   -d, --distro <distro>   proot distro: ubuntu | archlinux (기본: 대화형 선택)
       --no-proot          Termux native만 설치 (proot 생략)
+      --proot-only        proot만 설치 (Termux native 설정 생략, 추가 distro용)
       --gpu               GPU 가속 설치
       --gpu-dev           GPU 개발 도구 설치
   -h, --help              이 도움말 출력
@@ -55,9 +59,11 @@ _cli_usage() {
   USERNAME=yanghoeg       --user 와 동일
   INSTALL_GPU=true        --gpu 와 동일
   SKIP_PROOT=true         --no-proot 와 동일
+  PROOT_ONLY=true         --proot-only 와 동일
 
 예시:
   bash install.sh --user yanghoeg --distro archlinux --gpu
+  bash install.sh --user yanghoeg --distro ubuntu --proot-only
   DISTRO=ubuntu USERNAME=user bash install.sh
 EOF
 }

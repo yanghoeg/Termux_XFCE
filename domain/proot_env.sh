@@ -238,6 +238,36 @@ setup_proot_conky() {
     [ -f "$emoji_src" ] && cp "$emoji_src" "$emoji_dst"
 }
 
+# proot 제거 (테스트용 distro 정리)
+# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=yanghoeg bash -c 'source domain/proot_env.sh && teardown_proot'
+teardown_proot() {
+    local distro="${PROOT_DISTRO:?PROOT_DISTRO 필요}"
+    local user="${PROOT_USER:-}"
+
+    ui_info "${distro} proot 제거 중..."
+
+    # rootfs 제거
+    proot-distro remove "$distro" 2>/dev/null || true
+
+    # bash.bashrc alias 제거
+    local bashrc="$PREFIX/etc/bash.bashrc"
+    sed -i "/alias ${distro}=/d" "$bashrc" 2>/dev/null || true
+
+    # ~/.zshrc alias 제거
+    if [ -f "$HOME/.zshrc" ]; then
+        sed -i "/alias ${distro}=/d" "$HOME/.zshrc" 2>/dev/null || true
+    fi
+
+    # 설정 파일에서 distro 항목 제거
+    local cfg="$HOME/.config/termux-xfce/config"
+    if [ -f "$cfg" ] && grep -q "^PROOT_DISTRO=\"${distro}\"" "$cfg"; then
+        sed -i "s/^PROOT_DISTRO=\"${distro}\"/PROOT_DISTRO=\"\"/" "$cfg"
+        sed -i "s/^PROOT_USER=\"${user}\"/PROOT_USER=\"\"/" "$cfg"
+    fi
+
+    ui_info "${distro} 제거 완료."
+}
+
 # -----------------------------------------------------------------------------
 # Private
 # -----------------------------------------------------------------------------

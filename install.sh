@@ -126,41 +126,46 @@ EOF
 # -----------------------------------------------------------------------------
 # 10. Storage 권한
 # -----------------------------------------------------------------------------
-if [ ! -d "$HOME/storage" ]; then
+if [ "${PROOT_ONLY:-false}" != "true" ] && [ ! -d "$HOME/storage" ]; then
     ui_info "저장소 접근 권한을 요청합니다..."
     termux-setup-storage
     sleep 2
 fi
 
 # -----------------------------------------------------------------------------
-# 11. 실행 — Termux Native (항상)
+# 11. 실행 — Termux Native
+# --proot-only 플래그 사용 시 생략 (추가 distro 설치 시 중복 방지)
 # -----------------------------------------------------------------------------
-ui_info "=== [1/4] Termux 기본 환경 설정 ==="
-setup_termux_base
+if [ "${PROOT_ONLY:-false}" != "true" ]; then
+    ui_info "=== [1/4] Termux 기본 환경 설정 ==="
+    setup_termux_base
 
-ui_info "=== [2/4] XFCE 패키지 및 테마 설치 ==="
-setup_xfce_packages
-setup_xfce_theme
-setup_xfce_fonts
-setup_xfce_wallpaper
-# zsh가 기본 쉘이면 fancybash 건너뜀 (p10k가 대체)
-if ! command -v zsh &>/dev/null || [ "$(basename "${SHELL:-}")" != "zsh" ]; then
-    setup_xfce_fancybash "$PROOT_USER"
-fi
-setup_xfce_autostart
+    ui_info "=== [2/4] XFCE 패키지 및 테마 설치 ==="
+    setup_xfce_packages
+    setup_xfce_theme
+    setup_xfce_fonts
+    setup_xfce_wallpaper
+    # zsh가 기본 쉘이면 fancybash 건너뜀 (p10k가 대체)
+    if ! command -v zsh &>/dev/null || [ "$(basename "${SHELL:-}")" != "zsh" ]; then
+        setup_xfce_fancybash "$PROOT_USER"
+    fi
+    setup_xfce_autostart
 
-ui_info "=== [3/4] 한글 입력기 설치 ==="
-setup_termux_korean
+    ui_info "=== [3/4] 한글 입력기 설치 ==="
+    setup_termux_korean
 
-ui_info "=== [4/4] 유틸리티 설정 (shortcuts, prun, cp2menu) ==="
-setup_termux_shortcuts
+    ui_info "=== [4/4] 유틸리티 설정 (shortcuts, prun, cp2menu) ==="
+    setup_termux_shortcuts
 
-# GPU 가속 (선택)
-if [ "${INSTALL_GPU:-false}" = "true" ]; then
-    setup_termux_gpu
-fi
-if [ "${INSTALL_GPU_DEV:-false}" = "true" ]; then
-    setup_termux_gpu_dev
+    # GPU 가속 (선택)
+    if [ "${INSTALL_GPU:-false}" = "true" ]; then
+        setup_termux_gpu
+    fi
+    if [ "${INSTALL_GPU_DEV:-false}" = "true" ]; then
+        setup_termux_gpu_dev
+    fi
+else
+    ui_info "[--proot-only] Termux native 설정 생략 — proot 환경만 구성합니다."
 fi
 
 # -----------------------------------------------------------------------------
@@ -191,10 +196,12 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 13. Termux-X11 APK 설치
+# 13. Termux-X11 APK 설치 (proot-only 시 생략)
 # -----------------------------------------------------------------------------
-ui_info "=== Termux-X11 APK 설치 ==="
-_install_termux_x11_apk
+if [ "${PROOT_ONLY:-false}" != "true" ]; then
+    ui_info "=== Termux-X11 APK 설치 ==="
+    _install_termux_x11_apk
+fi
 
 # -----------------------------------------------------------------------------
 # 14. 완료
