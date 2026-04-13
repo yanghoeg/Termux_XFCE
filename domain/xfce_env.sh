@@ -27,7 +27,10 @@ setup_xfce_packages() {
     local firefox_desktop="$HOME/Desktop/firefox.desktop"
     [ -f "$firefox_desktop" ] || \
         cp "$PREFIX/share/applications/firefox.desktop" "$firefox_desktop" 2>/dev/null || true
-    [ -f "$firefox_desktop" ] && chmod +x "$firefox_desktop"
+    if [ -f "$firefox_desktop" ]; then
+        chmod +x "$firefox_desktop"
+        gio set "$firefox_desktop" metadata::trusted true 2>/dev/null || true
+    fi
 }
 
 setup_xfce_theme() {

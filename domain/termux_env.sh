@@ -587,6 +587,7 @@ Terminal=false
 StartupNotify=false
 EOF
         chmod +x "$desktop_icon"
+        gio set "$desktop_icon" metadata::trusted true 2>/dev/null || true
     fi
 }
 
