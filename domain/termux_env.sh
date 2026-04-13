@@ -319,12 +319,46 @@ EOF
 _setup_start_xfce() {
     local shortcut="$HOME/.shortcuts/startXFCE"
     mkdir -p "$HOME/.shortcuts"
-    [ -f "$shortcut" ] && return 0
 
     cat > "$shortcut" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+
+# ─── dbus 중복 감지: 1 초과이면 현황 다이얼로그 표시 ──────────
+DBUS_COUNT=$(pgrep -c dbus-daemon 2>/dev/null || echo 0)
+if [ "$DBUS_COUNT" -gt 1 ]; then
+    # 기존 X 소켓으로 DISPLAY 자동 감지
+    _SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
+    if [ -n "$_SOCK" ]; then
+        _NUM=$(basename "$_SOCK" | sed 's/^X//')
+        export DISPLAY=":${_NUM}"
+    fi
+
+    XFCE_PID=$(pgrep -x xfce4-session 2>/dev/null | head -1 || echo "")
+    TX11_PID=$(pgrep -f termux-x11 2>/dev/null | head -1 || echo "")
+    XFCE_STATUS=$([ -n "$XFCE_PID" ] && echo "실행 중 (PID: ${XFCE_PID})" || echo "미실행")
+    TX11_STATUS=$([ -n "$TX11_PID" ] && echo "실행 중 (PID: ${TX11_PID})" || echo "미실행")
+
+    choice=$(zenity --list \
+        --title="XFCE 세션 중복 감지" \
+        --text="⚠ dbus 인스턴스 ${DBUS_COUNT}개 감지됨\n\n현황\n  • XFCE4 세션 : ${XFCE_STATUS}\n  • Termux:X11 : ${TX11_STATUS}\n  • dbus 수     : ${DBUS_COUNT}개" \
+        --column="동작" --height=280 \
+        "기존 세션으로 이동" \
+        "세션 전체 종료" \
+        2>/dev/null || true)
+
+    case "$choice" in
+        "기존 세션으로 이동")
+            am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+            ;;
+        "세션 전체 종료")
+            killall -9 termux-x11 Xwayland xfce4-session pulseaudio dbus-daemon 2>/dev/null || true
+            ;;
+    esac
+    exit 0
+fi
+# ────────────────────────────────────────────────────────────────
 
 killall -9 termux-x11 Xwayland xfce4-session pulseaudio 2>/dev/null || true
 sleep 1

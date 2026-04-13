@@ -15,12 +15,15 @@ readonly REPO_BASE="https://github.com/yanghoeg/Termux_XFCE/raw/main"
 
 setup_xfce_packages() {
     ui_info "XFCE 패키지 설치"
+    # 패키지 설치 전에 Desktop 생성 — desktop-file-utils trigger가
+    # pkg install 중에 ~/Desktop에 .desktop 파일을 복사하려 시도하기 때문
+    mkdir -p "$HOME/Desktop"
+
     for p in "${PKGS_TERMUX_XFCE[@]}" "${PKGS_TERMUX_CLI[@]}"; do
         pkg_is_installed "$p" || pkg_install "$p"
     done
 
     # Firefox 데스크탑 아이콘
-    mkdir -p "$HOME/Desktop"
     local firefox_desktop="$HOME/Desktop/firefox.desktop"
     [ -f "$firefox_desktop" ] || \
         cp "$PREFIX/share/applications/firefox.desktop" "$firefox_desktop" 2>/dev/null || true
