@@ -128,8 +128,8 @@ setup_proot_env() {
 
 # termux-xfce-proot-env
 export DISPLAY=\${DISPLAY:-:0.0}
-export LD_PRELOAD=/system/lib64/libskcodec.so
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null
 export MESA_NO_ERROR=1
 export MESA_LOADER_DRIVER_OVERRIDE=zink    # proot는 Zink(OpenGL→Vulkan) 사용
 export TU_DEBUG=noconform
@@ -151,6 +151,7 @@ alias cat='bat'
 alias python='/usr/bin/python3'
 alias pip='/usr/bin/pip'
 alias start='echo "Termux에서 실행하세요."'
+code() { nohup dbus-run-session /usr/bin/code --no-sandbox "\$@" >/dev/null 2>&1 & disown; }
 EOF
 }
 

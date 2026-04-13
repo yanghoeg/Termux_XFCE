@@ -124,6 +124,7 @@ setup_fs_sandbox() {
     export PREFIX="${sandbox}/usr"
     mkdir -p \
         "${HOME}/.termux" \
+        "${HOME}/.config/termux-xfce" \
         "${HOME}/.config/autostart" \
         "${HOME}/.shortcuts" \
         "${HOME}/.fonts" \
@@ -140,6 +141,13 @@ setup_fs_sandbox() {
     cat > "${HOME}/.termux/termux.properties" << 'EOF'
 # allow-external-apps = true
 # bell-character = ignore
+EOF
+
+    # termux-xfce config stub (실제 운영 환경과 동일한 구조)
+    cat > "${HOME}/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="archlinux"
+PROOT_USER="testuser"
+INSTALL_ARCH="aarch64"
 EOF
 
     # bash.bashrc stub

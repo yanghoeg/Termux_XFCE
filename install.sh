@@ -121,6 +121,8 @@ cat > "$HOME/.config/termux-xfce/config" << EOF
 PROOT_DISTRO="${PROOT_DISTRO:-}"
 PROOT_USER="${PROOT_USER:-}"
 INSTALL_ARCH="$ARCH"
+# proot 인터랙티브 셸: bash(기본) 또는 zsh (proot에 zsh 설치 후 변경 가능)
+PROOT_SHELL="${PROOT_SHELL:-bash}"
 EOF
 
 # -----------------------------------------------------------------------------
@@ -187,7 +189,8 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     setup_proot_conky
 
     # proot alias (bash.bashrc + ~/.zshrc)
-    _proot_alias="alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp'"
+    # PROOT_SHELL: config에서 읽어 인터랙티브 셸 결정 (bash|zsh, 기본 bash)
+    _proot_alias="alias ${PROOT_DISTRO}='proot-distro login ${PROOT_DISTRO} --user ${PROOT_USER} --shared-tmp -- env -u LD_PRELOAD \${PROOT_SHELL:-bash} --login'"
     _bashrc="$PREFIX/etc/bash.bashrc"
     grep -q "alias ${PROOT_DISTRO}=" "$_bashrc" 2>/dev/null || echo "$_proot_alias" >> "$_bashrc"
     if command -v zsh &>/dev/null && [ -f "$HOME/.zshrc" ]; then

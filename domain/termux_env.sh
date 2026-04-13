@@ -524,7 +524,6 @@ EOF
 
 _setup_prun() {
     local bin="$PREFIX/bin/prun"
-    [ -f "$bin" ] && return 0
 
     # PROOT_DISTRO는 설치 시 결정된 값을 config에서 읽음
     cat > "$bin" << 'EOF'
@@ -533,10 +532,29 @@ CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 DISTRO="${PROOT_DISTRO:-archlinux}"
-USER_NAME=$(basename "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/"* 2>/dev/null || echo "user")
+
+# config에 PROOT_USER 있으면 사용, 없으면 home/ 디렉토리에서 탐색 (alarm 제외)
+if [ -n "${PROOT_USER:-}" ]; then
+    USER_NAME="$PROOT_USER"
+else
+    USER_NAME=$(ls "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/" 2>/dev/null \
+        | grep -v '^alarm$' | head -1)
+    USER_NAME="${USER_NAME:-user}"
+fi
+
+# LD_PRELOAD 해제: Termux exec 훅이 proot-distro 실행 시 재주입하므로
+# unset만으론 부족 → proot 내부 첫 명령을 env -u LD_PRELOAD로 감싼다
+unset LD_PRELOAD
 
 # DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
-proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp -- env DISPLAY="${DISPLAY:-:0.0}" "$@"
+# 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
+if [ $# -eq 0 ]; then
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
+else
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
+fi
 EOF
 
     chmod +x "$bin"

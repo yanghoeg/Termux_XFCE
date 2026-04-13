@@ -116,7 +116,7 @@ assert_cmd_exists() {
 
 assert_output_contains() {
     local cmd_output="$1" pattern="$2"
-    if ! echo "$cmd_output" | grep -q "$pattern"; then
+    if ! echo "$cmd_output" | grep -q -- "$pattern"; then
         echo "[ASSERT] output does not contain '${pattern}'" >&2
         echo "[ASSERT] actual output: ${cmd_output}" >&2
         return 1
