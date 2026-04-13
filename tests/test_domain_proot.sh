@@ -154,7 +154,7 @@ _test_proot_env_written() {
 
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     assert_file_contains "$bashrc" "termux-xfce-proot-env"
-    assert_file_contains "$bashrc" "DISPLAY=:1.0"
+    assert_file_contains "$bashrc" "DISPLAY=:0.0"
     assert_file_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE=zink"
     cleanup_sandbox "$sb"
 }

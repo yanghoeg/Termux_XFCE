@@ -79,7 +79,7 @@ for id in "${PROOT_APPS[@]}"; do run_test "$id"; done
 echo "" | tee -a "$LOG"
 echo "--- GPU 가속 확인 ---" | tee -a "$LOG"
 GPU_RESULT=$(proot-distro login "$DISTRO" --user "$USER" --shared-tmp -- \
-    env DISPLAY="${DISPLAY:-:1.0}" \
+    env DISPLAY="${DISPLAY:-:0.0}" \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         VK_ICD_FILENAMES=/data/data/com.termux/files/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json \
     glxinfo 2>/dev/null | grep -E "OpenGL renderer|OpenGL version" || echo "glxinfo 없음/실패")

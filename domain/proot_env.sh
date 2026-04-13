@@ -103,7 +103,7 @@ setup_proot_korean() {
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
             done
             _setup_ubuntu_korean_locale
-            _setup_ubuntu_nimf
+            _setup_ubuntu_fcitx5
             ;;
         archlinux)
             for p in "${PKGS_PROOT_ARCH_KOREAN[@]}"; do
@@ -127,7 +127,7 @@ setup_proot_env() {
     cat >> "$bashrc" << EOF
 
 # termux-xfce-proot-env
-export DISPLAY=\${DISPLAY:-:1.0}
+export DISPLAY=\${DISPLAY:-:0.0}
 export LD_PRELOAD=/system/lib64/libskcodec.so
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
 export MESA_NO_ERROR=1
@@ -365,7 +365,7 @@ LANGUAGE=ko_KR.UTF-8
 EOF
 }
 
-_setup_ubuntu_nimf() {
+_setup_ubuntu_fcitx5() {
     # nimf은 Ubuntu 25.10+에서 제거됨 → fcitx5 설정
     proot_exec bash -c "im-config -n fcitx5 2>/dev/null || true"
 }
