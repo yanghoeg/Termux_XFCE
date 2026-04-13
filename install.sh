@@ -211,13 +211,24 @@ _install_termux_x11_apk() {
     esac
 
     local apk_url="https://github.com/termux/termux-x11/releases/download/nightly/${apk_name}"
-    local apk_path="$HOME/storage/downloads/${apk_name}"
+    local dl_dir="$HOME/storage/downloads"
+    local apk_path="${dl_dir}/${apk_name}"
 
-    [ -f "$apk_path" ] && {
+    # storage/downloads가 없으면 HOME에 저장 (termux-setup-storage 미실행 환경)
+    if [ ! -d "$dl_dir" ]; then
+        dl_dir="$HOME"
+        apk_path="${dl_dir}/${apk_name}"
+        ui_warn "storage/downloads 없음 — ${apk_path} 에 저장합니다."
+    fi
+
+    if [ -f "$apk_path" ]; then
         ui_warn "APK가 이미 다운로드되어 있습니다: ${apk_path}"
-    } || wget -q "$apk_url" -O "$apk_path"
+    else
+        wget -q "$apk_url" -O "$apk_path"
+    fi
 
-    termux-open "$apk_path"
+    termux-open "$apk_path" 2>/dev/null || \
+        ui_warn "APK 자동 열기 실패 — 수동으로 설치하세요: ${apk_path}"
 }
 
 # -----------------------------------------------------------------------------

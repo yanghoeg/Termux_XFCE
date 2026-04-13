@@ -121,8 +121,10 @@ PKGS_PROOT_UBUNTU_KOREAN=(
     fonts-noto-cjk
     fonts-roboto
     im-config
-    nimf
-    nimf-libhangul
+    fcitx5
+    fcitx5-hangul
+    fcitx5-config-qt
+    # nimf / nimf-libhangul: Ubuntu 25.10(questing)에서 제거됨 → fcitx5-hangul로 대체
 )
 
 PKGS_PROOT_UBUNTU_DEV=(

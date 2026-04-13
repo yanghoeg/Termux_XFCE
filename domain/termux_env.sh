@@ -498,10 +498,11 @@ _setup_prun() {
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
-DISTRO="${PROOT_DISTRO:-ubuntu}"
+DISTRO="${PROOT_DISTRO:-archlinux}"
 USER_NAME=$(basename "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/"* 2>/dev/null || echo "user")
 
-proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp -- env DISPLAY=:1.0 "$@"
+# DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
+proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp -- env DISPLAY="${DISPLAY:-:0.0}" "$@"
 EOF
 
     chmod +x "$bin"
@@ -584,7 +585,7 @@ if [[ "$action" == "Copy .desktop file" ]]; then
 
     filename=$(basename "$selected")
     cp "$selected" "$PREFIX/share/applications/"
-    sed -i "s|^Exec=\(.*\)$|Exec=proot-distro login $DISTRO --user $USERNAME --shared-tmp -- env DISPLAY=:1.0 \1|" \
+    sed -i "s|^Exec=\(.*\)$|Exec=prun \1|" \
         "$PREFIX/share/applications/$filename"
     zenity --info --text="복사 완료: $filename"
 

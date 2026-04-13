@@ -70,6 +70,10 @@ setup_proot_base_packages() {
 
     case "$PROOT_DISTRO" in
         ubuntu)
+            # sudo가 base에 없으면 proot_pkg_install("sudo apt ...") 자체가 실패
+            # → root로 먼저 설치 후 sudoers 재구성
+            proot_exec_root apt install -y sudo 2>/dev/null || true
+            _setup_proot_sudoers "$PROOT_USER"
             for p in "${PKGS_PROOT_UBUNTU_BASE[@]}" "${PKGS_PROOT_UBUNTU_DESKTOP[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
             done
@@ -155,8 +159,9 @@ setup_proot_timezone() {
     local tz
     tz=$(getprop persist.sys.timezone 2>/dev/null || echo "Asia/Seoul")
 
-    proot_exec rm -f /etc/localtime
-    proot_exec ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
+    # /etc/localtime는 root 소유 → proot_exec_root 사용
+    proot_exec_root rm -f /etc/localtime
+    proot_exec_root ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
 }
 
 setup_proot_fancybash() {
@@ -168,8 +173,8 @@ setup_proot_fancybash() {
     local dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fancybash.sh"
 
     [ -f "$src" ] || {
-        ui_warn "Termux의 .fancybash.sh가 없습니다. setup_xfce_fancybash를 먼저 실행하세요."
-        return 1
+        ui_warn "Termux의 .fancybash.sh가 없습니다 (--proot-only 모드 또는 zsh 환경). 건너뜁니다."
+        return 0
     }
 
     [ -f "$dst" ] && return 0  # 멱등성
@@ -347,10 +352,10 @@ _setup_ubuntu_korean_locale() {
 LANG=ko_KR.UTF-8
 LANGUAGE=ko_KR.UTF-8
 LC_ALL=ko_KR.UTF-8
-export GTK_IM_MODULE=nimf
-export QT_IM_MODULE=nimf
-export XMODIFIERS="@im=nimf"
-nimf
+export GTK_IM_MODULE=fcitx5
+export QT_IM_MODULE=fcitx5
+export XMODIFIERS="@im=fcitx5"
+fcitx5 -d --replace 2>/dev/null &
 EOF
 
     # /etc/default/locale
@@ -361,17 +366,13 @@ EOF
 }
 
 _setup_ubuntu_nimf() {
-    # 하모니카 repo 추가 후 nimf 설치
-    proot_exec bash -c "
-        wget -qO- https://update.hamonikr.org/add-update-repo.apt | bash - 2>/dev/null || true
-        apt install -y nimf nimf-libhangul 2>/dev/null || true
-        im-config -n nimf 2>/dev/null || true
-    "
+    # nimf은 Ubuntu 25.10+에서 제거됨 → fcitx5 설정
+    proot_exec bash -c "im-config -n fcitx5 2>/dev/null || true"
 }
 
 _setup_arch_korean_locale() {
     local locale_gen="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/locale.gen"
     grep -q "ko_KR.UTF-8" "$locale_gen" 2>/dev/null || \
         echo "ko_KR.UTF-8 UTF-8" >> "$locale_gen"
-    proot_exec locale-gen
+    proot_exec_root locale-gen
 }
