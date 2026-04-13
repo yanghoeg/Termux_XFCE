@@ -39,6 +39,7 @@ bash install.sh --distro ubuntu --user yanghoeg --gpu
 bash install.sh --distro archlinux --user yanghoeg
 bash install.sh --no-proot          # Termux native만
 bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
+bash install.sh --distro archlinux --user yanghoeg --proot-only  # 두 번째 distro 추가
 ```
 
 ```bash
@@ -51,6 +52,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--distro ubuntu\|archlinux` | `DISTRO=` | proot distro 선택 |
 | `--user <이름>` | `USERNAME=` | proot 사용자 이름 |
 | `--no-proot` | `SKIP_PROOT=true` | proot 없이 native만 |
+| `--proot-only` | `PROOT_ONLY=true` | proot만 설치 (Termux native 설정 생략, 두 번째 distro 추가 시) |
 | `--gpu` | `INSTALL_GPU=true` | GPU 가속 패키지 설치 |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | GPU 개발 도구 설치 |
 
@@ -168,13 +170,13 @@ bash tests/run_tests.sh app_installer
 
 | 스위트 | 수 | 내용 |
 |--------|---|------|
-| ports | 7 | 어댑터 계약 준수 |
-| adapters | 12 | pkg_termux, ui_terminal |
-| domain_termux | 25 | termux_env 로직 |
-| domain_xfce | 19 | xfce_env 로직 |
-| domain_proot | 25 | proot_env 로직 |
-| app_installer | 34 | 설치 스크립트 검증 |
-| **합계** | **122** | **실기기 전체 통과** |
+| ports | 13 | 어댑터 계약 준수 |
+| adapters | 15 | pkg_termux, ui_terminal |
+| domain_termux | 36 | termux_env 로직 |
+| domain_xfce | 26 | xfce_env 로직 |
+| domain_proot | 37 | proot_env 로직 |
+| app_installer | 31 | 설치 스크립트 검증 |
+| **합계** | **158** | **실기기 전체 통과** |
 
 ## Android 시스템 최적화
 
