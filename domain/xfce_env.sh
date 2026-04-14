@@ -47,6 +47,8 @@ setup_xfce_fonts() {
     _install_meslo_nerd
     _install_noto_emoji
     _install_termux_font
+    # fontconfig 캐시 갱신: MesloLGS NF 등 신규 폰트를 xfce4-terminal이 FontName으로 찾을 수 있게 함
+    command -v fc-cache >/dev/null && fc-cache -f "$HOME/.fonts" 2>/dev/null || true
 }
 
 setup_xfce_wallpaper() {
@@ -69,6 +71,7 @@ setup_xfce_fancybash() {
 setup_xfce_autostart() {
     ui_info "자동시작 설정 (Conky, Flameshot)"
     _setup_autostart_config
+    _migrate_terminal_font
 }
 
 # -----------------------------------------------------------------------------
@@ -114,7 +117,9 @@ _install_cascadia_code() {
 }
 
 _install_meslo_nerd() {
-    [ -f "$HOME/.fonts/MesloLGS NF Regular.ttf" ] && return 0
+    # ryanoasis/nerd-fonts v3.2.1 Meslo.zip은 "MesloLGSNerdFont-Regular.ttf" 형태로 압축
+    # (family: "MesloLGS Nerd Font" / "MesloLGS Nerd Font Mono")
+    [ -f "$HOME/.fonts/MesloLGSNerdFont-Regular.ttf" ] && return 0
 
     wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip" -O Meslo.zip
     unzip -q Meslo.zip -d meslo_tmp
@@ -172,4 +177,15 @@ _setup_autostart_config() {
 
     chmod +x "$autostart_dir/conky.desktop" 2>/dev/null || true
     chmod +x "$autostart_dir/org.flameshot.Flameshot.desktop" 2>/dev/null || true
+}
+
+# 기존 설치본의 xfce4-terminal 폰트를 Nerd Font로 갱신 (p10k 아이콘 렌더링용)
+# Why: _setup_autostart_config가 cp -rn로 보호되어 재설치 시 신규 terminalrc가 적용되지 않음
+# Note: "MesloLGS NF"는 romkatv/p10k-media 전용 이름이며 ryanoasis Meslo.zip의 family는
+#       "MesloLGS Nerd Font Mono" — fc-match로 확인함 (fallback 방지)
+_migrate_terminal_font() {
+    local rc="$HOME/.config/xfce4/terminal/terminalrc"
+    [ -f "$rc" ] || return 0
+    grep -qE '^FontName=(Cascadia Mono PL|MesloLGS NF)' "$rc" 2>/dev/null || return 0
+    sed -i -E 's#^FontName=(Cascadia Mono PL|MesloLGS NF).*#FontName=MesloLGS Nerd Font Mono 12#' "$rc"
 }

@@ -34,5 +34,5 @@ ColorBackground=#291f291f340d
 TitleMode=TERMINAL_TITLE_HIDE
 ScrollingUnlimited=TRUE
 ScrollingBar=TERMINAL_SCROLLBAR_NONE
-FontName=Cascadia Mono PL 12
+FontName=MesloLGS Nerd Font Mono 12
 
