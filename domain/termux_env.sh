@@ -127,7 +127,11 @@ _install_base_packages() {
         "${PKGS_TERMUX_PROOT[@]}"
     )
 
-    # dbus 충돌 방지 (멱등성)
+    # dbus 매 실행 제거 (주석 "멱등성"은 오해 소지 있음 — 실제로는 매번 제거됨)
+    # 제거 → 아래 all_pkgs 루프에서 재설치되는 흐름
+    # 의도(추정): 설치 도중 남은 dbus 락/소켓 상태를 리셋하여 startXFCE의 dbus-launch와
+    #           proot-distro 내부 dbus-daemon 간 소켓 경합을 예방
+    # 실기기에서 검증된 동작이므로 순서 변경 금지 — 구조 개선 전엔 현 상태 유지
     pkg_is_installed "dbus" && pkg_remove dbus
 
     for p in "${all_pkgs[@]}"; do
@@ -211,13 +215,14 @@ GPU
 _setup_zsh_p10k() {
     command -v zsh &>/dev/null || return 0
 
-    # zsh를 기본 쉘로 설정 (chsh 가능한 경우)
+    # zsh를 기본 쉘로 설정 — Termux의 chsh는 ~/.termux/shell 심볼릭 링크로 관리됨
+    # (일반 Linux의 /etc/passwd 기반 getent는 Termux에선 빈값 반환 → 기존 getent 분기는 사실상 항상 실패)
     local zsh_path
     zsh_path=$(command -v zsh)
     local current_shell
-    current_shell=$(getent passwd "${USER:-$(id -un)}" 2>/dev/null | cut -d: -f7 || echo "")
-    if [ -n "$current_shell" ] && [ "$current_shell" != "$zsh_path" ]; then
-        chsh -s "$zsh_path" 2>/dev/null || true
+    current_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
+    if [ "$current_shell" != "$zsh_path" ]; then
+        chsh -s zsh 2>/dev/null || true
     fi
 
     # Powerlevel10k 설치

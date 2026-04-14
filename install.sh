@@ -148,9 +148,13 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     setup_xfce_fonts
     setup_xfce_wallpaper
     # zsh가 기본 쉘이면 fancybash 건너뜀 (p10k가 대체)
-    if ! command -v zsh &>/dev/null || [ "$(basename "${SHELL:-}")" != "zsh" ]; then
+    # Termux의 login shell은 ~/.termux/shell 심볼릭 링크로 관리됨
+    # ($SHELL은 현재 스크립트 세션 값이라 chsh 직후 갱신되지 않고, /etc/passwd는 Termux에 없음)
+    _login_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
+    if [[ "$_login_shell" != */zsh ]]; then
         setup_xfce_fancybash "$PROOT_USER"
     fi
+    unset _login_shell
     setup_xfce_autostart
 
     ui_info "=== [3/4] 한글 입력기 설치 ==="
