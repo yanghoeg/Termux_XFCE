@@ -155,25 +155,23 @@ _install_fancybash() {
         echo "source \$HOME/.fancybash.sh" >> "$bashrc"
 }
 
+# 자동시작 + XFCE 프리셋(.config 하위 전체) 1회성 배포
+# 가드가 conky.desktop 하나만 체크하는 이유:
+#   - tar/config/.config/ 하위엔 Thunar/, Mousepad/, xfce4/, mimeapps.list 등이 함께 들어있음
+#   - 사용자가 재설치/재실행 시 자신의 XFCE 커스터마이즈(패널 배치, 단축키 변경 등)를
+#     덮어쓰지 않기 위해 의도적으로 광범위 가드 사용 — "첫 설치 프리셋"으로만 작동
+#   - tar/config/ 내용이 업데이트되어 기존 사용자에게 반영이 필요하면
+#     _migrate_terminal_font()처럼 "구 값 감지 → 선택적 치환" 패턴의 마이그레이션 함수를 별도로 추가할 것
 _setup_autostart_config() {
     local autostart_dir="$HOME/.config/autostart"
     [ -d "$autostart_dir" ] && \
-        [ -f "$autostart_dir/conky.desktop" ] && return 0  # 멱등성
+        [ -f "$autostart_dir/conky.desktop" ] && return 0  # 멱등성 (위 주석 참조)
 
     mkdir -p "$autostart_dir"
 
-    local config_src="${SCRIPT_DIR:-}/tar/config/.config"
-    if [ -d "$config_src" ]; then
-        # 로컬 repo에서 직접 복사 (외부 다운로드 불필요)
-        cp -rn "$config_src/." "$HOME/.config/"
-    else
-        # curl 파이프 실행 시 원격 다운로드
-        local tmp="${HOME}/.cache/termux-xfce-install"
-        mkdir -p "$tmp"
-        wget -q "${REPO_BASE}/config.tar.gz" -O "${tmp}/config.tar.gz"
-        tar -xzf "${tmp}/config.tar.gz" -C "$HOME"
-        rm -f "${tmp}/config.tar.gz"
-    fi
+    # install.sh:28-35이 curl-pipe 실행을 git clone으로 재시작하므로 SCRIPT_DIR은 항상 존재
+    # (과거엔 config.tar.gz wget 폴백이 있었으나 해당 아티팩트 미발행 → 제거)
+    cp -rn "${SCRIPT_DIR}/tar/config/.config/." "$HOME/.config/"
 
     chmod +x "$autostart_dir/conky.desktop" 2>/dev/null || true
     chmod +x "$autostart_dir/org.flameshot.Flameshot.desktop" 2>/dev/null || true

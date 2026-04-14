@@ -266,12 +266,13 @@ _test_meslo_skipped_if_exists() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     reset_mock_calls
-    touch "${HOME}/.fonts/MesloLGS NF Regular.ttf"
+    # ryanoasis/nerd-fonts Meslo.zip이 제공하는 실제 파일명 (family: "MesloLGS Nerd Font Mono")
+    touch "${HOME}/.fonts/MesloLGSNerdFont-Regular.ttf"
     _install_meslo_nerd 2>/dev/null || true
     assert_not_called "wget"
     cleanup_sandbox "$sb"
 }
-it "멱등성 — MesloLGS NF가 이미 있으면 재다운로드하지 않는다" _test_meslo_skipped_if_exists
+it "멱등성 — MesloLGSNerdFont-Regular.ttf가 이미 있으면 재다운로드하지 않는다" _test_meslo_skipped_if_exists
 
 _test_termux_font_skipped_if_exists() {
     local sb; sb=$(make_sandbox)
@@ -307,19 +308,6 @@ _test_autostart_copies_from_repo() {
     cleanup_sandbox "$sb"
 }
 it "SCRIPT_DIR 있으면 tar/config에서 직접 복사한다" _test_autostart_copies_from_repo
-
-_test_autostart_wget_fallback() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-    unset SCRIPT_DIR
-    reset_mock_calls
-    mock_wget
-
-    _setup_autostart_config 2>/dev/null || true
-    assert_was_called "wget"
-    cleanup_sandbox "$sb"
-}
-it "SCRIPT_DIR 없으면 wget 폴백을 사용한다" _test_autostart_wget_fallback
 
 _test_autostart_idempotent() {
     local sb; sb=$(make_sandbox)
