@@ -215,7 +215,7 @@ _setup_zsh_p10k() {
     local zsh_path
     zsh_path=$(command -v zsh)
     local current_shell
-    current_shell=$(getent passwd "$USER" 2>/dev/null | cut -d: -f7 || echo "")
+    current_shell=$(getent passwd "${USER:-$(id -un)}" 2>/dev/null | cut -d: -f7 || echo "")
     if [ -n "$current_shell" ] && [ "$current_shell" != "$zsh_path" ]; then
         chsh -s "$zsh_path" 2>/dev/null || true
     fi
@@ -319,12 +319,46 @@ EOF
 _setup_start_xfce() {
     local shortcut="$HOME/.shortcuts/startXFCE"
     mkdir -p "$HOME/.shortcuts"
-    [ -f "$shortcut" ] && return 0
 
     cat > "$shortcut" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+
+# ─── dbus 중복 감지: 1 초과이면 현황 다이얼로그 표시 ──────────
+DBUS_COUNT=$(pgrep -c dbus-daemon 2>/dev/null || echo 0)
+if [ "$DBUS_COUNT" -gt 1 ]; then
+    # 기존 X 소켓으로 DISPLAY 자동 감지
+    _SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
+    if [ -n "$_SOCK" ]; then
+        _NUM=$(basename "$_SOCK" | sed 's/^X//')
+        export DISPLAY=":${_NUM}"
+    fi
+
+    XFCE_PID=$(pgrep -x xfce4-session 2>/dev/null | head -1 || echo "")
+    TX11_PID=$(pgrep -f termux-x11 2>/dev/null | head -1 || echo "")
+    XFCE_STATUS=$([ -n "$XFCE_PID" ] && echo "실행 중 (PID: ${XFCE_PID})" || echo "미실행")
+    TX11_STATUS=$([ -n "$TX11_PID" ] && echo "실행 중 (PID: ${TX11_PID})" || echo "미실행")
+
+    choice=$(zenity --list \
+        --title="XFCE 세션 중복 감지" \
+        --text="⚠ dbus 인스턴스 ${DBUS_COUNT}개 감지됨\n\n현황\n  • XFCE4 세션 : ${XFCE_STATUS}\n  • Termux:X11 : ${TX11_STATUS}\n  • dbus 수     : ${DBUS_COUNT}개" \
+        --column="동작" --height=280 \
+        "기존 세션으로 이동" \
+        "세션 전체 종료" \
+        2>/dev/null || true)
+
+    case "$choice" in
+        "기존 세션으로 이동")
+            am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
+            ;;
+        "세션 전체 종료")
+            killall -9 termux-x11 Xwayland xfce4-session pulseaudio dbus-daemon 2>/dev/null || true
+            ;;
+    esac
+    exit 0
+fi
+# ────────────────────────────────────────────────────────────────
 
 killall -9 termux-x11 Xwayland xfce4-session pulseaudio 2>/dev/null || true
 sleep 1
@@ -490,7 +524,6 @@ EOF
 
 _setup_prun() {
     local bin="$PREFIX/bin/prun"
-    [ -f "$bin" ] && return 0
 
     # PROOT_DISTRO는 설치 시 결정된 값을 config에서 읽음
     cat > "$bin" << 'EOF'
@@ -498,10 +531,30 @@ _setup_prun() {
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
-DISTRO="${PROOT_DISTRO:-ubuntu}"
-USER_NAME=$(basename "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/"* 2>/dev/null || echo "user")
+DISTRO="${PROOT_DISTRO:-archlinux}"
 
-proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp -- env DISPLAY=:1.0 "$@"
+# config에 PROOT_USER 있으면 사용, 없으면 home/ 디렉토리에서 탐색 (alarm 제외)
+if [ -n "${PROOT_USER:-}" ]; then
+    USER_NAME="$PROOT_USER"
+else
+    USER_NAME=$(ls "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/" 2>/dev/null \
+        | grep -v '^alarm$' | head -1)
+    USER_NAME="${USER_NAME:-user}"
+fi
+
+# LD_PRELOAD 해제: Termux exec 훅이 proot-distro 실행 시 재주입하므로
+# unset만으론 부족 → proot 내부 첫 명령을 env -u LD_PRELOAD로 감싼다
+unset LD_PRELOAD
+
+# DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
+# 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
+if [ $# -eq 0 ]; then
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
+else
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
+fi
 EOF
 
     chmod +x "$bin"
@@ -552,6 +605,7 @@ Terminal=false
 StartupNotify=false
 EOF
         chmod +x "$desktop_icon"
+        gio set "$desktop_icon" metadata::trusted true 2>/dev/null || true
     fi
 }
 
@@ -584,7 +638,7 @@ if [[ "$action" == "Copy .desktop file" ]]; then
 
     filename=$(basename "$selected")
     cp "$selected" "$PREFIX/share/applications/"
-    sed -i "s|^Exec=\(.*\)$|Exec=proot-distro login $DISTRO --user $USERNAME --shared-tmp -- env DISPLAY=:1.0 \1|" \
+    sed -i "s|^Exec=\(.*\)$|Exec=prun \1|" \
         "$PREFIX/share/applications/$filename"
     zenity --info --text="복사 완료: $filename"
 

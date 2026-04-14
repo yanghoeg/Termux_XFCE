@@ -23,11 +23,12 @@ declare -A SUITES=(
     [domain_xfce]="${SCRIPT_DIR}/test_domain_xfce.sh"
     [domain_proot]="${SCRIPT_DIR}/test_domain_proot.sh"
     [app_installer]="${SCRIPT_DIR}/test_app_installer.sh"
+    [prun_ld_preload]="${SCRIPT_DIR}/test_prun_ld_preload.sh"
 )
 
 # 실행할 스위트 결정
 if [ $# -eq 0 ]; then
-    selected_suites=("ports" "adapters" "domain_termux" "domain_xfce" "domain_proot" "app_installer")
+    selected_suites=("ports" "adapters" "domain_termux" "domain_xfce" "domain_proot" "app_installer" "prun_ld_preload")
 else
     selected_suites=("$@")
 fi

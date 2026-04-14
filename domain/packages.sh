@@ -39,7 +39,7 @@ PKGS_TERMUX_CLI=(
     eza
     bat
     fzf
-    btop
+    htop
     jq
     netcat-openbsd
     neofetch
@@ -121,8 +121,10 @@ PKGS_PROOT_UBUNTU_KOREAN=(
     fonts-noto-cjk
     fonts-roboto
     im-config
-    nimf
-    nimf-libhangul
+    fcitx5
+    fcitx5-hangul
+    fcitx5-config-qt
+    # nimf / nimf-libhangul: Ubuntu 25.10(questing)에서 제거됨 → fcitx5-hangul로 대체
 )
 
 PKGS_PROOT_UBUNTU_DEV=(
@@ -155,11 +157,13 @@ PKGS_PROOT_ARCH_DESKTOP=(
     zenity
     onboard
     xorg-xeyes   # x11-apps 대체
+    mesa-demos   # glxinfo/glxgears — GPU 가속 테스트
+    vulkan-tools # vulkaninfo — Vulkan 가속 확인
 )
 
 PKGS_PROOT_ARCH_KOREAN=(
-    noto-fonts-cjk
-    ttf-nanum
+    noto-fonts-cjk   # 한국어 폰트 (공식 repo)
+    # ttf-nanum: AUR 전용, proot makepkg 미지원 → noto-fonts-cjk로 대체
     fcitx5-hangul
     fcitx5-configtool
     libhangul

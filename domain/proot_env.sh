@@ -27,7 +27,16 @@ setup_proot_install() {
 
 setup_proot_update() {
     ui_info "${PROOT_DISTRO} 패키지 업데이트"
-    proot_pkg_update
+    # 사용자 생성 전 단계이므로 root로 실행
+    case "$PROOT_DISTRO" in
+        ubuntu)
+            proot_exec_root apt update
+            proot_exec_root apt upgrade -y -o Dpkg::Options::="--force-confold"
+            ;;
+        archlinux)
+            proot_exec_root pacman -Syu --noconfirm
+            ;;
+    esac
 }
 
 setup_proot_user() {
@@ -40,11 +49,20 @@ setup_proot_user() {
         return 0
     }
 
-    proot_exec groupadd storage  2>/dev/null || true
-    proot_exec groupadd wheel    2>/dev/null || true
-    proot_exec useradd -m -g users -G wheel,audio,video,storage -s /bin/bash "$username"
+    # 사용자 생성 전이므로 root로 실행
+    proot_exec_root groupadd storage  2>/dev/null || true
+    proot_exec_root groupadd wheel    2>/dev/null || true
+    proot_exec_root useradd -m -g users -G wheel,audio,video,storage -s /bin/bash "$username"
 
     _setup_proot_sudoers "$username"
+
+    # Arch: sudo가 base에 없음 → 사용자 생성 직후 root로 설치
+    # 이후 proot_exec sudo pacman ... 이 작동하려면 sudo 바이너리가 필요
+    case "${PROOT_DISTRO}" in
+        archlinux)
+            proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
+            ;;
+    esac
 }
 
 setup_proot_base_packages() {
@@ -52,14 +70,25 @@ setup_proot_base_packages() {
 
     case "$PROOT_DISTRO" in
         ubuntu)
+            # sudo가 base에 없으면 proot_pkg_install("sudo apt ...") 자체가 실패
+            # → root로 먼저 설치 후 sudoers 재구성
+            proot_exec_root apt install -y sudo 2>/dev/null || true
+            _setup_proot_sudoers "$PROOT_USER"
             for p in "${PKGS_PROOT_UBUNTU_BASE[@]}" "${PKGS_PROOT_UBUNTU_DESKTOP[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
             done
             ;;
         archlinux)
-            proot_pkg_update
+            # proot_pkg_install 이 "sudo pacman" 을 쓰므로 sudo 바이너리가 먼저 필요.
+            # setup_proot_user 가 멱등성으로 건너뛴 경우도 있으므로 여기서 항상 보장.
+            proot_exec_root pacman -S --noconfirm --needed sudo 2>/dev/null || true
+            # sudo 설치 후 sudoers 재구성 (wheel NOPASSWD + 유저 직접 항목)
+            _setup_proot_sudoers "$PROOT_USER"
+            proot_pkg_update || true  # proot systemd hook 오류 무시
             for p in "${PKGS_PROOT_ARCH_BASE[@]}" "${PKGS_PROOT_ARCH_DESKTOP[@]}"; do
-                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+                # proot 내부 systemd/udev hook 실패(exit 1)는 패키지 설치 자체와 무관 → 무시
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
+                    echo "[WARN] $p: pacman hook 오류 (패키지는 설치됨)" >&2
             done
             ;;
     esac
@@ -74,11 +103,12 @@ setup_proot_korean() {
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
             done
             _setup_ubuntu_korean_locale
-            _setup_ubuntu_nimf
+            _setup_ubuntu_fcitx5
             ;;
         archlinux)
             for p in "${PKGS_PROOT_ARCH_KOREAN[@]}"; do
-                proot_pkg_is_installed "$p" || proot_pkg_install "$p"
+                proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
+                    echo "[WARN] $p: 설치 오류 (계속 진행)" >&2
             done
             _setup_arch_korean_locale
             ;;
@@ -91,12 +121,15 @@ setup_proot_env() {
 
     grep -q "# termux-xfce-proot-env" "$bashrc" 2>/dev/null && return 0
 
+    # Termux Turnip(freedreno) Vulkan ICD 절대경로
+    local _vk_icd="/data/data/com.termux/files/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+
     cat >> "$bashrc" << EOF
 
 # termux-xfce-proot-env
-export DISPLAY=:1.0
-export LD_PRELOAD=/system/lib64/libskcodec.so
+export DISPLAY=\${DISPLAY:-:0.0}
 export XDG_RUNTIME_DIR=/run/user/\$(id -u)
+mkdir -p "\$XDG_RUNTIME_DIR" 2>/dev/null
 export MESA_NO_ERROR=1
 export MESA_LOADER_DRIVER_OVERRIDE=zink    # proot는 Zink(OpenGL→Vulkan) 사용
 export TU_DEBUG=noconform
@@ -105,6 +138,9 @@ export MESA_GLES_VERSION_OVERRIDE=3.2
 export MESA_VK_WSI_PRESENT_MODE=immediate  # Vulkan 프레젠테이션 레이턴시 감소
 export ZINK_DESCRIPTORS=lazy               # Zink 디스크립터 성능 최적화
 export vblank_mode=0                       # vsync 비활성화 (FPS 측정용)
+# Termux Turnip Vulkan ICD → proot Zink 백엔드 드라이버
+export VK_ICD_FILENAMES=${_vk_icd}
+export VK_DRIVER_FILES=${_vk_icd}          # Mesa 23+ 별칭
 
 # aliases
 alias hud='GALLIUM_HUD=fps '
@@ -115,6 +151,7 @@ alias cat='bat'
 alias python='/usr/bin/python3'
 alias pip='/usr/bin/pip'
 alias start='echo "Termux에서 실행하세요."'
+code() { nohup dbus-run-session /usr/bin/code --no-sandbox "\$@" >/dev/null 2>&1 & disown; }
 EOF
 }
 
@@ -123,8 +160,9 @@ setup_proot_timezone() {
     local tz
     tz=$(getprop persist.sys.timezone 2>/dev/null || echo "Asia/Seoul")
 
-    proot_exec rm -f /etc/localtime
-    proot_exec ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
+    # /etc/localtime는 root 소유 → proot_exec_root 사용
+    proot_exec_root rm -f /etc/localtime
+    proot_exec_root ln -sf "/usr/share/zoneinfo/${tz}" /etc/localtime
 }
 
 setup_proot_fancybash() {
@@ -136,8 +174,8 @@ setup_proot_fancybash() {
     local dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fancybash.sh"
 
     [ -f "$src" ] || {
-        ui_warn "Termux의 .fancybash.sh가 없습니다. setup_xfce_fancybash를 먼저 실행하세요."
-        return 1
+        ui_warn "Termux의 .fancybash.sh가 없습니다 (--proot-only 모드 또는 zsh 환경). 건너뜁니다."
+        return 0
     }
 
     [ -f "$dst" ] && return 0  # 멱등성
@@ -179,8 +217,13 @@ setup_proot_hardware_accel() {
             fi
             ;;
         archlinux)
-            ui_warn "Arch Linux용 mesa-vulkan-kgsl 패키지가 없습니다."
-            ui_info "proot Arch는 Zink(MESA_LOADER_DRIVER_OVERRIDE=zink)로 동작합니다."
+            ui_info "Arch proot: Zink + Termux Turnip ICD 설정"
+            # mesa-demos (glxinfo/glxgears) + vulkan-tools 설치
+            # proot systemd hook 실패는 무시 (패키지 자체는 설치됨)
+            proot_exec sudo pacman -S --noconfirm --needed \
+                mesa vulkan-tools mesa-demos 2>/dev/null || true
+            # VK_ICD_FILENAMES는 setup_proot_env()의 .bashrc에서 이미 설정됨
+            ui_info "Arch proot GPU: Termux Turnip ICD → Zink 경로 활성화됨"
             ;;
     esac
 }
@@ -238,6 +281,36 @@ setup_proot_conky() {
     [ -f "$emoji_src" ] && cp "$emoji_src" "$emoji_dst"
 }
 
+# proot 제거 (테스트용 distro 정리)
+# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=yanghoeg bash -c 'source domain/proot_env.sh && teardown_proot'
+teardown_proot() {
+    local distro="${PROOT_DISTRO:?PROOT_DISTRO 필요}"
+    local user="${PROOT_USER:-}"
+
+    ui_info "${distro} proot 제거 중..."
+
+    # rootfs 제거
+    proot-distro remove "$distro" 2>/dev/null || true
+
+    # bash.bashrc alias 제거
+    local bashrc="$PREFIX/etc/bash.bashrc"
+    sed -i "/alias ${distro}=/d" "$bashrc" 2>/dev/null || true
+
+    # ~/.zshrc alias 제거
+    if [ -f "$HOME/.zshrc" ]; then
+        sed -i "/alias ${distro}=/d" "$HOME/.zshrc" 2>/dev/null || true
+    fi
+
+    # 설정 파일에서 distro 항목 제거
+    local cfg="$HOME/.config/termux-xfce/config"
+    if [ -f "$cfg" ] && grep -q "^PROOT_DISTRO=\"${distro}\"" "$cfg"; then
+        sed -i "s/^PROOT_DISTRO=\"${distro}\"/PROOT_DISTRO=\"\"/" "$cfg"
+        sed -i "s/^PROOT_USER=\"${user}\"/PROOT_USER=\"\"/" "$cfg"
+    fi
+
+    ui_info "${distro} 제거 완료."
+}
+
 # -----------------------------------------------------------------------------
 # Private
 # -----------------------------------------------------------------------------
@@ -245,11 +318,28 @@ setup_proot_conky() {
 _setup_proot_sudoers() {
     local username="$1"
     local sudoers="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers"
+    local sudoers_d="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/sudoers.d"
 
-    grep -q "^${username}" "$sudoers" 2>/dev/null && return 0
+    if [ ! -f "$sudoers" ]; then
+        # sudo 미설치(Arch 기본): sudoers.d에 미리 작성 → sudo 설치 후 활성화
+        mkdir -p "$sudoers_d"
+        echo "${username} ALL=(ALL) NOPASSWD:ALL" > "${sudoers_d}/${username}"
+        chmod 440 "${sudoers_d}/${username}"
+        return 0
+    fi
 
+    # /etc/sudoers 존재: wheel 그룹 NOPASSWD 활성화 + 유저 직접 추가
     chmod u+rw "$sudoers"
-    echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
+
+    # Arch: "# %wheel ALL=(ALL:ALL) NOPASSWD: ALL" 주석 해제
+    sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL:ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL:ALL) NOPASSWD:/' "$sudoers"
+    # Ubuntu: "# %wheel ALL=(ALL) NOPASSWD:ALL"
+    sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL) NOPASSWD:/' "$sudoers"
+
+    # 유저 직접 항목 (wheel 그룹 설정 없을 때 폴백)
+    grep -q "^${username}" "$sudoers" || \
+        echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
+
     chmod 440 "$sudoers"
 }
 
@@ -263,10 +353,10 @@ _setup_ubuntu_korean_locale() {
 LANG=ko_KR.UTF-8
 LANGUAGE=ko_KR.UTF-8
 LC_ALL=ko_KR.UTF-8
-export GTK_IM_MODULE=nimf
-export QT_IM_MODULE=nimf
-export XMODIFIERS="@im=nimf"
-nimf
+export GTK_IM_MODULE=fcitx5
+export QT_IM_MODULE=fcitx5
+export XMODIFIERS="@im=fcitx5"
+fcitx5 -d --replace 2>/dev/null &
 EOF
 
     # /etc/default/locale
@@ -276,18 +366,14 @@ LANGUAGE=ko_KR.UTF-8
 EOF
 }
 
-_setup_ubuntu_nimf() {
-    # 하모니카 repo 추가 후 nimf 설치
-    proot_exec bash -c "
-        wget -qO- https://update.hamonikr.org/add-update-repo.apt | bash - 2>/dev/null || true
-        apt install -y nimf nimf-libhangul 2>/dev/null || true
-        im-config -n nimf 2>/dev/null || true
-    "
+_setup_ubuntu_fcitx5() {
+    # nimf은 Ubuntu 25.10+에서 제거됨 → fcitx5 설정
+    proot_exec bash -c "im-config -n fcitx5 2>/dev/null || true"
 }
 
 _setup_arch_korean_locale() {
     local locale_gen="${PROOT_ROOTFS}/${PROOT_DISTRO}/etc/locale.gen"
     grep -q "ko_KR.UTF-8" "$locale_gen" 2>/dev/null || \
         echo "ko_KR.UTF-8 UTF-8" >> "$locale_gen"
-    proot_exec locale-gen
+    proot_exec_root locale-gen
 }

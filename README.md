@@ -39,6 +39,7 @@ bash install.sh --distro ubuntu --user yanghoeg --gpu
 bash install.sh --distro archlinux --user yanghoeg
 bash install.sh --no-proot          # Termux native only
 bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
+bash install.sh --distro archlinux --user yanghoeg --proot-only  # add 2nd distro
 ```
 
 ```bash
@@ -51,6 +52,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--distro ubuntu\|archlinux` | `DISTRO=` | proot distro |
 | `--user <name>` | `USERNAME=` | proot username |
 | `--no-proot` | `SKIP_PROOT=true` | Termux native only |
+| `--proot-only` | `PROOT_ONLY=true` | proot only (skip Termux native setup, for adding a 2nd distro) |
 | `--gpu` | `INSTALL_GPU=true` | Install GPU acceleration |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | Install GPU dev tools |
 
@@ -137,7 +139,7 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 |----------|----------|
 | Base utils | wget, unzip, dbus, pulseaudio |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, btop, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, htop, jq, neofetch |
 | Korean IME | fcitx5, fcitx5-hangul, fcitx5-configtool |
 | GPU (optional) | mesa, mesa-vulkan-icd-freedreno, vulkan-loader-generic, mesa-vulkan-icd-swrast |
 
@@ -168,13 +170,13 @@ bash tests/run_tests.sh app_installer
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
-| ports | 7 | adapter contract compliance |
-| adapters | 12 | pkg_termux, ui_terminal |
-| domain_termux | 25 | termux_env logic |
-| domain_xfce | 19 | xfce_env logic |
-| domain_proot | 25 | proot_env logic |
-| app_installer | 34 | installer script validation |
-| **Total** | **122** | **All pass on real device** |
+| ports | 13 | adapter contract compliance |
+| adapters | 15 | pkg_termux, ui_terminal |
+| domain_termux | 36 | termux_env logic |
+| domain_xfce | 26 | xfce_env logic |
+| domain_proot | 37 | proot_env logic |
+| app_installer | 31 | installer script validation |
+| **Total** | **158** | **All pass on real device** |
 
 ## Android System Optimization
 

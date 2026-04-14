@@ -43,7 +43,15 @@ proot_exec() {
     proot-distro login "$PROOT_DISTRO" \
         --user "$PROOT_USER" \
         --shared-tmp \
-        -- env DISPLAY=:1.0 "$@"
+        -- env DISPLAY="${DISPLAY:-:0.0}" "$@"
+}
+
+# root 권한 실행 — 사용자 생성 전/패키지 업데이트 등 root 필요 작업용
+proot_exec_root() {
+    : "${PROOT_DISTRO:?PROOT_DISTRO 환경변수가 설정되지 않았습니다}"
+    proot-distro login "$PROOT_DISTRO" \
+        --shared-tmp \
+        -- env DISPLAY="${DISPLAY:-:0.0}" "$@"
 }
 
 proot_pkg_install() {
