@@ -21,6 +21,7 @@ setup_termux_base() {
     _install_base_packages
     _setup_aliases
     _setup_locale
+    _setup_xdg_runtime
     _setup_gpu_env
     _setup_zsh_p10k
 }
@@ -56,6 +57,7 @@ setup_termux_shortcuts() {
     _setup_start_xfce
     _setup_kill_termux_x11
     _setup_prun
+    _setup_prun_gui
     _setup_cp2menu
     _setup_app_installer
 }
@@ -172,7 +174,7 @@ _setup_locale() {
 export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
-export XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+# XDG_RUNTIME_DIR은 _setup_xdg_runtime 블록에서 관리 (mode 700 user-private)
 export XMODIFIERS=@im=fcitx5
 export GTK_IM_MODULE=fcitx5
 export QT_IM_MODULE=fcitx5
@@ -181,6 +183,34 @@ LOCALE
 
     while IFS= read -r rc; do
         _append_to_rc "# termux-xfce-locale" "$block" "$rc"
+    done < <(_rc_targets)
+}
+
+# XDG runtime dir: mode 700 user-private ($PREFIX/var/run/user/$UID)
+# Why: 구버전 _setup_locale가 XDG_RUNTIME_DIR=$TMPDIR(mode 1777, world-writable)을 심어
+#      dbus가 "can be written by others" 경고를 띄우며 session bus를 반쯤 고장냄
+#      → flameshot/xfdesktop의 DBus 경고도 여기서 파생됨
+_setup_xdg_runtime() {
+    # 구버전 라인 제거 (마이그레이션)
+    while IFS= read -r rc; do
+        [ -f "$rc" ] || continue
+        sed -i '\#^export XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"$#d' "$rc" 2>/dev/null || true
+    done < <(_rc_targets)
+
+    local block
+    block=$(cat << 'XDGRT'
+
+# termux-xfce-xdg-runtime
+XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null && chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
+fi
+export XDG_RUNTIME_DIR
+XDGRT
+)
+
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-xdg-runtime" "$block" "$rc"
     done < <(_rc_targets)
 }
 
@@ -330,6 +360,12 @@ _setup_start_xfce() {
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 
+# XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
+XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
+export XDG_RUNTIME_DIR
+
 # ─── dbus 중복 감지: 1 초과이면 현황 다이얼로그 표시 ──────────
 DBUS_COUNT=$(pgrep -c dbus-daemon 2>/dev/null || echo 0)
 if [ "$DBUS_COUNT" -gt 1 ]; then
@@ -414,7 +450,6 @@ if [ -n "$GPU_MODEL" ]; then
     # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
     #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
     env DISPLAY="$XDISPLAY" \
-        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         TU_DEBUG=noconform \
@@ -428,7 +463,6 @@ if [ -n "$GPU_MODEL" ]; then
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
     env DISPLAY="$XDISPLAY" \
-        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_NO_ERROR=1 \
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
@@ -565,16 +599,43 @@ EOF
     chmod +x "$bin"
 }
 
+# prun-gui: proot GUI 앱 실행 시 로딩 알림 표시
+# proot-distro login은 콜드 스타트에 10–30초 걸려 사용자가 실행 여부를 알기 어려움
+# → notify-send로 "로딩 중" 토스트를 먼저 띄우고 prun exec
+_setup_prun_gui() {
+    local bin="$PREFIX/bin/prun-gui"
+
+    cat > "$bin" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 사용: prun-gui "AppName" -- <proot 내부 명령...>
+# "--" 는 선택. 없으면 $1 이후 전부 명령으로 간주.
+NAME="${1:-App}"; shift
+[ "${1:-}" = "--" ] && shift
+
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -t 30000 -i system-run \
+        "$NAME" "로딩 중... (proot 컨테이너 기동, 최대 30초)" \
+        >/dev/null 2>&1 &
+fi
+
+exec prun "$@"
+EOF
+
+    chmod +x "$bin"
+}
+
 _setup_app_installer() {
     local bin="$PREFIX/bin/app-installer"
     local desktop="$PREFIX/share/applications/app-installer.desktop"
 
     if [ ! -f "$bin" ]; then
-        cat > "$bin" << 'EOF'
+        # SCRIPT_DIR은 install.sh 실행 시점 기준 — curl-pipe(~/.termux-xfce-installer),
+        # 수동 clone(~/Termux_XFCE) 양쪽 모두 정확한 경로를 기록한다.
+        cat > "$bin" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 # GTK4 zenity: Zink+Turnip GLX 스왑체인 크래시 방지
 export GSK_RENDERER=cairo
-exec bash /data/data/com.termux/files/home/Termux_XFCE/app-installer/install.sh "$@"
+exec bash ${SCRIPT_DIR}/app-installer/install.sh "\$@"
 EOF
         chmod +x "$bin"
     fi

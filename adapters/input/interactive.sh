@@ -37,7 +37,7 @@ resolve_interactive_inputs() {
 
     # GPU 가속
     if [ -z "${INSTALL_GPU:-}" ]; then
-        if ui_confirm "GPU 가속(mesa-zink, Adreno)을 설치하겠습니까?"; then
+        if ui_confirm "GPU 가속(mesa + Turnip Vulkan, Adreno)을 설치하겠습니까?"; then
             INSTALL_GPU=true
         else
             INSTALL_GPU=false

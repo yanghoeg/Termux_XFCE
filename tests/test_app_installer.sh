@@ -15,21 +15,31 @@ APP_DIR="${SCRIPT_DIR}/../app-installer"
 
 describe "app-installer — shebang 유효성"
 
+# 헥사고날 리팩토링 이후 installer 스크립트는 domain/installers/*.sh 위치
+INSTALLERS_DIR="${APP_DIR}/domain/installers"
+
 _test_vlc_shebang() {
     local first
-    first=$(head -1 "${APP_DIR}/install_vlc.sh")
+    first=$(head -1 "${INSTALLERS_DIR}/vlc.sh")
     # #! 로 시작해야 함 (## 아님)
     if [[ "$first" == "##"* ]]; then
-        echo "[ASSERT] install_vlc.sh shebang 이중 # 오류: $first" >&2
+        echo "[ASSERT] vlc.sh shebang 이중 # 오류: $first" >&2
         return 1
     fi
     [[ "$first" == "#!/"* ]]
 }
-it "install_vlc.sh — shebang이 올바르다 (# 하나)" _test_vlc_shebang
+it "vlc.sh — shebang이 올바르다 (# 하나)" _test_vlc_shebang
 
 _test_all_shebangs() {
     local failed=0
-    for f in "${APP_DIR}"/install_*.sh; do
+    shopt -s nullglob
+    local files=("${INSTALLERS_DIR}"/*.sh)
+    shopt -u nullglob
+    if [ "${#files[@]}" -eq 0 ]; then
+        echo "[ASSERT] installer 스크립트를 찾을 수 없음: ${INSTALLERS_DIR}" >&2
+        return 1
+    fi
+    for f in "${files[@]}"; do
         local first; first=$(head -1 "$f")
         if [[ "$first" == "##"* ]]; then
             echo "[ASSERT] $(basename "$f") shebang 이중 #: $first" >&2
@@ -38,7 +48,7 @@ _test_all_shebangs() {
     done
     return "$failed"
 }
-it "모든 install_*.sh — shebang 단일 #" _test_all_shebangs
+it "모든 installer 스크립트 — shebang 단일 #" _test_all_shebangs
 
 # =============================================================================
 # 정적 분석 — 명백한 타이포
@@ -53,7 +63,7 @@ _test_no_wget_wget() {
         return 1
     fi
 }
-it "install_miniforge.sh — 'wget wget' 이중 명령 없음" _test_no_wget_wget
+it "miniforge.sh — 'wget wget' 이중 명령 없음" _test_no_wget_wget
 
 _test_no_home_dotdot() {
     if grep -r 'HOME/../usr' "${APP_DIR}"/ 2>/dev/null | grep -q .; then
@@ -65,20 +75,22 @@ _test_no_home_dotdot() {
 it "모든 스크립트 — '\$HOME/../usr/' 경로 없음 (\$PREFIX 사용)" _test_no_home_dotdot
 
 _test_no_hardcoded_ubuntu() {
-    # install.sh(메인), install_wine.sh(명시적 분기) 는 제외
+    # wine.sh 는 명시적 distro 분기라 제외
     local offenders=()
-    for f in "${APP_DIR}"/install_*.sh; do
-        [[ "$(basename "$f")" == "install_wine.sh" ]] && continue
+    shopt -s nullglob
+    for f in "${INSTALLERS_DIR}"/*.sh; do
+        [[ "$(basename "$f")" == "wine.sh" ]] && continue
         if grep -q "proot-distro login ubuntu" "$f" 2>/dev/null; then
             offenders+=("$(basename "$f")")
         fi
     done
+    shopt -u nullglob
     if [ "${#offenders[@]}" -gt 0 ]; then
         echo "[ASSERT] hardcoded 'ubuntu' proot login: ${offenders[*]}" >&2
         return 1
     fi
 }
-it "install_*.sh — proot-distro login에 distro 하드코딩 없음" _test_no_hardcoded_ubuntu
+it "installer 스크립트 — proot-distro login에 distro 하드코딩 없음" _test_no_hardcoded_ubuntu
 
 # =============================================================================
 # install.sh — 설정 로드 + check 함수
@@ -221,83 +233,105 @@ _test_action_installed_shows_remove() {
 it "설치된 앱은 'Remove' 액션을 표시한다" _test_action_installed_shows_remove
 
 # =============================================================================
-# install_vlc.sh — 실제 실행 (Termux native, proot 불필요)
+# vlc.sh — proot 설치 (VLC는 Qt GUI 의존성으로 proot 내부에 설치)
 # =============================================================================
 
-describe "install_vlc.sh — 실제 설치 테스트"
+describe "vlc.sh — 구조 검증"
 
 _test_vlc_installs() {
-    # vlc가 pkg에 있는지 확인
+    # vlc가 pkg에 있는지 확인 (Termux native fallback용)
     pkg show vlc 2>/dev/null | grep -q "Package: vlc"
 }
 it "pkg에 vlc 패키지가 존재한다" _test_vlc_installs
 
 _test_vlc_script_syntax() {
-    bash -n "${APP_DIR}/install_vlc.sh" 2>/dev/null
+    bash -n "${INSTALLERS_DIR}/vlc.sh" 2>/dev/null
 }
-it "install_vlc.sh — bash 문법 오류 없음" _test_vlc_script_syntax
+it "vlc.sh — bash 문법 오류 없음" _test_vlc_script_syntax
 
 # =============================================================================
 # install_thunderbird.sh — 구조 검증
 # =============================================================================
 
-describe "install_thunderbird.sh — 구조 검증"
+# 헥사고날 리팩토링 이후 installer 파일은 ${APP_DIR}/domain/installers/ 하위에 있음
+describe "thunderbird.sh — 구조 검증"
 
 _test_thunderbird_script_syntax() {
-    bash -n "${APP_DIR}/install_thunderbird.sh" 2>/dev/null
+    bash -n "${APP_DIR}/domain/installers/thunderbird.sh" 2>/dev/null
 }
-it "install_thunderbird.sh — bash 문법 오류 없음" _test_thunderbird_script_syntax
+it "thunderbird.sh — bash 문법 오류 없음" _test_thunderbird_script_syntax
 
-_test_thunderbird_has_desktop_copy() {
-    # share/applications에 desktop 파일을 복사해야 함
-    grep -q "share/applications" "${APP_DIR}/install_thunderbird.sh"
+_test_thunderbird_has_desktop_register() {
+    # desktop_register 헬퍼 호출 확인 (share/applications 직접 접근은 desktop.sh가 담당)
+    grep -q "desktop_register" "${APP_DIR}/domain/installers/thunderbird.sh"
 }
-it "install_thunderbird.sh — share/applications에 desktop 파일 복사" _test_thunderbird_has_desktop_copy
+it "thunderbird.sh — desktop_register 헬퍼 사용" _test_thunderbird_has_desktop_register
 
 # =============================================================================
-# install_wine.sh — 로직 구조 검증
+# wine.sh — 로직 구조 검증
 # =============================================================================
 
-describe "install_wine.sh — 구조 검증"
+describe "wine.sh — 구조 검증"
 
 _test_wine_script_syntax() {
-    bash -n "${APP_DIR}/install_wine.sh" 2>/dev/null
+    bash -n "${APP_DIR}/domain/installers/wine.sh" 2>/dev/null
 }
-it "install_wine.sh — bash 문법 오류 없음" _test_wine_script_syntax
+it "wine.sh — bash 문법 오류 없음" _test_wine_script_syntax
 
 _test_wine_has_proot_distro_check() {
-    grep -q 'PROOT_DISTRO' "${APP_DIR}/install_wine.sh"
+    grep -q 'PROOT_DISTRO' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
+it "wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
 
 _test_wine_has_native_fallback() {
-    grep -q '_install_wine_native' "${APP_DIR}/install_wine.sh"
+    grep -q '_install_wine_native\|which wine' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
+it "wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
 
 _test_wine_creates_desktop() {
-    grep -q 'WINE_DESKTOP' "${APP_DIR}/install_wine.sh" && \
-    grep -q '\[Desktop Entry\]' "${APP_DIR}/install_wine.sh"
+    grep -q 'WINE_DESKTOP' "${APP_DIR}/domain/installers/wine.sh" && \
+    grep -q '\[Desktop Entry\]' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
+it "wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
 
 _test_wine_idempotent_check() {
-    grep -q 'which wine' "${APP_DIR}/install_wine.sh"
+    grep -q 'which wine' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
+it "wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
 
 # =============================================================================
-# 모든 스크립트 문법 검사
+# 모든 installer 스크립트 문법 검사
 # =============================================================================
 
-describe "모든 install_*.sh — bash 문법"
+describe "모든 installer 스크립트 — bash 문법"
 
-for _script in "${APP_DIR}"/install_*.sh; do
-    _name=$(basename "$_script")
-    _test_syntax() {
-        bash -n "${APP_DIR}/${_name}" 2>/dev/null
+shopt -s nullglob
+_INSTALLER_FILES=("${INSTALLERS_DIR}"/*.sh)
+shopt -u nullglob
+
+if [ "${#_INSTALLER_FILES[@]}" -eq 0 ]; then
+    _test_installers_exist() {
+        echo "[ASSERT] installer 스크립트를 찾을 수 없음: ${INSTALLERS_DIR}" >&2
+        return 1
     }
-    it "${_name} — 문법 오류 없음" _test_syntax
-done
+    it "installer 스크립트 디렉토리 존재" _test_installers_exist
+else
+    # 루프 변수를 각 테스트 함수에 캡처하기 위해 클로저로 감쌈
+    for _script in "${_INSTALLER_FILES[@]}"; do
+        _name=$(basename "$_script")
+        _make_syntax_test() {
+            local path="$1"
+            eval "_test_syntax_${_name//./_}() { bash -n '${path}' 2>/dev/null; }"
+            it "${_name} — 문법 오류 없음" "_test_syntax_${_name//./_}"
+        }
+        _make_syntax_test "$_script"
+    done
+fi
+
+# app-installer/install.sh(메인 런처)도 문법 검사
+_test_main_installer_syntax() {
+    bash -n "${APP_DIR}/install.sh" 2>/dev/null
+}
+it "app-installer/install.sh — 문법 오류 없음" _test_main_installer_syntax
 
 print_results

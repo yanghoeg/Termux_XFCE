@@ -55,6 +55,8 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--proot-only` | `PROOT_ONLY=true` | proot만 설치 (Termux native 설정 생략, 두 번째 distro 추가 시) |
 | `--gpu` | `INSTALL_GPU=true` | GPU 가속 패키지 설치 |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | GPU 개발 도구 설치 |
+| `--korean-locale` | `KOREAN_LOCALE=true` | 한글 로케일 옵트인 (아래 "한글 로케일" 참조) |
+| `--locale-zip <path>` | `KOREAN_LOCALE_ZIP=` | .mo 카탈로그 zip 경로 (Release asset) |
 
 ## 사용법
 
@@ -112,6 +114,37 @@ zink glxgears
 > **주의**: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우  
 > 설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
 
+## 한글 로케일 (옵션)
+
+XFCE 메뉴/설정/앱 UI를 한글로 표시할 수 있습니다. Termux의 bionic libc가 `setlocale(LC_MESSAGES)`를 지원하지 않기 때문에 일반적인 "XFCE 언어 설정" 접근은 불가능하고, **LD_PRELOAD 기반 gettext 후킹**으로 우회합니다.
+
+> 이 접근법은 **미코(미니기기 코리아) — 흡혈귀왕님**이 공유해 주신 방법을 바탕으로 구현되었습니다. 감사합니다. 🙏
+
+### 사용법
+
+```bash
+# 1) 한글 로케일 옵션 활성화 + locale.zip 경로 지정 (Release asset에서 다운로드)
+bash install.sh --distro archlinux --user yanghoeg --korean-locale --locale-zip ~/Downloads/locale.zip
+
+# 2) 한글 모드로 XFCE 기동
+tx11start --xstartup "$HOME/bin/startxfce4-ko"
+```
+
+### 구성
+
+| 파일 | 역할 |
+|------|------|
+| `assets/force_gettext.c` | gettext/dgettext/dcgettext + GTK 심볼 후킹 C 소스 (clang -shared 빌드) |
+| `domain/locale_ko.sh` | `setup_korean_locale_native()` — .mo 카탈로그 배치 + `.so` 빌드 + `startxfce4-ko` 래퍼 생성 |
+| `$PREFIX/lib/force_gettext.so` | 런타임 주입 shared object |
+| `$HOME/bin/startxfce4-ko` | DBus autostart 포함 한글 모드 XFCE 기동 래퍼 |
+
+`locale.zip`(~163MB, glibc용 .mo 카탈로그 모음)은 리포 용량상 포함하지 않고 **Release asset으로 별도 배포**합니다.
+
+### 동작 확인된 앱
+
+GIMP, Inkscape, Audacity, Thunderbird, VLC(proot), XFCE 설정 매니저 — 메뉴/대화상자/툴팁 한글 표시.
+
 ## 쉘 (zsh + Powerlevel10k)
 
 설치 시 **zsh**가 기본 쉘로 설정되고 Powerlevel10k가 자동으로 구성됩니다.
@@ -152,31 +185,37 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 
 ## App Installer
 
-VLC, LibreOffice, Thunderbird 등 추가 앱은 GUI로 설치 가능합니다:
+GIMP, Inkscape, Audacity, VLC, LibreOffice, Thunderbird 등 추가 앱은 GUI로 설치 가능합니다:
 
 ```bash
 app-installer
 ```
+
+- **yad 기반 검색 UI** — 앱 이름/설명 타이핑으로 즉시 필터링 (yad 미설치 시 zenity 폴백)
+- **카테고리 구분** — 그래픽/미디어/오피스/브라우저/개발/보안/유틸/소통
+- **Termux native 우선** — GIMP, Inkscape, Audacity, Thunderbird는 Termux 네이티브 (한글 로케일 지원)
+- **proot 자동 라우팅** — VLC(Qt GUI 필요), LibreOffice, VSCode 등은 proot 내부 설치
 
 소스: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
 ## 테스트
 
 ```bash
-bash tests/run_tests.sh              # 전체 (122개)
+bash tests/run_tests.sh              # 전체 (142개)
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
 
 | 스위트 | 수 | 내용 |
 |--------|---|------|
-| ports | 13 | 어댑터 계약 준수 |
-| adapters | 15 | pkg_termux, ui_terminal |
-| domain_termux | 36 | termux_env 로직 |
-| domain_xfce | 26 | xfce_env 로직 |
-| domain_proot | 37 | proot_env 로직 |
-| app_installer | 31 | 설치 스크립트 검증 |
-| **합계** | **158** | **실기기 전체 통과** |
+| ports | 7 | 어댑터 계약 준수 |
+| adapters | 12 | pkg_termux, ui_terminal |
+| domain_termux | 25 | termux_env 로직 |
+| domain_xfce | 18 | xfce_env 로직 |
+| domain_proot | 25 | proot_env 로직 |
+| app_installer | 40 | 설치 스크립트 검증 |
+| prun_ld_preload | 15 | prun / LD_PRELOAD 회귀 |
+| **합계** | **142** | **실기기 전체 통과** |
 
 ## Android 시스템 최적화
 
@@ -219,13 +258,17 @@ Termux_XFCE/
 │       ├── pkg_ubuntu.sh         ← Ubuntu apt 어댑터
 │       ├── pkg_arch.sh           ← Arch pacman 어댑터
 │       ├── ui_terminal.sh        ← echo 기반 UI
-│       └── ui_zenity.sh          ← zenity GUI UI
+│       ├── ui_yad.sh             ← yad 검색 GUI (zenity 상위호환)
+│       └── ui_zenity.sh          ← zenity GUI UI (폴백)
 ├── domain/
 │   ├── packages.sh               ← 패키지 목록 정의
 │   ├── termux_env.sh             ← Termux 환경 로직
 │   ├── xfce_env.sh               ← XFCE 설정 로직
-│   └── proot_env.sh              ← proot 로직 (Ubuntu/Arch 공통)
-├── tests/                        ← 자동화 테스트 122개
+│   ├── proot_env.sh              ← proot 로직 (Ubuntu/Arch 공통)
+│   └── locale_ko.sh              ← 한글 로케일 옵트인 (LD_PRELOAD gettext 후킹)
+├── assets/
+│   └── force_gettext.c           ← gettext 후킹 C 소스 (→ force_gettext.so)
+├── tests/                        ← 자동화 테스트 142개
 └── app-installer/                ← 앱 추가 설치 GUI (Git Submodule)
 ```
 

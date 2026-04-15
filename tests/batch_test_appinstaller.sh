@@ -65,9 +65,9 @@ echo "--- 설치 테스트 ---" | tee -a "$LOG"
 
 # proot 필요 앱만 테스트 (thunderbird/vlc는 native라 별도)
 PROOT_APPS=(vscode libreoffice miniforge nautilus dbeaver)
-# 무거운 앱(wine/burpsuite/tor/teams/thorium/notion/1password/sasm)은
+# 무거운 앱(wine/burpsuite/tor/teams/thorium/notion/sasm)은
 # 시간/용량 이슈로 연결 확인만
-HEAVY_APPS=(burpsuite tor_browser notion dbeaver teams thorium onepassword sasm)
+HEAVY_APPS=(burpsuite tor_browser notion dbeaver teams thorium sasm)
 NATIVE_APPS=(thunderbird vlc)
 
 echo "▶ Native (Termux) 앱" | tee -a "$LOG"
