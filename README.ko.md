@@ -56,7 +56,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--gpu` | `INSTALL_GPU=true` | GPU 가속 패키지 설치 |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | GPU 개발 도구 설치 |
 | `--korean-locale` | `KOREAN_LOCALE=true` | 한글 로케일 옵트인 (아래 "한글 로케일" 참조) |
-| `--locale-zip <path>` | `LOCALE_ZIP=` | .mo 카탈로그 zip 경로 (Release asset) |
+| `--locale-zip <path>` | `KOREAN_LOCALE_ZIP=` | .mo 카탈로그 zip 경로 (Release asset) |
 
 ## 사용법
 
@@ -201,20 +201,21 @@ app-installer
 ## 테스트
 
 ```bash
-bash tests/run_tests.sh              # 전체 (122개)
+bash tests/run_tests.sh              # 전체 (142개)
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
 
 | 스위트 | 수 | 내용 |
 |--------|---|------|
-| ports | 13 | 어댑터 계약 준수 |
-| adapters | 15 | pkg_termux, ui_terminal |
-| domain_termux | 36 | termux_env 로직 |
-| domain_xfce | 26 | xfce_env 로직 |
-| domain_proot | 37 | proot_env 로직 |
-| app_installer | 31 | 설치 스크립트 검증 |
-| **합계** | **158** | **실기기 전체 통과** |
+| ports | 7 | 어댑터 계약 준수 |
+| adapters | 12 | pkg_termux, ui_terminal |
+| domain_termux | 25 | termux_env 로직 |
+| domain_xfce | 18 | xfce_env 로직 |
+| domain_proot | 25 | proot_env 로직 |
+| app_installer | 40 | 설치 스크립트 검증 |
+| prun_ld_preload | 15 | prun / LD_PRELOAD 회귀 |
+| **합계** | **142** | **실기기 전체 통과** |
 
 ## Android 시스템 최적화
 
@@ -257,7 +258,8 @@ Termux_XFCE/
 │       ├── pkg_ubuntu.sh         ← Ubuntu apt 어댑터
 │       ├── pkg_arch.sh           ← Arch pacman 어댑터
 │       ├── ui_terminal.sh        ← echo 기반 UI
-│       └── ui_zenity.sh          ← zenity GUI UI
+│       ├── ui_yad.sh             ← yad 검색 GUI (zenity 상위호환)
+│       └── ui_zenity.sh          ← zenity GUI UI (폴백)
 ├── domain/
 │   ├── packages.sh               ← 패키지 목록 정의
 │   ├── termux_env.sh             ← Termux 환경 로직
@@ -266,7 +268,7 @@ Termux_XFCE/
 │   └── locale_ko.sh              ← 한글 로케일 옵트인 (LD_PRELOAD gettext 후킹)
 ├── assets/
 │   └── force_gettext.c           ← gettext 후킹 C 소스 (→ force_gettext.so)
-├── tests/                        ← 자동화 테스트 122개
+├── tests/                        ← 자동화 테스트 142개
 └── app-installer/                ← 앱 추가 설치 GUI (Git Submodule)
 ```
 

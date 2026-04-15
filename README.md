@@ -56,7 +56,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--gpu` | `INSTALL_GPU=true` | Install GPU acceleration |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | Install GPU dev tools |
 | `--korean-locale` | `KOREAN_LOCALE=true` | Enable Korean locale opt-in (see "Korean Locale") |
-| `--locale-zip <path>` | `LOCALE_ZIP=` | Path to .mo catalog zip (Release asset) |
+| `--locale-zip <path>` | `KOREAN_LOCALE_ZIP=` | Path to .mo catalog zip (Release asset) |
 
 ## Usage
 
@@ -201,20 +201,21 @@ Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git
 ## Tests
 
 ```bash
-bash tests/run_tests.sh              # all 122 tests
+bash tests/run_tests.sh              # all 142 tests
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
 
 | Suite | Count | Coverage |
 |-------|-------|----------|
-| ports | 13 | adapter contract compliance |
-| adapters | 15 | pkg_termux, ui_terminal |
-| domain_termux | 36 | termux_env logic |
-| domain_xfce | 26 | xfce_env logic |
-| domain_proot | 37 | proot_env logic |
-| app_installer | 31 | installer script validation |
-| **Total** | **158** | **All pass on real device** |
+| ports | 7 | adapter contract compliance |
+| adapters | 12 | pkg_termux, ui_terminal |
+| domain_termux | 25 | termux_env logic |
+| domain_xfce | 18 | xfce_env logic |
+| domain_proot | 25 | proot_env logic |
+| app_installer | 40 | installer script validation |
+| prun_ld_preload | 15 | prun / LD_PRELOAD regression |
+| **Total** | **142** | **All pass on real device** |
 
 ## Android System Optimization
 
@@ -257,7 +258,8 @@ Termux_XFCE/
 │       ├── pkg_ubuntu.sh         ← Ubuntu apt adapter
 │       ├── pkg_arch.sh           ← Arch pacman adapter
 │       ├── ui_terminal.sh        ← echo-based UI
-│       └── ui_zenity.sh          ← zenity GUI UI
+│       ├── ui_yad.sh             ← yad searchable GUI (zenity superset)
+│       └── ui_zenity.sh          ← zenity GUI UI (fallback)
 ├── domain/
 │   ├── packages.sh               ← package list definitions
 │   ├── termux_env.sh             ← Termux environment logic
@@ -266,7 +268,7 @@ Termux_XFCE/
 │   └── locale_ko.sh              ← Korean locale opt-in (LD_PRELOAD gettext hook)
 ├── assets/
 │   └── force_gettext.c           ← gettext hooking C source (→ force_gettext.so)
-├── tests/                        ← 122 automated tests
+├── tests/                        ← 142 automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
 ```
 

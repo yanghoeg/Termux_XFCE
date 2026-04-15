@@ -38,21 +38,26 @@ ui_select() {
     shift 2
     local options=("$@")
 
+    # yad --radiolist 는 첫 컬럼을 라디오 버튼으로 사용하므로 TRUE/FALSE 를 prepend
+    # (zenity 어댑터와 동일 패턴). print-column=2 로 값 컬럼만 출력시켜 파싱 단순화.
     local rows=()
+    local first=TRUE
     for opt in "${options[@]}"; do
-        rows+=("$opt")
+        rows+=("$first" "$opt")
+        first=FALSE
     done
 
     local result
     result=$(yad --list --radiolist \
         --title="$title" \
         --text="$prompt" \
-        --column="항목" \
-        --search-column=1 \
+        --column="선택:RD" --column="항목:TEXT" \
+        --print-column=2 \
+        --search-column=2 \
         "${rows[@]}" \
         --width=500 --height=400 --center 2>/dev/null) || return 1
 
-    # yad는 "항목|" 형태로 반환 → 구분자 제거
+    # yad 는 "값|" 형태로 반환 → trailing 구분자 제거
     echo "${result%|}"
 }
 

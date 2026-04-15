@@ -255,23 +255,13 @@ setup_proot_conky() {
 
     mkdir -p "$config_dst"
 
-    local conky_src="${SCRIPT_DIR:-}/tar/conky/.config"
+    # install.sh:28-35이 curl-pipe 실행을 git clone으로 재시작하므로 SCRIPT_DIR은 항상 존재
+    # (과거엔 conky.tar.gz wget 폴백이 있었으나 해당 아티팩트 미발행 → 제거)
+    local conky_src="${SCRIPT_DIR}/tar/conky/.config"
     if [ -d "$conky_src" ]; then
-        # 로컬 repo에서 직접 복사
         cp -rn "$conky_src/." "$config_dst/"
     else
-        # curl 파이프 실행 시 원격 다운로드
-        local repo_base="https://github.com/yanghoeg/Termux_XFCE/raw/main"
-        local tmp="${HOME}/.cache/termux-xfce-install"
-        mkdir -p "$tmp"
-        wget -q "${repo_base}/conky.tar.gz" -O "${tmp}/conky.tar.gz"
-        local tmpextract
-        tmpextract=$(mktemp -d "${tmp}/conky-XXXXXX")
-        tar -xzf "${tmp}/conky.tar.gz" -C "$tmpextract"
-        rm -f "${tmp}/conky.tar.gz"
-        [ -d "${tmpextract}/.config/conky" ]    && cp -r "${tmpextract}/.config/conky"    "$config_dst/"
-        [ -d "${tmpextract}/.config/neofetch" ] && cp -r "${tmpextract}/.config/neofetch" "$config_dst/"
-        rm -rf "$tmpextract"
+        ui_warn "conky 소스 디렉토리를 찾을 수 없습니다: ${conky_src}"
     fi
 
     # 이모지 폰트 복사

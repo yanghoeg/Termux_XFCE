@@ -570,11 +570,13 @@ _setup_app_installer() {
     local desktop="$PREFIX/share/applications/app-installer.desktop"
 
     if [ ! -f "$bin" ]; then
-        cat > "$bin" << 'EOF'
+        # SCRIPT_DIR은 install.sh 실행 시점 기준 — curl-pipe(~/.termux-xfce-installer),
+        # 수동 clone(~/Termux_XFCE) 양쪽 모두 정확한 경로를 기록한다.
+        cat > "$bin" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
 # GTK4 zenity: Zink+Turnip GLX 스왑체인 크래시 방지
 export GSK_RENDERER=cairo
-exec bash /data/data/com.termux/files/home/Termux_XFCE/app-installer/install.sh "$@"
+exec bash ${SCRIPT_DIR}/app-installer/install.sh "\$@"
 EOF
         chmod +x "$bin"
     fi
