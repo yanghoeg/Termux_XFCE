@@ -56,6 +56,7 @@ setup_termux_shortcuts() {
     _setup_start_xfce
     _setup_kill_termux_x11
     _setup_prun
+    _setup_prun_gui
     _setup_cp2menu
     _setup_app_installer
 }
@@ -560,6 +561,31 @@ else
     exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
         -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
 fi
+EOF
+
+    chmod +x "$bin"
+}
+
+# prun-gui: proot GUI 앱 실행 시 로딩 알림 표시
+# proot-distro login은 콜드 스타트에 10–30초 걸려 사용자가 실행 여부를 알기 어려움
+# → notify-send로 "로딩 중" 토스트를 먼저 띄우고 prun exec
+_setup_prun_gui() {
+    local bin="$PREFIX/bin/prun-gui"
+
+    cat > "$bin" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 사용: prun-gui "AppName" -- <proot 내부 명령...>
+# "--" 는 선택. 없으면 $1 이후 전부 명령으로 간주.
+NAME="${1:-App}"; shift
+[ "${1:-}" = "--" ] && shift
+
+if command -v notify-send >/dev/null 2>&1; then
+    notify-send -t 30000 -i system-run \
+        "$NAME" "로딩 중... (proot 컨테이너 기동, 최대 30초)" \
+        >/dev/null 2>&1 &
+fi
+
+exec prun "$@"
 EOF
 
     chmod +x "$bin"
