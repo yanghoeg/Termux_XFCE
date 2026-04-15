@@ -17,6 +17,8 @@ parse_cli_args() {
     export INSTALL_GPU_DEV="${INSTALL_GPU_DEV:-}"
     export SKIP_PROOT="${SKIP_PROOT:-false}"
     export PROOT_ONLY="${PROOT_ONLY:-false}"
+    export KOREAN_LOCALE="${KOREAN_LOCALE:-false}"
+    export KOREAN_LOCALE_ZIP="${KOREAN_LOCALE_ZIP:-}"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -32,6 +34,10 @@ parse_cli_args() {
                 INSTALL_GPU=true; shift ;;
             --gpu-dev)
                 INSTALL_GPU_DEV=true; shift ;;
+            --korean-locale)
+                KOREAN_LOCALE=true; shift ;;
+            --locale-zip)
+                KOREAN_LOCALE_ZIP="$2"; KOREAN_LOCALE=true; shift 2 ;;
             --help|-h)
                 _cli_usage; exit 0 ;;
             *)
@@ -52,6 +58,8 @@ _cli_usage() {
       --proot-only        proot만 설치 (Termux native 설정 생략, 추가 distro용)
       --gpu               GPU 가속 설치
       --gpu-dev           GPU 개발 도구 설치
+      --korean-locale         XFCE 한글 로케일 강제 적용 (LD_PRELOAD 기반)
+      --locale-zip <path>     한글 로케일 .mo 카탈로그 zip 경로 (--korean-locale 자동 활성화)
   -h, --help              이 도움말 출력
 
 환경변수:
@@ -60,10 +68,13 @@ _cli_usage() {
   INSTALL_GPU=true        --gpu 와 동일
   SKIP_PROOT=true         --no-proot 와 동일
   PROOT_ONLY=true         --proot-only 와 동일
+  KOREAN_LOCALE=true      --korean-locale 와 동일
+  KOREAN_LOCALE_ZIP=path  --locale-zip 과 동일
 
 예시:
   bash install.sh --user yanghoeg --distro archlinux --gpu
   bash install.sh --user yanghoeg --distro ubuntu --proot-only
+  bash install.sh --korean-locale --locale-zip ~/Downloads/locale.zip
   DISTRO=ubuntu USERNAME=user bash install.sh
 EOF
 }

@@ -105,6 +105,7 @@ esac
 source "$SCRIPT_DIR/domain/packages.sh"
 source "$SCRIPT_DIR/domain/termux_env.sh"
 source "$SCRIPT_DIR/domain/xfce_env.sh"
+source "$SCRIPT_DIR/domain/locale_ko.sh"
 source "$SCRIPT_DIR/domain/proot_env.sh"
 
 # -----------------------------------------------------------------------------
@@ -158,6 +159,12 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     fi
     unset _login_shell
     setup_xfce_autostart
+
+    # 한글 로케일(LD_PRELOAD 기반) — 옵트인: --korean-locale + --locale-zip
+    if [ "${KOREAN_LOCALE:-false}" = "true" ]; then
+        ui_info "=== [XFCE] 한글 로케일 강제 적용 ==="
+        setup_korean_locale_native
+    fi
 
     ui_info "=== [3/4] 한글 입력기 설치 ==="
     setup_termux_korean
