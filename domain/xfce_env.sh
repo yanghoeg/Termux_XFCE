@@ -181,9 +181,21 @@ _setup_autostart_config() {
 # Why: _setup_autostart_config가 cp -rn로 보호되어 재설치 시 신규 terminalrc가 적용되지 않음
 # Note: "MesloLGS NF"는 romkatv/p10k-media 전용 이름이며 ryanoasis Meslo.zip의 family는
 #       "MesloLGS Nerd Font Mono" — fc-match로 확인함 (fallback 방지)
+# Note: xfce4-terminal ≥ 1.1은 terminalrc → xfconf xml로 이관됨 → 양쪽 모두 갱신
 _migrate_terminal_font() {
+    local target="MesloLGS Nerd Font Mono 12"
+    local old='Cascadia Mono PL|MesloLGS NF'
+
+    # 1) terminalrc (xfce4-terminal < 1.1)
     local rc="$HOME/.config/xfce4/terminal/terminalrc"
-    [ -f "$rc" ] || return 0
-    grep -qE '^FontName=(Cascadia Mono PL|MesloLGS NF)' "$rc" 2>/dev/null || return 0
-    sed -i -E 's#^FontName=(Cascadia Mono PL|MesloLGS NF).*#FontName=MesloLGS Nerd Font Mono 12#' "$rc"
+    if [ -f "$rc" ] && grep -qE "^FontName=($old)" "$rc" 2>/dev/null; then
+        sed -i -E "s#^FontName=($old).*#FontName=${target}#" "$rc"
+    fi
+
+    # 2) xfconf xml (xfce4-terminal ≥ 1.1 — 최초 실행 시 terminalrc를 xfconf로 이관,
+    #   이후 terminalrc는 무시됨. 설치 후 재로그인에서 이관이 일어나도 cover하도록 xml도 수정)
+    local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-terminal.xml"
+    if [ -f "$xml" ] && grep -qE "name=\"font-name\"[^/]*value=\"($old)" "$xml" 2>/dev/null; then
+        sed -i -E "s#(name=\"font-name\"[^/]*value=)\"($old)[^\"]*\"#\\1\"${target}\"#" "$xml"
+    fi
 }

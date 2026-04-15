@@ -21,6 +21,7 @@ setup_termux_base() {
     _install_base_packages
     _setup_aliases
     _setup_locale
+    _setup_xdg_runtime
     _setup_gpu_env
     _setup_zsh_p10k
 }
@@ -173,7 +174,7 @@ _setup_locale() {
 export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
-export XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+# XDG_RUNTIME_DIR은 _setup_xdg_runtime 블록에서 관리 (mode 700 user-private)
 export XMODIFIERS=@im=fcitx5
 export GTK_IM_MODULE=fcitx5
 export QT_IM_MODULE=fcitx5
@@ -182,6 +183,34 @@ LOCALE
 
     while IFS= read -r rc; do
         _append_to_rc "# termux-xfce-locale" "$block" "$rc"
+    done < <(_rc_targets)
+}
+
+# XDG runtime dir: mode 700 user-private ($PREFIX/var/run/user/$UID)
+# Why: 구버전 _setup_locale가 XDG_RUNTIME_DIR=$TMPDIR(mode 1777, world-writable)을 심어
+#      dbus가 "can be written by others" 경고를 띄우며 session bus를 반쯤 고장냄
+#      → flameshot/xfdesktop의 DBus 경고도 여기서 파생됨
+_setup_xdg_runtime() {
+    # 구버전 라인 제거 (마이그레이션)
+    while IFS= read -r rc; do
+        [ -f "$rc" ] || continue
+        sed -i '\#^export XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"$#d' "$rc" 2>/dev/null || true
+    done < <(_rc_targets)
+
+    local block
+    block=$(cat << 'XDGRT'
+
+# termux-xfce-xdg-runtime
+XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
+if [ ! -d "$XDG_RUNTIME_DIR" ]; then
+    mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null && chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
+fi
+export XDG_RUNTIME_DIR
+XDGRT
+)
+
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-xdg-runtime" "$block" "$rc"
     done < <(_rc_targets)
 }
 
@@ -331,6 +360,12 @@ _setup_start_xfce() {
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 
+# XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
+XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
+mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
+chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
+export XDG_RUNTIME_DIR
+
 # ─── dbus 중복 감지: 1 초과이면 현황 다이얼로그 표시 ──────────
 DBUS_COUNT=$(pgrep -c dbus-daemon 2>/dev/null || echo 0)
 if [ "$DBUS_COUNT" -gt 1 ]; then
@@ -415,7 +450,6 @@ if [ -n "$GPU_MODEL" ]; then
     # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
     #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
     env DISPLAY="$XDISPLAY" \
-        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
         TU_DEBUG=noconform \
@@ -429,7 +463,6 @@ if [ -n "$GPU_MODEL" ]; then
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
     env DISPLAY="$XDISPLAY" \
-        XDG_RUNTIME_DIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_NO_ERROR=1 \
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \

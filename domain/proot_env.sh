@@ -251,24 +251,27 @@ setup_proot_conky() {
     local username="$PROOT_USER"
     local config_dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.config"
 
-    [ -d "${config_dst}/conky" ] && return 0  # 멱등성
+    if [ ! -d "${config_dst}/conky" ]; then
+        mkdir -p "$config_dst"
 
-    mkdir -p "$config_dst"
+        # install.sh:28-35이 curl-pipe 실행을 git clone으로 재시작하므로 SCRIPT_DIR은 항상 존재
+        # (과거엔 conky.tar.gz wget 폴백이 있었으나 해당 아티팩트 미발행 → 제거)
+        local conky_src="${SCRIPT_DIR}/tar/conky/.config"
+        if [ -d "$conky_src" ]; then
+            cp -rn "$conky_src/." "$config_dst/"
+        else
+            ui_warn "conky 소스 디렉토리를 찾을 수 없습니다: ${conky_src}"
+        fi
 
-    # install.sh:28-35이 curl-pipe 실행을 git clone으로 재시작하므로 SCRIPT_DIR은 항상 존재
-    # (과거엔 conky.tar.gz wget 폴백이 있었으나 해당 아티팩트 미발행 → 제거)
-    local conky_src="${SCRIPT_DIR}/tar/conky/.config"
-    if [ -d "$conky_src" ]; then
-        cp -rn "$conky_src/." "$config_dst/"
-    else
-        ui_warn "conky 소스 디렉토리를 찾을 수 없습니다: ${conky_src}"
+        # 이모지 폰트 복사
+        local emoji_src="$HOME/.fonts/NotoColorEmoji-Regular.ttf"
+        local emoji_dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fonts/"
+        mkdir -p "$emoji_dst"
+        [ -f "$emoji_src" ] && cp "$emoji_src" "$emoji_dst"
     fi
 
-    # 이모지 폰트 복사
-    local emoji_src="$HOME/.fonts/NotoColorEmoji-Regular.ttf"
-    local emoji_dst="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${username}/.fonts/"
-    mkdir -p "$emoji_dst"
-    [ -f "$emoji_src" ] && cp "$emoji_src" "$emoji_dst"
+    # *.sh 실행권한 보정 (항상 실행 — git index가 100755로 반영되기 전 구버전 설치본 커버)
+    find "${config_dst}/conky" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
 }
 
 # proot 제거 (테스트용 distro 정리)

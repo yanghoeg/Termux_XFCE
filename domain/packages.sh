@@ -32,6 +32,7 @@ PKGS_TERMUX_XFCE=(
     wmctrl
     pavucontrol-qt
     fontconfig-utils   # fc-cache/fc-match: Nerd Font 폰트 캐시 갱신용 (xfce 의존성에 미포함)
+    libsimdutf         # libvte(xfce4-terminal) 런타임 의존성 (Termux 26.x+에서 자동 pull 안 됨)
 )
 
 # CLI 강화 도구
