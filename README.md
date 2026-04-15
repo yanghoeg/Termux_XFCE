@@ -55,6 +55,8 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 | `--proot-only` | `PROOT_ONLY=true` | proot only (skip Termux native setup, for adding a 2nd distro) |
 | `--gpu` | `INSTALL_GPU=true` | Install GPU acceleration |
 | `--gpu-dev` | `INSTALL_GPU_DEV=true` | Install GPU dev tools |
+| `--korean-locale` | `KOREAN_LOCALE=true` | Enable Korean locale opt-in (see "Korean Locale") |
+| `--locale-zip <path>` | `LOCALE_ZIP=` | Path to .mo catalog zip (Release asset) |
 
 ## Usage
 
@@ -112,6 +114,37 @@ zink glxgears
 > **Note**: If the XFCE4 compositor (xfwm4) causes a black screen,  
 > go to Settings → Window Manager Tweaks → Compositor → uncheck "Enable display compositing"
 
+## Korean Locale (optional)
+
+Display XFCE menus / settings / app UI in Korean. Termux's bionic libc does not support `setlocale(LC_MESSAGES)`, so the usual "XFCE language setting" path won't work. We bypass this using an **LD_PRELOAD-based gettext hook**.
+
+> This approach is based on the method shared by **흡혈귀왕 at 미코 (Mini Device Korea)**. Thanks! 🙏
+
+### Usage
+
+```bash
+# 1) Enable Korean locale + point to locale.zip (downloaded from Release asset)
+bash install.sh --distro archlinux --user yanghoeg --korean-locale --locale-zip ~/Downloads/locale.zip
+
+# 2) Start XFCE in Korean mode
+tx11start --xstartup "$HOME/bin/startxfce4-ko"
+```
+
+### Components
+
+| File | Role |
+|------|------|
+| `assets/force_gettext.c` | C source hooking gettext/dgettext/dcgettext + GTK label/button/menu/dialog symbols (built with `clang -shared`) |
+| `domain/locale_ko.sh` | `setup_korean_locale_native()` — places .mo catalogs, builds `.so`, creates `startxfce4-ko` wrapper |
+| `$PREFIX/lib/force_gettext.so` | Runtime-injected shared object |
+| `$HOME/bin/startxfce4-ko` | Wrapper that launches XFCE in Korean mode (with DBus autostart) |
+
+`locale.zip` (~163MB of glibc .mo catalogs) is distributed separately as a **GitHub Release asset**, not bundled in the repo.
+
+### Verified apps
+
+GIMP, Inkscape, Audacity, Thunderbird, VLC (proot), XFCE Settings Manager — menus, dialogs, and tooltips render in Korean.
+
 ## Shell (zsh + Powerlevel10k)
 
 The installer sets **zsh** as the default shell and configures Powerlevel10k automatically.
@@ -152,11 +185,16 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 
 ## App Installer
 
-Extra apps (VLC, LibreOffice, Thunderbird, etc.) can be installed via the GUI:
+Extra apps (GIMP, Inkscape, Audacity, VLC, LibreOffice, Thunderbird, etc.) can be installed via the GUI:
 
 ```bash
 app-installer
 ```
+
+- **yad-based search UI** — type app name/description to filter instantly (falls back to zenity if yad is missing)
+- **Categories** — Graphics / Media / Office / Browser / Dev / Security / Utility / Communication
+- **Termux native first** — GIMP, Inkscape, Audacity, Thunderbird install as Termux native (Korean locale supported)
+- **proot auto-routing** — VLC (needs Qt GUI), LibreOffice, VSCode etc. install inside proot
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
@@ -224,7 +262,10 @@ Termux_XFCE/
 │   ├── packages.sh               ← package list definitions
 │   ├── termux_env.sh             ← Termux environment logic
 │   ├── xfce_env.sh               ← XFCE setup logic
-│   └── proot_env.sh              ← proot logic (Ubuntu/Arch common)
+│   ├── proot_env.sh              ← proot logic (Ubuntu/Arch common)
+│   └── locale_ko.sh              ← Korean locale opt-in (LD_PRELOAD gettext hook)
+├── assets/
+│   └── force_gettext.c           ← gettext hooking C source (→ force_gettext.so)
 ├── tests/                        ← 122 automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
 ```
