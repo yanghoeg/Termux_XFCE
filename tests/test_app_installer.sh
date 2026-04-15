@@ -241,50 +241,51 @@ it "install_vlc.sh — bash 문법 오류 없음" _test_vlc_script_syntax
 # install_thunderbird.sh — 구조 검증
 # =============================================================================
 
-describe "install_thunderbird.sh — 구조 검증"
+# 헥사고날 리팩토링 이후 installer 파일은 ${APP_DIR}/domain/installers/ 하위에 있음
+describe "thunderbird.sh — 구조 검증"
 
 _test_thunderbird_script_syntax() {
-    bash -n "${APP_DIR}/install_thunderbird.sh" 2>/dev/null
+    bash -n "${APP_DIR}/domain/installers/thunderbird.sh" 2>/dev/null
 }
-it "install_thunderbird.sh — bash 문법 오류 없음" _test_thunderbird_script_syntax
+it "thunderbird.sh — bash 문법 오류 없음" _test_thunderbird_script_syntax
 
-_test_thunderbird_has_desktop_copy() {
-    # share/applications에 desktop 파일을 복사해야 함
-    grep -q "share/applications" "${APP_DIR}/install_thunderbird.sh"
+_test_thunderbird_has_desktop_register() {
+    # desktop_register 헬퍼 호출 확인 (share/applications 직접 접근은 desktop.sh가 담당)
+    grep -q "desktop_register" "${APP_DIR}/domain/installers/thunderbird.sh"
 }
-it "install_thunderbird.sh — share/applications에 desktop 파일 복사" _test_thunderbird_has_desktop_copy
+it "thunderbird.sh — desktop_register 헬퍼 사용" _test_thunderbird_has_desktop_register
 
 # =============================================================================
-# install_wine.sh — 로직 구조 검증
+# wine.sh — 로직 구조 검증
 # =============================================================================
 
-describe "install_wine.sh — 구조 검증"
+describe "wine.sh — 구조 검증"
 
 _test_wine_script_syntax() {
-    bash -n "${APP_DIR}/install_wine.sh" 2>/dev/null
+    bash -n "${APP_DIR}/domain/installers/wine.sh" 2>/dev/null
 }
-it "install_wine.sh — bash 문법 오류 없음" _test_wine_script_syntax
+it "wine.sh — bash 문법 오류 없음" _test_wine_script_syntax
 
 _test_wine_has_proot_distro_check() {
-    grep -q 'PROOT_DISTRO' "${APP_DIR}/install_wine.sh"
+    grep -q 'PROOT_DISTRO' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
+it "wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
 
 _test_wine_has_native_fallback() {
-    grep -q '_install_wine_native' "${APP_DIR}/install_wine.sh"
+    grep -q '_install_wine_native\|which wine' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
+it "wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
 
 _test_wine_creates_desktop() {
-    grep -q 'WINE_DESKTOP' "${APP_DIR}/install_wine.sh" && \
-    grep -q '\[Desktop Entry\]' "${APP_DIR}/install_wine.sh"
+    grep -q 'WINE_DESKTOP' "${APP_DIR}/domain/installers/wine.sh" && \
+    grep -q '\[Desktop Entry\]' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
+it "wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
 
 _test_wine_idempotent_check() {
-    grep -q 'which wine' "${APP_DIR}/install_wine.sh"
+    grep -q 'which wine' "${APP_DIR}/domain/installers/wine.sh"
 }
-it "install_wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
+it "wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
 
 # =============================================================================
 # 모든 스크립트 문법 검사

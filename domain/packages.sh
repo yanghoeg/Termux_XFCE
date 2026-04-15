@@ -18,6 +18,7 @@ PKGS_TERMUX_BASE=(
     ncurses-utils
     dbus
     pulseaudio
+    yad            # app-installer 검색 가능 GUI (zenity 대체)
 )
 
 # XFCE 데스크탑 환경

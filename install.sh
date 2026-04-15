@@ -56,7 +56,9 @@ source "$SCRIPT_DIR/ports/ui.sh"
 # 3. Output Adapter 선택 — UI
 # (DISPLAY, zenity 가용 여부로 자동 선택)
 # -----------------------------------------------------------------------------
-if [ -n "${DISPLAY:-}" ] && command -v zenity &>/dev/null; then
+if [ -n "${DISPLAY:-}" ] && command -v yad &>/dev/null; then
+    source "$SCRIPT_DIR/adapters/output/ui_yad.sh"
+elif [ -n "${DISPLAY:-}" ] && command -v zenity &>/dev/null; then
     source "$SCRIPT_DIR/adapters/output/ui_zenity.sh"
 else
     source "$SCRIPT_DIR/adapters/output/ui_terminal.sh"
