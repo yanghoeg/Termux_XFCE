@@ -64,7 +64,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 startXFCE          # XFCE 데스크탑 시작
 ubuntu             # Ubuntu proot 진입
 archlinux          # Arch Linux proot 진입
-prun code          # proot 앱을 Termux에서 직접 실행
+prun libreoffice   # proot 앱을 Termux에서 직접 실행
 cp2menu            # proot .desktop 파일을 XFCE 메뉴에 복사
 app-installer      # 앱 추가 설치/제거 GUI
 ```
@@ -170,7 +170,7 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 
 | 분류 | 패키지 |
 |------|--------|
-| 기본 유틸 | wget, unzip, dbus, pulseaudio |
+| 기본 유틸 | wget, unzip, dbus, pulseaudio, yad |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
 | CLI | git, zsh, eza, bat, fzf, htop, jq, neofetch |
 | 한글 입력 | fcitx5, fcitx5-hangul, fcitx5-configtool |
@@ -194,14 +194,14 @@ app-installer
 - **yad 기반 검색 UI** — 앱 이름/설명 타이핑으로 즉시 필터링 (yad 미설치 시 zenity 폴백)
 - **카테고리 구분** — 그래픽/미디어/오피스/브라우저/개발/보안/유틸/소통
 - **Termux native 우선** — GIMP, Inkscape, Audacity, Thunderbird는 Termux 네이티브 (한글 로케일 지원)
-- **proot 자동 라우팅** — VLC(Qt GUI 필요), LibreOffice, VSCode 등은 proot 내부 설치
+- **proot 자동 라우팅** — VLC, LibreOffice 등은 proot 내부 설치; VSCode(code-oss), Burp Suite는 Termux native
 
 소스: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
 ## 테스트
 
 ```bash
-bash tests/run_tests.sh              # 전체 (142개)
+bash tests/run_tests.sh              # 전체 (141개)
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
@@ -213,9 +213,9 @@ bash tests/run_tests.sh app_installer
 | domain_termux | 25 | termux_env 로직 |
 | domain_xfce | 18 | xfce_env 로직 |
 | domain_proot | 25 | proot_env 로직 |
-| app_installer | 40 | 설치 스크립트 검증 |
+| app_installer | 39 | 설치 스크립트 검증 |
 | prun_ld_preload | 15 | prun / LD_PRELOAD 회귀 |
-| **합계** | **142** | **실기기 전체 통과** |
+| **합계** | **141** | **실기기 전체 통과** |
 
 ## Android 시스템 최적화
 
@@ -268,7 +268,7 @@ Termux_XFCE/
 │   └── locale_ko.sh              ← 한글 로케일 옵트인 (LD_PRELOAD gettext 후킹)
 ├── assets/
 │   └── force_gettext.c           ← gettext 후킹 C 소스 (→ force_gettext.so)
-├── tests/                        ← 자동화 테스트 142개
+├── tests/                        ← 자동화 테스트 141개
 └── app-installer/                ← 앱 추가 설치 GUI (Git Submodule)
 ```
 
