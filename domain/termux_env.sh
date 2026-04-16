@@ -19,11 +19,13 @@ setup_termux_base() {
     pkg_update
     pkg_upgrade
     _install_base_packages
+    # zsh+p10k 먼저 설정 (~/.zshrc 생성) → 이후 _setup_aliases 등이 zshrc에도 블록을 반영
+    # (과거: _setup_aliases가 먼저 실행되어 clean install 시 zshrc에 alias 블록 누락)
+    _setup_zsh_p10k
     _setup_aliases
     _setup_locale
     _setup_xdg_runtime
     _setup_gpu_env
-    _setup_zsh_p10k
 }
 
 setup_termux_gpu() {
@@ -367,8 +369,10 @@ chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
 export XDG_RUNTIME_DIR
 
 # ─── dbus 중복 감지: 1 초과이면 현황 다이얼로그 표시 ──────────
-DBUS_COUNT=$(pgrep -c dbus-daemon 2>/dev/null || echo 0)
-if [ "$DBUS_COUNT" -gt 1 ]; then
+# pgrep -c는 match 없을 때 "0\n" 출력 + exit 1 → "|| echo 0" 체이닝 시 "0\n0" 되어
+# [ -gt ] 가 "integer expected"로 실패 → exit 1 대신 매칭 리스트로 세고 공백 제거
+DBUS_COUNT=$(pgrep dbus-daemon 2>/dev/null | wc -l | tr -d ' ')
+if [ "${DBUS_COUNT:-0}" -gt 1 ]; then
     # 기존 X 소켓으로 DISPLAY 자동 감지
     _SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
     if [ -n "$_SOCK" ]; then
