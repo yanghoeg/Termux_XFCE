@@ -1,8 +1,8 @@
 #!/data/data/com.termux/files/usr/bin/bash
 # =============================================================================
 # 비대화형 app-installer 배치 테스트
-# 사용법: bash tests/batch_test_appinstaller.sh archlinux yanghoeg
-#         bash tests/batch_test_appinstaller.sh ubuntu    yanghoeg
+# 사용법: bash tests/batch_test_appinstaller.sh archlinux <username>
+#         bash tests/batch_test_appinstaller.sh ubuntu    <username>
 # =============================================================================
 set -uo pipefail
 

@@ -35,16 +35,16 @@ curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh 
 
 ```bash
 # 옵션 지정
-bash install.sh --distro ubuntu --user yanghoeg --gpu
-bash install.sh --distro archlinux --user yanghoeg
+bash install.sh --distro ubuntu --user <username> --gpu
+bash install.sh --distro archlinux --user <username>
 bash install.sh --no-proot          # Termux native만
-bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
-bash install.sh --distro archlinux --user yanghoeg --proot-only  # 두 번째 distro 추가
+bash install.sh --distro ubuntu --user <username> --gpu --gpu-dev
+bash install.sh --distro archlinux --user <username> --proot-only  # 두 번째 distro 추가
 ```
 
 ```bash
 # 환경변수로 지정
-DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
+DISTRO=ubuntu USERNAME=<username> INSTALL_GPU=true bash install.sh
 ```
 
 | 옵션 | 환경변수 | 설명 |
@@ -124,7 +124,7 @@ XFCE 메뉴/설정/앱 UI를 한글로 표시할 수 있습니다. Termux의 bio
 
 ```bash
 # 1) 한글 로케일 옵션 활성화 + locale.zip 경로 지정 (Release asset에서 다운로드)
-bash install.sh --distro archlinux --user yanghoeg --korean-locale --locale-zip ~/Downloads/locale.zip
+bash install.sh --distro archlinux --user <username> --korean-locale --locale-zip ~/Downloads/locale.zip
 
 # 2) 한글 모드로 XFCE 기동
 tx11start --xstartup "$HOME/bin/startxfce4-ko"

@@ -4,9 +4,9 @@
 # -----------------------------------------------------------------------------
 # Input Adapter — CLI/환경변수 기반 비대화형 실행
 # 사용법:
-#   DISTRO=archlinux USERNAME=yanghoeg bash install.sh
+#   DISTRO=archlinux USERNAME=<username> bash install.sh
 #   또는
-#   bash install.sh --distro archlinux --user yanghoeg --no-gpu
+#   bash install.sh --distro archlinux --user <username> --no-gpu
 # =============================================================================
 
 parse_cli_args() {
@@ -64,7 +64,7 @@ _cli_usage() {
 
 환경변수:
   DISTRO=archlinux        --distro 와 동일
-  USERNAME=yanghoeg       --user 와 동일
+  USERNAME=<username>     --user 와 동일
   INSTALL_GPU=true        --gpu 와 동일
   SKIP_PROOT=true         --no-proot 와 동일
   PROOT_ONLY=true         --proot-only 와 동일
@@ -72,9 +72,9 @@ _cli_usage() {
   KOREAN_LOCALE_ZIP=path  --locale-zip 과 동일
 
 예시:
-  bash install.sh --user yanghoeg --distro archlinux --gpu
-  bash install.sh --user yanghoeg --distro ubuntu --proot-only
+  bash install.sh --user <username> --distro archlinux --gpu
+  bash install.sh --user <username> --distro ubuntu --proot-only
   bash install.sh --korean-locale --locale-zip ~/Downloads/locale.zip
-  DISTRO=ubuntu USERNAME=user bash install.sh
+  DISTRO=ubuntu USERNAME=<username> bash install.sh
 EOF
 }

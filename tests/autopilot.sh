@@ -7,7 +7,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$SCRIPT_DIR"
 
 LOG="$SCRIPT_DIR/tests/autopilot.log"
-PROOT_USER="yanghoeg"
+PROOT_USER="${PROOT_USER:-tester}"
 exec > >(tee -a "$LOG") 2>&1
 
 echo "=============================="

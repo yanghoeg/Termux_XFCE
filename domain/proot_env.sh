@@ -275,7 +275,7 @@ setup_proot_conky() {
 }
 
 # proot 제거 (테스트용 distro 정리)
-# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=yanghoeg bash -c 'source domain/proot_env.sh && teardown_proot'
+# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=<username> bash -c 'source domain/proot_env.sh && teardown_proot'
 teardown_proot() {
     local distro="${PROOT_DISTRO:?PROOT_DISTRO 필요}"
     local user="${PROOT_USER:-}"
