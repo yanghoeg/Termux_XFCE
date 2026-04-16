@@ -508,8 +508,7 @@ _detect_and_log_gpu() {
 
     # Adreno 세대별 안내
     if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
-        ui_info "Adreno 8xx (Snapdragon 8 Elite) 감지 — Mesa 26+ KGSL 드라이버 권장"
-        ui_warn "구형 mesa-vulkan-kgsl deb는 8xx와 호환되지 않을 수 있습니다."
+        ui_info "Adreno 8xx (Snapdragon 8 Elite) 감지 — Termux mesa-vulkan-icd-freedreno 26+ 사용"
     elif [[ "$gpu_model" =~ [Aa]dreno.*7[0-9]{2} ]]; then
         ui_info "Adreno 7xx (Snapdragon 8 Gen1~3) 감지 — KGSL 드라이버 최적 지원"
     elif [[ "$gpu_model" =~ [Aa]dreno.*6[0-9]{2} ]]; then
