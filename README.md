@@ -35,16 +35,16 @@ curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh 
 
 ```bash
 # with options
-bash install.sh --distro ubuntu --user yanghoeg --gpu
-bash install.sh --distro archlinux --user yanghoeg
+bash install.sh --distro ubuntu --user <username> --gpu
+bash install.sh --distro archlinux --user <username>
 bash install.sh --no-proot          # Termux native only
-bash install.sh --distro ubuntu --user yanghoeg --gpu --gpu-dev
-bash install.sh --distro archlinux --user yanghoeg --proot-only  # add 2nd distro
+bash install.sh --distro ubuntu --user <username> --gpu --gpu-dev
+bash install.sh --distro archlinux --user <username> --proot-only  # add 2nd distro
 ```
 
 ```bash
 # via environment variables
-DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
+DISTRO=ubuntu USERNAME=<username> INSTALL_GPU=true bash install.sh
 ```
 
 | Option | Env var | Description |
@@ -124,7 +124,7 @@ Display XFCE menus / settings / app UI in Korean. Termux's bionic libc does not 
 
 ```bash
 # 1) Enable Korean locale + point to locale.zip (downloaded from Release asset)
-bash install.sh --distro archlinux --user yanghoeg --korean-locale --locale-zip ~/Downloads/locale.zip
+bash install.sh --distro archlinux --user <username> --korean-locale --locale-zip ~/Downloads/locale.zip
 
 # 2) Start XFCE in Korean mode
 tx11start --xstartup "$HOME/bin/startxfce4-ko"

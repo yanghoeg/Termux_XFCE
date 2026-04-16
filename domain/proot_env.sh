@@ -190,39 +190,21 @@ setup_proot_fancybash() {
 }
 
 setup_proot_hardware_accel() {
-    ui_info "${PROOT_DISTRO} GPU 가속(mesa-vulkan-kgsl) 설치"
+    # Termux 호스트의 mesa-vulkan-icd-freedreno를 VK_ICD_FILENAMES로 공유 (setup_proot_env 참조).
+    # proot 내에는 확인용 유틸(glxinfo / vulkaninfo)만 설치.
+    ui_info "${PROOT_DISTRO} GPU: Termux Turnip ICD 재사용 + 확인 유틸 설치"
 
     case "$PROOT_DISTRO" in
         ubuntu)
-            # Adreno 세대 확인: 8xx는 구형 deb 비호환 → Zink 사용
-            local gpu_model
-            gpu_model=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
-            if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
-                ui_warn "Adreno 8xx 감지 — 구형 kgsl deb 미지원. Zink(MESA_LOADER_DRIVER_OVERRIDE=zink) 사용."
-                ui_warn "최신 드라이버: https://github.com/lfdevs/mesa-for-android-container"
-                return 0
-            fi
-
-            local deb="mesa-vulkan-kgsl_24.1.0-devel-20240120_arm64.deb"
-            local url="https://github.com/yanghoeg/Termux_XFCE/raw/main/${deb}"
-
-            if proot_exec bash -c "
-                wget -q '${url}' -O /tmp/${deb} &&
-                apt install -y /tmp/${deb} &&
-                rm -f /tmp/${deb}
-            "; then
-                ui_info "mesa-vulkan-kgsl 설치 완료 (Adreno 6xx/7xx KGSL 드라이버)"
-            else
-                ui_warn "kgsl deb 설치 실패 — Zink(소프트웨어) 폴백으로 계속 진행합니다."
-            fi
+            proot_exec sudo apt install -y --no-install-recommends \
+                mesa-utils vulkan-tools 2>/dev/null || \
+                ui_warn "Ubuntu proot: mesa-utils/vulkan-tools 설치 실패 — 확인 유틸 없이 진행"
+            ui_info "Ubuntu proot GPU: Termux Turnip ICD → Zink 경로 활성화됨"
             ;;
         archlinux)
-            ui_info "Arch proot: Zink + Termux Turnip ICD 설정"
-            # mesa-demos (glxinfo/glxgears) + vulkan-tools 설치
             # proot systemd hook 실패는 무시 (패키지 자체는 설치됨)
             proot_exec sudo pacman -S --noconfirm --needed \
                 mesa vulkan-tools mesa-demos 2>/dev/null || true
-            # VK_ICD_FILENAMES는 setup_proot_env()의 .bashrc에서 이미 설정됨
             ui_info "Arch proot GPU: Termux Turnip ICD → Zink 경로 활성화됨"
             ;;
     esac
@@ -275,7 +257,7 @@ setup_proot_conky() {
 }
 
 # proot 제거 (테스트용 distro 정리)
-# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=yanghoeg bash -c 'source domain/proot_env.sh && teardown_proot'
+# 사용법: PROOT_DISTRO=ubuntu PROOT_USER=<username> bash -c 'source domain/proot_env.sh && teardown_proot'
 teardown_proot() {
     local distro="${PROOT_DISTRO:?PROOT_DISTRO 필요}"
     local user="${PROOT_USER:-}"

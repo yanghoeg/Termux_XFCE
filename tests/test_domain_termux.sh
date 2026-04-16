@@ -303,7 +303,7 @@ _test_gpu_adreno_7xx() {
 }
 it "Adreno 7xx GPU 감지 시 7xx 메시지를 출력한다" _test_gpu_adreno_7xx
 
-_test_gpu_adreno_8xx_warn() {
+_test_gpu_adreno_8xx_info() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     reset_ui_output
@@ -312,14 +312,14 @@ _test_gpu_adreno_8xx_warn() {
         local gpu_model="Adreno (TM) 830"
         ui_info "감지된 GPU: ${gpu_model}"
         if [[ "$gpu_model" =~ [Aa]dreno.*8[0-9]{2} ]]; then
-            ui_warn "구형 mesa-vulkan-kgsl deb는 8xx와 호환되지 않을 수 있습니다."
+            ui_info "Adreno 8xx (Snapdragon 8 Elite) 감지 — Termux mesa-vulkan-icd-freedreno 26+ 사용"
         fi
     }
     _detect_and_log_gpu_mocked
-    assert_ui_contains "WARN: 구형 mesa-vulkan-kgsl"
+    assert_ui_contains "Adreno 8xx"
     cleanup_sandbox "$sb"
 }
-it "Adreno 8xx GPU 감지 시 경고를 출력한다" _test_gpu_adreno_8xx_warn
+it "Adreno 8xx GPU 감지 시 8xx 정보를 출력한다" _test_gpu_adreno_8xx_info
 
 # =============================================================================
 # setup_termux_gpu — 패키지 설치 루프
