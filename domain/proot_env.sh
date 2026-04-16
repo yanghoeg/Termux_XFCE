@@ -254,6 +254,12 @@ setup_proot_conky() {
 
     # *.sh 실행권한 보정 (항상 실행 — git index가 100755로 반영되기 전 구버전 설치본 커버)
     find "${config_dst}/conky" -type f -name "*.sh" -exec chmod +x {} + 2>/dev/null || true
+
+    # 구버전 Alterf.conf의 `backend = "glx";` 제거 (conky가 인식 못해 경고 유발)
+    local alterf="${config_dst}/conky/Alterf/Alterf.conf"
+    if [ -f "$alterf" ] && grep -q '^\s*backend\s*=' "$alterf" 2>/dev/null; then
+        sed -i '/^\s*backend\s*=/d' "$alterf"
+    fi
 }
 
 # proot 제거 (테스트용 distro 정리)
