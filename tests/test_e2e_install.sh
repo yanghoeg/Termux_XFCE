@@ -302,6 +302,129 @@ _test_zsh_p10k_precedes_aliases() {
 it "setup_termux_base()에서 _setup_zsh_p10k가 _setup_aliases보다 먼저 호출된다" _test_zsh_p10k_precedes_aliases
 
 # =============================================================================
+# Regression #4: fcitx5 중복 autostart
+# -----------------------------------------------------------------------------
+# Issue #2 — "Failed to create addon: dbus Unable to request dbus name.
+#            Is there another fcitx already running?"
+# 원인: _setup_korean_env가 ~/.config/autostart/fcitx5.desktop을 항상 생성
+#      fcitx5 패키지가 제공하는 시스템 autostart와 중복 → 두 인스턴스 실행
+# =============================================================================
+
+describe "e2e — fcitx5 autostart 중복 방지 (issue #2 regression)"
+
+_test_skips_user_autostart_when_system_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 시스템 autostart 존재 시뮬레이션 (fcitx5 패키지가 제공하는 파일)
+    mkdir -p "${PREFIX}/etc/xdg/autostart"
+    cat > "${PREFIX}/etc/xdg/autostart/org.fcitx.Fcitx5.desktop" << 'EOF'
+[Desktop Entry]
+Name=Fcitx 5
+Exec=fcitx5
+EOF
+
+    _setup_korean_env
+
+    # 사용자 autostart는 생성되지 않아야 함
+    local user_autostart="$HOME/.config/autostart/fcitx5.desktop"
+    if [ -f "$user_autostart" ]; then
+        echo "[ASSERT] 시스템 autostart 있음에도 사용자 autostart가 생성됨" >&2
+        return 1
+    fi
+
+    cleanup_sandbox "$sb"
+}
+it "시스템 autostart 존재 시 사용자 autostart를 생성하지 않는다" _test_skips_user_autostart_when_system_exists
+
+_test_creates_user_autostart_when_system_missing() {
+    # 시스템 autostart가 없는 구버전 Termux 대응 폴백
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 시스템 autostart 없음 (sandbox 초기 상태 그대로)
+
+    _setup_korean_env
+
+    local user_autostart="$HOME/.config/autostart/fcitx5.desktop"
+    assert_file_exists "$user_autostart"
+    assert_file_contains "$user_autostart" "Exec=fcitx5"
+
+    cleanup_sandbox "$sb"
+}
+it "시스템 autostart 없으면 사용자 autostart를 폴백 생성한다" _test_creates_user_autostart_when_system_missing
+
+_test_cleanup_removes_duplicate_user_autostart() {
+    # 기존 설치본 마이그레이션 — 이미 잘못 생성된 사용자 autostart 제거
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 시스템 autostart + 기존 사용자 autostart 둘 다 존재하는 상태
+    mkdir -p "${PREFIX}/etc/xdg/autostart"
+    echo "[Desktop Entry]" > "${PREFIX}/etc/xdg/autostart/org.fcitx.Fcitx5.desktop"
+    mkdir -p "$HOME/.config/autostart"
+    echo "[Desktop Entry]" > "$HOME/.config/autostart/fcitx5.desktop"
+
+    _cleanup_duplicate_fcitx_autostart
+
+    if [ -f "$HOME/.config/autostart/fcitx5.desktop" ]; then
+        echo "[ASSERT] 중복 사용자 autostart가 제거되지 않음" >&2
+        return 1
+    fi
+
+    cleanup_sandbox "$sb"
+}
+it "기존 설치본의 중복 사용자 autostart를 제거한다 (마이그레이션)" _test_cleanup_removes_duplicate_user_autostart
+
+_test_cleanup_preserves_user_autostart_if_no_system() {
+    # 시스템 autostart 없는 구버전에서 사용자 autostart는 남겨둬야 함
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 시스템 autostart 없음, 사용자 autostart만 존재
+    mkdir -p "$HOME/.config/autostart"
+    echo "[Desktop Entry]" > "$HOME/.config/autostart/fcitx5.desktop"
+
+    _cleanup_duplicate_fcitx_autostart
+
+    assert_file_exists "$HOME/.config/autostart/fcitx5.desktop"
+
+    cleanup_sandbox "$sb"
+}
+it "시스템 autostart 없으면 사용자 autostart를 제거하지 않는다" _test_cleanup_preserves_user_autostart_if_no_system
+
+# =============================================================================
+# Regression #5: conky backend 설정
+# -----------------------------------------------------------------------------
+# Issue #2 — "conky: Unknown setting 'backend'"
+# 원인: Alterf.conf의 `backend = "glx";`를 현재 conky가 인식 못함
+# =============================================================================
+
+describe "e2e — conky Alterf.conf 유효성 (issue #2 regression)"
+
+_test_alterf_conf_has_no_backend_setting() {
+    local conf="${REPO_ROOT}/tar/conky/.config/conky/Alterf/Alterf.conf"
+    assert_file_exists "$conf"
+
+    # backend 라인이 있으면 실패
+    if grep -q '^\s*backend\s*=' "$conf"; then
+        echo "[ASSERT] Alterf.conf에 conky가 인식 못하는 'backend =' 설정 재도입됨" >&2
+        grep -n '^\s*backend\s*=' "$conf" >&2
+        return 1
+    fi
+}
+it "Alterf.conf에 'backend =' 설정이 없다" _test_alterf_conf_has_no_backend_setting
+
+_test_alterf_conf_still_has_core_settings() {
+    # backend 제거하다가 다른 설정까지 날리지 않았는지 sanity check
+    local conf="${REPO_ROOT}/tar/conky/.config/conky/Alterf/Alterf.conf"
+    assert_file_contains "$conf" 'alignment'
+    assert_file_contains "$conf" 'maximum_width'
+    assert_file_contains "$conf" 'use_xft'
+}
+it "Alterf.conf의 핵심 설정은 유지된다" _test_alterf_conf_still_has_core_settings
+
+# =============================================================================
 # 결과 출력
 # =============================================================================
 print_results

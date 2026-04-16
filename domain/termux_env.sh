@@ -51,6 +51,7 @@ setup_termux_korean() {
     for p in "${PKGS_TERMUX_KOREAN[@]}"; do
         pkg_is_installed "$p" || pkg_install "$p"
     done
+    _cleanup_duplicate_fcitx_autostart
     _setup_korean_env
 }
 
@@ -337,6 +338,17 @@ ZSHRC
 
 _setup_korean_env() {
     # fcitx5 자동시작 설정
+    # Note: fcitx5 패키지가 시스템 autostart를 이미 제공
+    #       ($PREFIX/etc/xdg/autostart/org.fcitx.Fcitx5.desktop)
+    #       사용자 autostart를 중복 생성하면 XFCE4가 둘 다 실행 →
+    #       두 번째 인스턴스가 dbus 이름 경쟁에서 실패하며
+    #       "Failed to create addon: dbus Unable to request dbus name" 경고 유발
+    #       → 시스템 autostart 있으면 스킵, 없는 구버전 Termux에서만 폴백 생성
+    local system_autostart="${PREFIX}/etc/xdg/autostart/org.fcitx.Fcitx5.desktop"
+    if [ -f "$system_autostart" ]; then
+        return 0
+    fi
+
     local autostart_dir="$HOME/.config/autostart"
     mkdir -p "$autostart_dir"
 
@@ -351,6 +363,18 @@ Exec=fcitx5 -d
 Hidden=false
 X-GNOME-Autostart-enabled=true
 EOF
+}
+
+# 기존 설치본에서 잘못 생성된 사용자 autostart 제거 (중복 fcitx5 방지)
+# Why: 이전 버전 _setup_korean_env가 시스템 autostart 존재 여부 확인 없이
+#      ~/.config/autostart/fcitx5.desktop을 항상 생성 → 이관 필요
+_cleanup_duplicate_fcitx_autostart() {
+    local system_autostart="${PREFIX}/etc/xdg/autostart/org.fcitx.Fcitx5.desktop"
+    local user_autostart="$HOME/.config/autostart/fcitx5.desktop"
+    # 시스템 autostart가 있고 사용자 autostart도 있으면 중복 → 사용자 것 제거
+    if [ -f "$system_autostart" ] && [ -f "$user_autostart" ]; then
+        rm -f "$user_autostart"
+    fi
 }
 
 _setup_start_xfce() {
