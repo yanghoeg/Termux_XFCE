@@ -42,6 +42,12 @@ PKGS_TERMUX_CLI=(
     eza
     bat
     fzf
+    ripgrep
+    fd
+    zoxide
+    lazygit
+    starship
+    atuin
     htop
     jq
     netcat-openbsd
