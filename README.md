@@ -64,7 +64,7 @@ DISTRO=ubuntu USERNAME=yanghoeg INSTALL_GPU=true bash install.sh
 startXFCE          # Start XFCE desktop
 ubuntu             # Enter Ubuntu proot
 archlinux          # Enter Arch Linux proot
-prun code          # Run proot app from Termux terminal
+prun libreoffice   # Run proot app from Termux terminal
 cp2menu            # Copy proot .desktop files to XFCE menu
 app-installer      # GUI for installing/removing extra apps
 ```
@@ -170,7 +170,7 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 
 | Category | Packages |
 |----------|----------|
-| Base utils | wget, unzip, dbus, pulseaudio |
+| Base utils | wget, unzip, dbus, pulseaudio, yad |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
 | CLI | git, zsh, eza, bat, fzf, htop, jq, neofetch |
 | Korean IME | fcitx5, fcitx5-hangul, fcitx5-configtool |
@@ -194,14 +194,14 @@ app-installer
 - **yad-based search UI** — type app name/description to filter instantly (falls back to zenity if yad is missing)
 - **Categories** — Graphics / Media / Office / Browser / Dev / Security / Utility / Communication
 - **Termux native first** — GIMP, Inkscape, Audacity, Thunderbird install as Termux native (Korean locale supported)
-- **proot auto-routing** — VLC (needs Qt GUI), LibreOffice, VSCode etc. install inside proot
+- **proot auto-routing** — VLC, LibreOffice etc. install inside proot; VSCode (code-oss), Burp Suite install as Termux native
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
 ## Tests
 
 ```bash
-bash tests/run_tests.sh              # all 142 tests
+bash tests/run_tests.sh              # all 141 tests
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh app_installer
 ```
@@ -213,9 +213,9 @@ bash tests/run_tests.sh app_installer
 | domain_termux | 25 | termux_env logic |
 | domain_xfce | 18 | xfce_env logic |
 | domain_proot | 25 | proot_env logic |
-| app_installer | 40 | installer script validation |
+| app_installer | 39 | installer script validation |
 | prun_ld_preload | 15 | prun / LD_PRELOAD regression |
-| **Total** | **142** | **All pass on real device** |
+| **Total** | **141** | **All pass on real device** |
 
 ## Android System Optimization
 
@@ -268,7 +268,7 @@ Termux_XFCE/
 │   └── locale_ko.sh              ← Korean locale opt-in (LD_PRELOAD gettext hook)
 ├── assets/
 │   └── force_gettext.c           ← gettext hooking C source (→ force_gettext.so)
-├── tests/                        ← 142 automated tests
+├── tests/                        ← 141 automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
 ```
 
