@@ -26,6 +26,7 @@ PKGS_TERMUX_XFCE=(
     xfce4
     xfce4-goodies
     firefox
+    flameshot          # 스크린샷 — native 필수 (proot에선 dbus EXTERNAL auth UID 불일치로 작동 불가)
     papirus-icon-theme
     termux-x11-nightly
     libuv
@@ -114,7 +115,7 @@ PKGS_PROOT_UBUNTU_BASE=(
 )
 
 PKGS_PROOT_UBUNTU_DESKTOP=(
-    flameshot
+    # flameshot: Termux native로 이동 (proot dbus EXTERNAL auth UID 불일치)
     conky-all
     zenity
     onboard
@@ -161,7 +162,7 @@ PKGS_PROOT_ARCH_BASE=(
 )
 
 PKGS_PROOT_ARCH_DESKTOP=(
-    flameshot
+    # flameshot: Termux native로 이동 (proot dbus EXTERNAL auth UID 불일치)
     conky
     zenity
     onboard

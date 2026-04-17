@@ -612,28 +612,19 @@ fi
 # unset만으론 부족 → proot 내부 첫 명령을 env -u LD_PRELOAD로 감싼다
 unset LD_PRELOAD
 
-# DBus 세션 버스 전파: XFCE autostart → proot 앱(flameshot 등)이 호스트 session bus 연결
-# --shared-tmp이 $TMPDIR → /tmp 매핑하므로 소켓 경로도 변환
-DBUS_ENV=""
-if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
-    _ADDR="$DBUS_SESSION_BUS_ADDRESS"
-    [ -n "${TMPDIR:-}" ] && _ADDR="${_ADDR//$TMPDIR/\/tmp}"
-    DBUS_ENV="DBUS_SESSION_BUS_ADDRESS=$_ADDR"
-fi
+# 참고: 호스트 DBUS_SESSION_BUS_ADDRESS를 proot에 전파해도 작동하지 않음
+# proot이 getuid()를 위조(예: 10381)하지만 커널 SCM_CREDENTIALS는 실제 UID(10380)를 보고
+# → dbus EXTERNAL auth에서 UID 불일치 → 인증 실패
+# dbus가 필요한 앱(flameshot 등)은 Termux native로 설치하여 해결
 
-# XDG_RUNTIME_DIR bind: dbus 소켓이 여기 있을 수 있음 (호스트 경로 그대로 노출)
-BIND_ARGS=""
-if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "${XDG_RUNTIME_DIR}" ]; then
-    BIND_ARGS="--bind ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}"
-fi
-
+# DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
 # 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
 if [ $# -eq 0 ]; then
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp $BIND_ARGS \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" $DBUS_ENV "${PROOT_SHELL:-bash}" --login
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
 else
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp $BIND_ARGS \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" $DBUS_ENV "$@"
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
 fi
 EOF
 

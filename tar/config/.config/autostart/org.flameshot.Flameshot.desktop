@@ -37,7 +37,7 @@ Keywords[nl_NL]=flameshot;schermfoto;screenshot;schermafdruk;vastleggen;schermop
 Keywords[es]=flameshot;screenshot;capture;shutter;captura;
 Keywords[de]=flameshot;screenshot;Bildschirmfoto;Aufnahme;
 Keywords[pt_BR]=flameshot;screenshot;captura de tela;captura;shutter;
-Exec=prun flameshot
+Exec=flameshot
 Icon=org.flameshot.Flameshot
 Terminal=false
 Type=Application
@@ -64,7 +64,7 @@ Name[uk]=Налаштувати
 Name[es]=Configurar
 Name[de]=Einstellungen
 Name[pt_BR]=Configurar
-Exec=prun flameshot config
+Exec=flameshot config
 
 [Desktop Action Capture]
 Name=Take screenshot
@@ -81,7 +81,7 @@ Name[nl_NL]=Schermfoto maken
 Name[es]=Tomar captura de pantalla
 Name[de]=Bildschirmfoto aufnehmen
 Name[pt_BR]=Capturar tela
-Exec=prun flameshot gui --delay 500
+Exec=flameshot gui --delay 500
 
 [Desktop Action Launcher]
 Name=Open launcher
@@ -91,4 +91,4 @@ Name[nl_NL]=Starter openen
 Name[sk]=Otvoriť spúšťač
 Name[zh_CN]=打开启动器
 Name[pt_BR]=Abrir lançador
-Exec=prun flameshot launcher
+Exec=flameshot launcher
