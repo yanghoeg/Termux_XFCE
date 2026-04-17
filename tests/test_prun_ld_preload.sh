@@ -311,72 +311,39 @@ _test_prun_config_sourced_in_sandbox() {
 it "sandbox에 termux-xfce config 파일이 존재한다 (운영환경 반영)" _test_prun_config_sourced_in_sandbox
 
 # =============================================================================
-# _setup_prun — DBus session bus 전파 (flameshot 등 proot GUI 앱)
+# _setup_prun — proot dbus 제한 사항 확인
 # =============================================================================
+# proot getuid() 위조 vs 커널 SCM_CREDENTIALS 불일치 →
+# dbus EXTERNAL auth 실패 → dbus 필요 앱(flameshot)은 Termux native로 이동
 
-describe "_setup_prun — DBus session bus 전파"
+describe "_setup_prun — dbus 전파 없음 (UID 불일치로 작동 불가)"
 
-_test_prun_has_dbus_propagation() {
+_test_prun_no_dbus_env_code() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
     _setup_prun
 
-    assert_file_contains "${PREFIX}/bin/prun" "DBUS_SESSION_BUS_ADDRESS"
-    assert_file_contains "${PREFIX}/bin/prun" "DBUS_ENV"
-    cleanup_sandbox "$sb"
-}
-it "prun 스크립트에 DBUS_SESSION_BUS_ADDRESS 전파 로직이 있다" _test_prun_has_dbus_propagation
-
-_test_prun_has_xdg_runtime_bind() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_prun
-
-    assert_file_contains "${PREFIX}/bin/prun" "XDG_RUNTIME_DIR"
-    assert_file_contains "${PREFIX}/bin/prun" "BIND_ARGS"
-    cleanup_sandbox "$sb"
-}
-it "prun 스크립트에 XDG_RUNTIME_DIR bind-mount 로직이 있다" _test_prun_has_xdg_runtime_bind
-
-_test_prun_dbus_tmpdir_translation() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_prun
-
-    # TMPDIR → /tmp 경로 변환 로직이 있어야 함
-    assert_file_contains "${PREFIX}/bin/prun" 'TMPDIR'
-    assert_file_contains "${PREFIX}/bin/prun" '/tmp'
-    cleanup_sandbox "$sb"
-}
-it "prun 스크립트에 TMPDIR→/tmp 소켓 경로 변환이 있다" _test_prun_dbus_tmpdir_translation
-
-_test_prun_dbus_env_on_exec_line() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_prun
-
-    # proot-distro exec 라인에 $DBUS_ENV가 포함되어야 함
-    local exec_line
-    exec_line=$(grep "proot-distro login" "${PREFIX}/bin/prun" | head -1)
-    if ! echo "$exec_line" | grep -q 'BIND_ARGS'; then
-        echo "[ASSERT] proot-distro login 라인에 \$BIND_ARGS가 없다" >&2
-        echo "[ASSERT] actual: ${exec_line}" >&2
-        return 1
-    fi
-    # exec 라인(env -u LD_PRELOAD가 포함된 비주석 라인)에 DBUS_ENV 포함
-    local env_line
-    env_line=$(grep -v '^#' "${PREFIX}/bin/prun" | grep "env -u LD_PRELOAD" | head -1)
-    if ! echo "$env_line" | grep -q 'DBUS_ENV'; then
-        echo "[ASSERT] env 라인에 \$DBUS_ENV가 없다" >&2
-        echo "[ASSERT] actual: ${env_line}" >&2
+    # DBUS_ENV 변수 사용이 없어야 함 (주석 제외)
+    if grep -v '^\s*#' "${PREFIX}/bin/prun" | grep -q 'DBUS_ENV'; then
+        echo "[ASSERT] prun에 작동 불가능한 DBUS_ENV 코드가 남아있다" >&2
+        cleanup_sandbox "$sb"
         return 1
     fi
     cleanup_sandbox "$sb"
 }
-it "proot-distro exec 라인에 BIND_ARGS와 DBUS_ENV가 포함된다" _test_prun_dbus_env_on_exec_line
+it "prun에 작동 불가능한 DBUS_ENV 전파 코드가 없다" _test_prun_no_dbus_env_code
+
+_test_prun_has_uid_mismatch_comment() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_prun
+
+    # UID 불일치 원인이 주석으로 기록되어 있어야 함
+    assert_file_contains "${PREFIX}/bin/prun" "SCM_CREDENTIALS"
+    cleanup_sandbox "$sb"
+}
+it "prun에 dbus UID 불일치 원인이 주석으로 기록되어 있다" _test_prun_has_uid_mismatch_comment
 
 print_results
