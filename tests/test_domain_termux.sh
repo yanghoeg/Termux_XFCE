@@ -440,4 +440,83 @@ _test_kill_x11_idempotent() {
 }
 it "멱등성 — kill_termux_x11이 이미 있으면 덮어쓰지 않는다" _test_kill_x11_idempotent
 
+# =============================================================================
+# _migrate_desktop_to_prun_gui — 기존 prun → prun-gui 마이그레이션
+# =============================================================================
+
+describe "termux_env — _migrate_desktop_to_prun_gui"
+
+_test_migrate_prun_to_prun_gui() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # prun 사용하는 .desktop 파일 생성
+    cat > "${PREFIX}/share/applications/testapp.desktop" << 'EOF'
+[Desktop Entry]
+Name=TestApp
+Exec=bash -c "prun testapp --flag </dev/null >/dev/null 2>&1 &"
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    assert_file_contains "${PREFIX}/share/applications/testapp.desktop" "prun-gui 'TestApp' --"
+    cleanup_sandbox "$sb"
+}
+it "prun 사용 .desktop 파일을 prun-gui로 변환한다" _test_migrate_prun_to_prun_gui
+
+_test_migrate_skips_already_prun_gui() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # 이미 prun-gui 사용 중인 .desktop
+    cat > "${PREFIX}/share/applications/already.desktop" << 'EOF'
+[Desktop Entry]
+Name=Already
+Exec=bash -c "prun-gui Already -- someapp </dev/null >/dev/null 2>&1 &"
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    local count
+    count=$(grep -c "prun-gui" "${PREFIX}/share/applications/already.desktop")
+    assert_eq "1" "$count" "멱등성: prun-gui가 1번만 있어야 한다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — 이미 prun-gui인 파일은 건너뛴다" _test_migrate_skips_already_prun_gui
+
+_test_migrate_skips_non_proot() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # prun을 사용하지 않는 native .desktop
+    cat > "${PREFIX}/share/applications/native.desktop" << 'EOF'
+[Desktop Entry]
+Name=NativeApp
+Exec=firefox
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    assert_file_contains "${PREFIX}/share/applications/native.desktop" "^Exec=firefox"
+    cleanup_sandbox "$sb"
+}
+it "prun 미사용 .desktop 파일은 건드리지 않는다" _test_migrate_skips_non_proot
+
+_test_migrate_uses_name_field() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    cat > "${PREFIX}/share/applications/named.desktop" << 'EOF'
+[Desktop Entry]
+Name=LibreOffice Writer
+Exec=bash -c "prun libreoffice --writer </dev/null >/dev/null 2>&1 &"
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    assert_file_contains "${PREFIX}/share/applications/named.desktop" "prun-gui 'LibreOffice Writer' --"
+    cleanup_sandbox "$sb"
+}
+it "Name= 필드를 prun-gui 앱 이름으로 사용한다" _test_migrate_uses_name_field
+
 print_results
