@@ -486,6 +486,24 @@ _test_prun_no_dbus_propagation() {
 }
 it "prun에 작동 불가능한 DBUS 전파 코드가 없다" _test_prun_no_dbus_propagation
 
+_test_migrate_flameshot_native() {
+    # 기존 설치본에 Exec=prun flameshot이 있으면 마이그레이션으로 prun 제거되어야 함
+    local desktop="$HOME/.config/autostart/org.flameshot.Flameshot.desktop"
+    mkdir -p "$(dirname "$desktop")"
+    # 구 버전 시뮬레이션
+    printf '[Desktop Entry]\nExec=prun flameshot\n\n[Desktop Action Launcher]\nExec=prun flameshot launcher\n' > "$desktop"
+
+    source "${REPO_ROOT}/domain/xfce_env.sh"
+    _migrate_flameshot_native
+
+    if grep -q "Exec=prun " "$desktop" 2>/dev/null; then
+        echo "[ASSERT] 마이그레이션 후에도 prun이 남아있다: $(grep 'Exec=' "$desktop")" >&2
+        return 1
+    fi
+    assert_output_contains "$(grep '^Exec=' "$desktop" | head -1)" "flameshot"
+}
+it "기존 설치본의 flameshot autostart prun→native 마이그레이션" _test_migrate_flameshot_native
+
 # =============================================================================
 # 결과 출력
 # =============================================================================
