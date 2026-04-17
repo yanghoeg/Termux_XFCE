@@ -425,6 +425,246 @@ _test_alterf_conf_still_has_core_settings() {
 it "Alterf.conf의 핵심 설정은 유지된다" _test_alterf_conf_still_has_core_settings
 
 # =============================================================================
+# Regression #6: prun DBus session bus 전파
+# -----------------------------------------------------------------------------
+# Issue #2 — "flameshot: error: Unable to connect via DBus"
+# 원인: prun이 DISPLAY만 proot에 전달하고 DBUS_SESSION_BUS_ADDRESS를 누락
+#      → proot 내 flameshot이 호스트 session bus를 찾지 못함
+# 기존 테스트(test_prun_ld_preload.sh)는 "문자열이 파일에 있는가?" 정적 검사뿐이라
+# 이 버그를 놓침. 아래는 prun 스크립트를 실제 실행하여 변수 값을 검증하는 동작 테스트.
+# =============================================================================
+
+# 헬퍼: prun 스크립트에서 exec 전까지의 변수 빌드 로직을 추출·실행
+_run_prun_env_logic() {
+    local prun_script="${PREFIX}/bin/prun"
+    local test_script="${TMPDIR:-/tmp}/_prun_env_test_$$.sh"
+
+    # exec proot-distro 이전 라인만 추출 (변수 빌드 로직)
+    sed '/^[[:space:]]*exec proot-distro/,$d' "$prun_script" > "$test_script"
+    # 결과 변수 출력
+    cat >> "$test_script" << 'TAIL'
+echo "DBUS_ENV=${DBUS_ENV}"
+echo "BIND_ARGS=${BIND_ARGS}"
+TAIL
+    bash "$test_script" 2>/dev/null
+    rm -f "$test_script"
+}
+
+describe "e2e — prun DBus session bus 전파 동작 검증 (issue #2 regression)"
+
+_test_prun_translates_tmpdir_in_dbus_address() {
+    # prun이 DBUS_SESSION_BUS_ADDRESS의 Termux TMPDIR 경로를
+    # proot /tmp 으로 실제 변환하는지 검증
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local result
+    result=$(
+        export TMPDIR="/data/data/com.termux/files/usr/tmp"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/data/data/com.termux/files/usr/tmp/dbus-ABCDEF,guid=aaa"
+        unset XDG_RUNTIME_DIR   # bind 로직 격리
+        _run_prun_env_logic
+    )
+
+    local expected="DBUS_ENV=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-ABCDEF,guid=aaa"
+    assert_output_contains "$result" "$expected"
+
+    cleanup_sandbox "$sb"
+}
+it "TMPDIR 경로가 /tmp으로 실제 변환된다 (behavioral)" _test_prun_translates_tmpdir_in_dbus_address
+
+_test_prun_abstract_socket_unchanged() {
+    # abstract 소켓 주소는 파일 경로가 아니므로 TMPDIR 치환이 일어나지 않아야 함
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local result
+    result=$(
+        export TMPDIR="/data/data/com.termux/files/usr/tmp"
+        export DBUS_SESSION_BUS_ADDRESS="unix:abstract=/tmp/dbus-ABCDEF,guid=bbb"
+        unset XDG_RUNTIME_DIR
+        _run_prun_env_logic
+    )
+
+    # abstract 경로의 /tmp은 TMPDIR과 다르므로 변환 없어야 함
+    assert_output_contains "$result" "DBUS_ENV=DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dbus-ABCDEF,guid=bbb"
+
+    cleanup_sandbox "$sb"
+}
+it "abstract 소켓 주소는 변환 없이 그대로 전달된다 (behavioral)" _test_prun_abstract_socket_unchanged
+
+_test_prun_no_dbus_env_when_unset() {
+    # DBUS_SESSION_BUS_ADDRESS 미설정 시 DBUS_ENV가 빈 문자열이어야 함
+    # (터미널에서 직접 prun 호출하는 경우)
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local result
+    result=$(
+        unset DBUS_SESSION_BUS_ADDRESS
+        unset XDG_RUNTIME_DIR
+        _run_prun_env_logic
+    )
+
+    assert_output_contains "$result" "DBUS_ENV="
+    # DBUS_SESSION_BUS_ADDRESS= 값이 포함되면 안됨
+    if echo "$result" | grep -q "DBUS_ENV=DBUS_SESSION_BUS_ADDRESS"; then
+        echo "[ASSERT] DBUS 미설정인데 DBUS_ENV에 값이 들어감" >&2
+        echo "[ASSERT] actual: $result" >&2
+        return 1
+    fi
+
+    cleanup_sandbox "$sb"
+}
+it "DBUS_SESSION_BUS_ADDRESS 미설정 시 DBUS_ENV는 빈 문자열 (behavioral)" _test_prun_no_dbus_env_when_unset
+
+_test_prun_xdg_bind_when_dir_exists() {
+    # XDG_RUNTIME_DIR 디렉토리가 존재하면 --bind 인자가 생성되어야 함
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local xdg_dir="${sb}/usr/var/run/user/99999"
+    mkdir -p "$xdg_dir"
+
+    local result
+    result=$(
+        export XDG_RUNTIME_DIR="$xdg_dir"
+        unset DBUS_SESSION_BUS_ADDRESS
+        _run_prun_env_logic
+    )
+
+    assert_output_contains "$result" "BIND_ARGS=--bind ${xdg_dir}:${xdg_dir}"
+
+    cleanup_sandbox "$sb"
+}
+it "XDG_RUNTIME_DIR 존재 시 --bind 인자가 생성된다 (behavioral)" _test_prun_xdg_bind_when_dir_exists
+
+_test_prun_no_bind_when_xdg_dir_missing() {
+    # XDG_RUNTIME_DIR이 설정돼 있지만 디렉토리가 없으면 bind 안 해야 함
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local result
+    result=$(
+        export XDG_RUNTIME_DIR="/nonexistent/path/should/not/bind"
+        unset DBUS_SESSION_BUS_ADDRESS
+        _run_prun_env_logic
+    )
+
+    assert_output_contains "$result" "BIND_ARGS="
+    if echo "$result" | grep -q "BIND_ARGS=--bind"; then
+        echo "[ASSERT] 존재하지 않는 XDG_RUNTIME_DIR에 대해 bind가 생성됨" >&2
+        echo "[ASSERT] actual: $result" >&2
+        return 1
+    fi
+
+    cleanup_sandbox "$sb"
+}
+it "XDG_RUNTIME_DIR 디렉토리 미존재 시 --bind를 생성하지 않는다 (behavioral)" _test_prun_no_bind_when_xdg_dir_missing
+
+_test_prun_dbus_and_bind_combined() {
+    # DBus + XDG_RUNTIME_DIR 동시 설정 시 둘 다 올바르게 구성되는지
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local xdg_dir="${sb}/usr/var/run/user/99999"
+    mkdir -p "$xdg_dir"
+
+    local result
+    result=$(
+        export TMPDIR="/data/data/com.termux/files/usr/tmp"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/data/data/com.termux/files/usr/tmp/dbus-XYZ,guid=ccc"
+        export XDG_RUNTIME_DIR="$xdg_dir"
+        _run_prun_env_logic
+    )
+
+    assert_output_contains "$result" "DBUS_ENV=DBUS_SESSION_BUS_ADDRESS=unix:path=/tmp/dbus-XYZ,guid=ccc"
+    assert_output_contains "$result" "BIND_ARGS=--bind ${xdg_dir}:${xdg_dir}"
+
+    cleanup_sandbox "$sb"
+}
+it "DBus + XDG_RUNTIME_DIR 동시 설정 시 둘 다 올바르게 구성된다 (behavioral)" _test_prun_dbus_and_bind_combined
+
+# --- 체인 검증: flameshot autostart → prun → DBus 전파 ---
+
+describe "e2e — flameshot autostart → prun DBus 체인 검증 (issue #2 regression)"
+
+_test_flameshot_autostart_uses_prun() {
+    # flameshot autostart가 prun을 통해 실행되어야 proot DBus 전파가 적용됨
+    local desktop="${REPO_ROOT}/tar/config/.config/autostart/org.flameshot.Flameshot.desktop"
+    assert_file_exists "$desktop"
+
+    local exec_line
+    exec_line=$(grep '^Exec=' "$desktop" | head -1)
+    assert_output_contains "$exec_line" "prun flameshot"
+}
+it "flameshot autostart가 prun을 통해 실행된다" _test_flameshot_autostart_uses_prun
+
+_test_prun_exec_line_has_dbus_env_placeholder() {
+    # prun의 proot-distro exec 라인에 $DBUS_ENV가 있어야
+    # DBUS_SESSION_BUS_ADDRESS가 proot 내부로 전달됨
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    _setup_prun
+
+    local prun="${PREFIX}/bin/prun"
+    # 비주석 exec 라인 중 하나라도 $DBUS_ENV를 포함해야 함
+    local exec_lines
+    exec_lines=$(grep -v '^\s*#' "$prun" | grep 'proot-distro login')
+    if [ -z "$exec_lines" ]; then
+        echo "[ASSERT] prun에 proot-distro login 라인이 없다" >&2
+        return 1
+    fi
+
+    # 모든 exec 라인이 DBUS_ENV를 포함하는지 (인자 있는 분기 + 없는 분기 둘 다)
+    local missing=0
+    while IFS= read -r line; do
+        if ! echo "$line" | grep -q 'DBUS_ENV'; then
+            echo "[ASSERT] DBUS_ENV 누락 exec 라인: ${line}" >&2
+            missing=1
+        fi
+    done <<< "$exec_lines"
+    [ "$missing" -eq 0 ]
+
+    cleanup_sandbox "$sb"
+}
+it "prun의 모든 proot-distro exec 라인에 DBUS_ENV가 포함된다" _test_prun_exec_line_has_dbus_env_placeholder
+
+_test_composition_prun_after_setup_termux_base() {
+    # setup_termux_base() 실행 후 생성된 prun이 DBus 전파 로직을 가지고 있는지
+    # (composition 수준 — 개별 함수 호출이 아닌 전체 파이프라인)
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    setup_termux_base
+
+    local prun="${PREFIX}/bin/prun"
+    assert_file_exists "$prun"
+    assert_file_contains "$prun" "DBUS_SESSION_BUS_ADDRESS"
+    assert_file_contains "$prun" "DBUS_ENV"
+    assert_file_contains "$prun" "BIND_ARGS"
+
+    # 실제 동작도 확인: 번역 로직이 작동하는지
+    local result
+    result=$(
+        export TMPDIR="/data/data/com.termux/files/usr/tmp"
+        export DBUS_SESSION_BUS_ADDRESS="unix:path=/data/data/com.termux/files/usr/tmp/dbus-TEST,guid=ddd"
+        unset XDG_RUNTIME_DIR
+        _run_prun_env_logic
+    )
+    assert_output_contains "$result" "unix:path=/tmp/dbus-TEST,guid=ddd"
+
+    cleanup_sandbox "$sb"
+}
+it "setup_termux_base 후 prun이 DBus 전파를 포함한다 (composition + behavioral)" _test_composition_prun_after_setup_termux_base
+
+# =============================================================================
 # 결과 출력
 # =============================================================================
 print_results
