@@ -233,7 +233,7 @@ if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
     export MESA_NO_ERROR=1
     export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
     export MESA_GLES_VERSION_OVERRIDE=3.2
-    export MESA_VK_WSI_PRESENT_MODE=immediate
+    export MESA_VK_WSI_PRESENT_MODE=fifo
     # GTK4 GLX 스왑체인 크래시 방지 — Cairo 소프트 렌더러 강제
     export GSK_RENDERER=cairo
 fi
@@ -466,7 +466,7 @@ echo "Detected DISPLAY=${XDISPLAY}"
 
 LD_PRELOAD=/system/lib64/libskcodec.so pulseaudio --start \
     --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
-    --exit-idle-time=-1
+    --exit-idle-time=120
 
 LD_PRELOAD=/system/lib64/libskcodec.so pacmd load-module \
     module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1 2>/dev/null || true
@@ -485,7 +485,7 @@ if [ -n "$GPU_MODEL" ]; then
         MESA_NO_ERROR=1 \
         MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
         MESA_GLES_VERSION_OVERRIDE=3.2 \
-        MESA_VK_WSI_PRESENT_MODE=immediate \
+        MESA_VK_WSI_PRESENT_MODE=fifo \
         GSK_RENDERER=cairo \
         dbus-launch --exit-with-session xfce4-session &
 else
