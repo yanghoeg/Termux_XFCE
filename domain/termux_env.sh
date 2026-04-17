@@ -612,14 +612,28 @@ fi
 # unset만으론 부족 → proot 내부 첫 명령을 env -u LD_PRELOAD로 감싼다
 unset LD_PRELOAD
 
-# DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
+# DBus 세션 버스 전파: XFCE autostart → proot 앱(flameshot 등)이 호스트 session bus 연결
+# --shared-tmp이 $TMPDIR → /tmp 매핑하므로 소켓 경로도 변환
+DBUS_ENV=""
+if [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]; then
+    _ADDR="$DBUS_SESSION_BUS_ADDRESS"
+    [ -n "${TMPDIR:-}" ] && _ADDR="${_ADDR//$TMPDIR/\/tmp}"
+    DBUS_ENV="DBUS_SESSION_BUS_ADDRESS=$_ADDR"
+fi
+
+# XDG_RUNTIME_DIR bind: dbus 소켓이 여기 있을 수 있음 (호스트 경로 그대로 노출)
+BIND_ARGS=""
+if [ -n "${XDG_RUNTIME_DIR:-}" ] && [ -d "${XDG_RUNTIME_DIR}" ]; then
+    BIND_ARGS="--bind ${XDG_RUNTIME_DIR}:${XDG_RUNTIME_DIR}"
+fi
+
 # 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
 if [ $# -eq 0 ]; then
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp $BIND_ARGS \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" $DBUS_ENV "${PROOT_SHELL:-bash}" --login
 else
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp $BIND_ARGS \
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" $DBUS_ENV "$@"
 fi
 EOF
 
