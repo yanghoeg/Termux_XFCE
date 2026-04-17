@@ -71,6 +71,7 @@ setup_xfce_fancybash() {
 setup_xfce_autostart() {
     ui_info "자동시작 설정 (Conky, Flameshot)"
     _setup_autostart_config
+    _migrate_flameshot_native
     _migrate_terminal_font
 }
 
@@ -182,6 +183,17 @@ _setup_autostart_config() {
 # Note: "MesloLGS NF"는 romkatv/p10k-media 전용 이름이며 ryanoasis Meslo.zip의 family는
 #       "MesloLGS Nerd Font Mono" — fc-match로 확인함 (fallback 방지)
 # Note: xfce4-terminal ≥ 1.1은 terminalrc → xfconf xml로 이관됨 → 양쪽 모두 갱신
+# 기존 설치본의 flameshot autostart를 prun → native로 전환
+# Why: 6cb9166에서 flameshot을 Termux native로 이동했으나
+#      _setup_autostart_config의 cp -rn + 멱등 가드로 기존 파일이 업데이트되지 않음
+# Issue: #2 — proot dbus EXTERNAL auth UID 불일치로 flameshot DBus 연결 실패
+_migrate_flameshot_native() {
+    local desktop="$HOME/.config/autostart/org.flameshot.Flameshot.desktop"
+    [ -f "$desktop" ] || return 0
+    grep -q "Exec=prun " "$desktop" 2>/dev/null || return 0
+    sed -i 's#Exec=prun flameshot#Exec=flameshot#g' "$desktop"
+}
+
 _migrate_terminal_font() {
     local target="MesloLGS Nerd Font Mono 12"
     local old='Cascadia Mono PL|MesloLGS NF'
