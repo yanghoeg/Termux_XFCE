@@ -654,6 +654,27 @@ exec prun "$@"
 EOF
 
     chmod +x "$bin"
+
+    # 기존 .desktop 파일 중 prun을 쓰는 항목을 prun-gui로 마이그레이션
+    _migrate_desktop_to_prun_gui
+}
+
+# 기존 설치된 .desktop 파일의 Exec=...prun ... → prun-gui 마이그레이션
+# 신규 설치는 desktop_copy_from_proot / desktop_register가 처리하므로
+# 이 함수는 업그레이드 시 기존 파일만 패치
+_migrate_desktop_to_prun_gui() {
+    local apps_dir="$PREFIX/share/applications"
+    local f app_name
+    for f in "$apps_dir"/*.desktop; do
+        [ -f "$f" ] || continue
+        # 이미 prun-gui 사용 중이면 건너뜀
+        grep -q "prun-gui" "$f" 2>/dev/null && continue
+        # prun을 사용하는 .desktop만 대상
+        grep -q "prun " "$f" 2>/dev/null || continue
+        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-)
+        app_name="${app_name:-App}"
+        sed -i "s|\"prun |\"prun-gui '${app_name}' -- |g" "$f"
+    done
 }
 
 _setup_app_installer() {
@@ -736,7 +757,9 @@ if [[ "$action" == "Copy .desktop file" ]]; then
 
     filename=$(basename "$selected")
     cp "$selected" "$PREFIX/share/applications/"
-    sed -i "s|^Exec=\(.*\)$|Exec=prun \1|" \
+    app_name=$(grep -m1 '^Name=' "$PREFIX/share/applications/$filename" | cut -d= -f2-)
+    app_name="${app_name:-App}"
+    sed -i "s|^Exec=\(.*\)$|Exec=bash -c \"prun-gui '${app_name}' -- \1 </dev/null >/dev/null 2>\&1 \&\"|" \
         "$PREFIX/share/applications/$filename"
     zenity --info --text="복사 완료: $filename"
 
