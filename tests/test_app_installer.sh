@@ -299,6 +299,67 @@ _test_wine_idempotent_check() {
 }
 it "wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
 
+_test_wine_no_desktop_shell() {
+    ! grep -q '/desktop=shell' "${APP_DIR}/domain/installers/wine.sh"
+}
+it "wine.sh — explorer /desktop=shell 미사용 (Box64 호환)" _test_wine_no_desktop_shell
+
+_test_wine_has_dpi_sync() {
+    grep -q 'WINE_DPI' "${APP_DIR}/domain/installers/wine.sh" && \
+    grep -q 'LogPixels' "${APP_DIR}/domain/installers/wine.sh"
+}
+it "wine.sh — WINE_DPI 레지스트리 동기화 로직 있음" _test_wine_has_dpi_sync
+
+_test_wine_dpi_in_both_wrappers() {
+    # proot wrapper와 native wrapper 모두 DPI 지원해야 함
+    local proot_dpi native_dpi
+    proot_dpi=$(grep -c 'WINE_DPI' "${APP_DIR}/domain/installers/wine.sh")
+    [ "$proot_dpi" -ge 4 ]  # proot wrapper + native wrapper 각각 2회 이상
+}
+it "wine.sh — proot/native 양쪽 wrapper 모두 DPI 지원" _test_wine_dpi_in_both_wrappers
+
+# =============================================================================
+# Wine 앱 — 구조 검증
+# =============================================================================
+
+describe "Wine 앱 installer — 구조 검증"
+
+_test_wine_apps_have_wine_dependency() {
+    local failed=0
+    for app in kakaotalk notepadpp sevenzip; do
+        if ! grep -q 'app_is_installed_wine' "${INSTALLERS_DIR}/${app}.sh" 2>/dev/null; then
+            echo "[ASSERT] ${app}.sh — Wine 의존성 체크 없음" >&2
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+it "모든 Wine 앱 — Wine 설치 여부 체크 있음" _test_wine_apps_have_wine_dependency
+
+_test_wine_apps_create_desktop() {
+    local failed=0
+    for app in kakaotalk notepadpp sevenzip; do
+        if ! grep -q '\[Desktop Entry\]' "${INSTALLERS_DIR}/${app}.sh" 2>/dev/null; then
+            echo "[ASSERT] ${app}.sh — .desktop 생성 로직 없음" >&2
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+it "모든 Wine 앱 — .desktop 파일 생성 로직 있음" _test_wine_apps_create_desktop
+
+_test_wine_apps_desktop_uses_wine_cmd() {
+    local failed=0
+    for app in kakaotalk notepadpp sevenzip; do
+        if ! grep -q 'Exec=.*wine' "${INSTALLERS_DIR}/${app}.sh" 2>/dev/null; then
+            echo "[ASSERT] ${app}.sh — Exec에 wine 명령 없음" >&2
+            failed=1
+        fi
+    done
+    return "$failed"
+}
+it "모든 Wine 앱 — desktop Exec에 wine 명령 사용" _test_wine_apps_desktop_uses_wine_cmd
+
 # =============================================================================
 # 모든 installer 스크립트 문법 검사
 # =============================================================================
