@@ -428,9 +428,9 @@ _test_arch_nimf_success_writes_nimf_env() {
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
     # paru + nimf 설치 성공 mock
-    _install_paru()  { return 0; }
+    _install_yay()  { return 0; }
     proot_exec() {
-        # paru -S nimf → 성공
+        # yay -S nimf → 성공
         _record_call "proot_exec $*"
         return 0
     }
@@ -450,7 +450,7 @@ _test_arch_nimf_failure_falls_back_to_fcitx5() {
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
     # paru 설치 실패 mock → fcitx5 폴백 경로
-    _install_paru() { return 1; }
+    _install_yay() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -466,7 +466,7 @@ _test_arch_nimf_fcitx5_idempotent() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    _install_paru() { return 1; }
+    _install_yay() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
@@ -485,7 +485,7 @@ _test_arch_nimf_fallback_installs_fcitx5_pkgs() {
     _make_proot_rootfs "$sb" "archlinux" "testuser"
     reset_mock_calls
 
-    _install_paru() { return 1; }
+    _install_yay() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
     assert_was_called "proot_pkg_install"

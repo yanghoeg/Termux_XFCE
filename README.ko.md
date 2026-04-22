@@ -185,7 +185,7 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 
 > **Arch Linux nimf 지원**
 > 설치 시 nimf AUR 빌드를 자동 시도하며, 실패 시 fcitx5로 폴백합니다.
-> 수동 재시도: `paru -S nimf nimf-libhangul`
+> 수동 재시도: `yay -S nimf nimf-libhangul`
 
 ## App Installer
 
