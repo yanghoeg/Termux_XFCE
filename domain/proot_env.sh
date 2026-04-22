@@ -373,11 +373,11 @@ _setup_arch_nimf_or_fcitx5() {
     local use_nimf=false
 
     ui_info "Arch: nimf AUR 빌드 시도 (실패 시 fcitx5 폴백)"
-    if _install_paru; then
+    if _install_yay; then
         local nimf_ok=true
         for p in "${PKGS_PROOT_ARCH_KOREAN_NIMF[@]}"; do
             proot_pkg_is_installed "$p" && continue
-            proot_exec paru -S --noconfirm --needed "$p" 2>/dev/null || { nimf_ok=false; break; }
+            proot_exec yay -S --noconfirm --needed "$p" 2>/dev/null || { nimf_ok=false; break; }
         done
         $nimf_ok && use_nimf=true
     fi
@@ -393,13 +393,13 @@ _setup_arch_nimf_or_fcitx5() {
     _write_arch_im_env "$use_nimf"
 }
 
-_install_paru() {
+_install_yay() {
     proot_exec bash -c "
-        command -v paru &>/dev/null && exit 0
+        command -v yay &>/dev/null && exit 0
         sudo pacman -S --noconfirm --needed git base-devel
-        git clone https://aur.archlinux.org/paru-bin.git /tmp/paru-bin
-        cd /tmp/paru-bin && makepkg -si --noconfirm
-        rm -rf /tmp/paru-bin
+        git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin
+        cd /tmp/yay-bin && makepkg -si --noconfirm
+        rm -rf /tmp/yay-bin
     "
 }
 

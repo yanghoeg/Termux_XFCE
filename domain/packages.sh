@@ -181,7 +181,7 @@ PKGS_PROOT_ARCH_KOREAN=(
     libhangul
 )
 
-# Arch nimf: AUR 빌드 (paru) → 실패 시 fcitx5 폴백
+# Arch nimf: AUR 빌드 (yay) → 실패 시 fcitx5 폴백
 PKGS_PROOT_ARCH_KOREAN_NIMF=(
     nimf
     nimf-libhangul

@@ -185,7 +185,7 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 
 > **Arch Linux nimf support**
 > The installer automatically attempts an AUR build of nimf, falling back to fcitx5 on failure.
-> Manual retry: `paru -S nimf nimf-libhangul`
+> Manual retry: `yay -S nimf nimf-libhangul`
 
 ## App Installer
 
