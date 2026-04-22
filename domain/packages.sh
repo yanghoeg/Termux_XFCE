@@ -53,6 +53,10 @@ PKGS_TERMUX_CLI=(
     jq
     netcat-openbsd
     neofetch
+    git-delta   # git diff 구문 강조 (lazygit 연동)
+    zellij      # tmux 대안 — 세션 멀티플렉서
+    dust        # du 시각화 — 스토리지 확인
+    duf         # df 현대적 대체
 )
 
 # 한글 입력기
