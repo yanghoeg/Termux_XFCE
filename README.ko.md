@@ -178,10 +178,14 @@ shutdown    # kill -9 -1 (Termux 전체 프로세스 종료)
 
 ### proot (선택)
 
-| distro | 기반 | 진입 명령 |
-|--------|------|-----------|
-| ubuntu | Ubuntu (proot-distro) | `ubuntu` |
-| archlinux | Arch Linux (proot-distro) | `archlinux` |
+| distro | 기반 | 한글 입력기 | 진입 명령 |
+|--------|------|-------------|-----------|
+| ubuntu | Ubuntu (proot-distro) | nimf (자동 설치) | `ubuntu` |
+| archlinux | Arch Linux (proot-distro) | nimf (AUR) → fcitx5 폴백 | `archlinux` |
+
+> **Arch Linux nimf 지원**
+> 설치 시 nimf AUR 빌드를 자동 시도하며, 실패 시 fcitx5로 폴백합니다.
+> 수동 재시도: `paru -S nimf nimf-libhangul`
 
 ## App Installer
 

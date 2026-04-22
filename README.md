@@ -178,10 +178,14 @@ shutdown    # kill -9 -1 (terminate all Termux processes)
 
 ### proot (optional)
 
-| distro | base | entry command |
-|--------|------|---------------|
-| ubuntu | Ubuntu (proot-distro) | `ubuntu` |
-| archlinux | Arch Linux (proot-distro) | `archlinux` |
+| distro | base | Korean IME | entry command |
+|--------|------|------------|---------------|
+| ubuntu | Ubuntu (proot-distro) | nimf (auto) | `ubuntu` |
+| archlinux | Arch Linux (proot-distro) | nimf (AUR) → fcitx5 fallback | `archlinux` |
+
+> **Arch Linux nimf support**
+> The installer automatically attempts an AUR build of nimf, falling back to fcitx5 on failure.
+> Manual retry: `paru -S nimf nimf-libhangul`
 
 ## App Installer
 

@@ -102,14 +102,16 @@ setup_proot_korean() {
             for p in "${PKGS_PROOT_UBUNTU_KOREAN[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p"
             done
+            _install_ubuntu_nimf_deb
             _setup_ubuntu_korean_locale
-            _setup_ubuntu_fcitx5
+            _setup_ubuntu_nimf
             ;;
         archlinux)
             for p in "${PKGS_PROOT_ARCH_KOREAN[@]}"; do
                 proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
                     echo "[WARN] $p: 설치 오류 (계속 진행)" >&2
             done
+            _setup_arch_nimf_or_fcitx5
             _setup_arch_korean_locale
             ;;
     esac
@@ -334,10 +336,10 @@ _setup_ubuntu_korean_locale() {
 LANG=ko_KR.UTF-8
 LANGUAGE=ko_KR.UTF-8
 LC_ALL=ko_KR.UTF-8
-export GTK_IM_MODULE=fcitx5
-export QT_IM_MODULE=fcitx5
-export XMODIFIERS="@im=fcitx5"
-fcitx5 -d --replace 2>/dev/null &
+export GTK_IM_MODULE=nimf
+export QT_IM_MODULE=nimf
+export XMODIFIERS="@im=nimf"
+nimf &
 EOF
 
     # /etc/default/locale
@@ -347,9 +349,90 @@ LANGUAGE=ko_KR.UTF-8
 EOF
 }
 
-_setup_ubuntu_fcitx5() {
-    # nimf은 Ubuntu 25.10+에서 제거됨 → fcitx5 설정
-    proot_exec bash -c "im-config -n fcitx5 2>/dev/null || true"
+_install_ubuntu_nimf_deb() {
+    # nimf이 Ubuntu 공식 repo에 없으므로 GitHub Releases .deb 직접 설치
+    proot_exec bash -c "command -v nimf &>/dev/null && exit 0
+        apt-get install -y --no-install-recommends libglib2.0-0 libgtk-3-0 libdbus-1-3 2>/dev/null || true
+        for deb in ${NIMF_DEBS[*]}; do
+            url=\"${NIMF_DEB_BASE_URL}/\${deb}\"
+            wget -q -O \"/tmp/\${deb}\" \"\$url\" &&
+                dpkg -i \"/tmp/\${deb}\" 2>/dev/null || true
+            rm -f \"/tmp/\${deb}\"
+        done
+        apt-get install -f -y 2>/dev/null || true
+    "
+}
+
+_setup_ubuntu_nimf() {
+    # im-config로 nimf을 기본 입력기로 설정
+    proot_exec bash -c "im-config -n nimf 2>/dev/null || true"
+}
+
+_setup_arch_nimf_or_fcitx5() {
+    # nimf AUR 빌드 시도 → 실패 시 fcitx5 폴백
+    local use_nimf=false
+
+    ui_info "Arch: nimf AUR 빌드 시도 (실패 시 fcitx5 폴백)"
+    if _install_paru; then
+        local nimf_ok=true
+        for p in "${PKGS_PROOT_ARCH_KOREAN_NIMF[@]}"; do
+            proot_pkg_is_installed "$p" && continue
+            proot_exec paru -S --noconfirm --needed "$p" 2>/dev/null || { nimf_ok=false; break; }
+        done
+        $nimf_ok && use_nimf=true
+    fi
+
+    if ! $use_nimf; then
+        ui_warn "nimf AUR 빌드 실패 → fcitx5로 폴백"
+        for p in "${PKGS_PROOT_ARCH_KOREAN_FCITX5[@]}"; do
+            proot_pkg_is_installed "$p" || proot_pkg_install "$p" || \
+                echo "[WARN] $p: 설치 오류 (계속 진행)" >&2
+        done
+    fi
+
+    _write_arch_im_env "$use_nimf"
+}
+
+_install_paru() {
+    proot_exec bash -c "
+        command -v paru &>/dev/null && exit 0
+        sudo pacman -S --noconfirm --needed git base-devel
+        git clone https://aur.archlinux.org/paru-bin.git /tmp/paru-bin
+        cd /tmp/paru-bin && makepkg -si --noconfirm
+        rm -rf /tmp/paru-bin
+    "
+}
+
+_write_arch_im_env() {
+    local use_nimf="$1"
+    local profile="${PROOT_ROOTFS}/${PROOT_DISTRO}/home/${PROOT_USER}/.profile"
+    grep -q "# termux-xfce-korean" "$profile" 2>/dev/null && return 0
+
+    if $use_nimf; then
+        cat >> "$profile" << 'EOF'
+
+# termux-xfce-korean
+LANG=ko_KR.UTF-8
+LANGUAGE=ko_KR.UTF-8
+LC_ALL=ko_KR.UTF-8
+export GTK_IM_MODULE=nimf
+export QT_IM_MODULE=nimf
+export XMODIFIERS="@im=nimf"
+nimf &
+EOF
+    else
+        cat >> "$profile" << 'EOF'
+
+# termux-xfce-korean
+LANG=ko_KR.UTF-8
+LANGUAGE=ko_KR.UTF-8
+LC_ALL=ko_KR.UTF-8
+export GTK_IM_MODULE=fcitx5
+export QT_IM_MODULE=fcitx5
+export XMODIFIERS="@im=fcitx5"
+fcitx5 -d --replace 2>/dev/null &
+EOF
+    fi
 }
 
 _setup_arch_korean_locale() {
