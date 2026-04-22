@@ -417,6 +417,83 @@ _test_arch_korean_locale_uses_distro_var() {
 it "archlinux: locale.gen을 올바른 경로에 작성한다" _test_arch_korean_locale_uses_distro_var
 
 # =============================================================================
+# _setup_arch_nimf_or_fcitx5 — nimf 성공/실패 분기
+# =============================================================================
+
+describe "proot_env — _setup_arch_nimf_or_fcitx5"
+
+_test_arch_nimf_success_writes_nimf_env() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux" "testuser"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+
+    # paru + nimf 설치 성공 mock
+    _install_paru()  { return 0; }
+    proot_exec() {
+        # paru -S nimf → 성공
+        _record_call "proot_exec $*"
+        return 0
+    }
+
+    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
+
+    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
+    assert_file_exists "$profile"
+    assert_file_contains "$profile" "GTK_IM_MODULE=nimf"
+    cleanup_sandbox "$sb"
+}
+it "nimf AUR 빌드 성공 시 nimf 환경변수를 .profile에 쓴다" _test_arch_nimf_success_writes_nimf_env
+
+_test_arch_nimf_failure_falls_back_to_fcitx5() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux" "testuser"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+
+    # paru 설치 실패 mock → fcitx5 폴백 경로
+    _install_paru() { return 1; }
+
+    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
+
+    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
+    assert_file_exists "$profile"
+    assert_file_contains "$profile" "GTK_IM_MODULE=fcitx5"
+    cleanup_sandbox "$sb"
+}
+it "nimf AUR 빌드 실패 시 fcitx5로 폴백하고 .profile에 fcitx5 환경변수를 쓴다" _test_arch_nimf_failure_falls_back_to_fcitx5
+
+_test_arch_nimf_fcitx5_idempotent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux" "testuser"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+
+    _install_paru() { return 1; }
+
+    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
+    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
+
+    local count
+    count=$(grep -c "termux-xfce-korean" \
+        "${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile")
+    assert_eq "1" "$count" "멱등성: korean 블록이 1번만 있어야 한다"
+    cleanup_sandbox "$sb"
+}
+it "멱등성 — _setup_arch_nimf_or_fcitx5가 중복 호출돼도 .profile 블록은 1개" _test_arch_nimf_fcitx5_idempotent
+
+_test_arch_nimf_fallback_installs_fcitx5_pkgs() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "archlinux" "testuser"
+    _make_proot_rootfs "$sb" "archlinux" "testuser"
+    reset_mock_calls
+
+    _install_paru() { return 1; }
+
+    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
+    assert_was_called "proot_pkg_install"
+    cleanup_sandbox "$sb"
+}
+it "nimf 폴백 시 fcitx5 패키지 설치를 호출한다" _test_arch_nimf_fallback_installs_fcitx5_pkgs
+
+# =============================================================================
 # setup_proot_conky — SCRIPT_DIR cp / 멱등성 / emoji 폰트 복사
 # =============================================================================
 

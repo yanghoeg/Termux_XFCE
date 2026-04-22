@@ -131,10 +131,14 @@ PKGS_PROOT_UBUNTU_KOREAN=(
     fonts-noto-cjk
     fonts-roboto
     im-config
-    fcitx5
-    fcitx5-hangul
-    fcitx5-config-qt
-    # nimf / nimf-libhangul: Ubuntu 25.10(questing)에서 제거됨 → fcitx5-hangul로 대체
+    # nimf: Ubuntu 공식 repo 미제공 → _install_ubuntu_nimf_deb()으로 직접 설치
+)
+
+# nimf GitHub Releases ARM64 .deb (Ubuntu 24.04 빌드 — 25.10에서도 호환)
+NIMF_DEB_BASE_URL="https://github.com/hamonikr/nimf/releases/download/v1.4.17"
+NIMF_DEBS=(
+    "nimf_1.4.17_arm64-ubuntu.2404.arm64.deb"
+    "nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"
 )
 
 PKGS_PROOT_UBUNTU_DEV=(
@@ -173,10 +177,19 @@ PKGS_PROOT_ARCH_DESKTOP=(
 
 PKGS_PROOT_ARCH_KOREAN=(
     noto-fonts-cjk   # 한국어 폰트 (공식 repo)
-    # ttf-nanum: AUR 전용, proot makepkg 미지원 → noto-fonts-cjk로 대체
+    # ttf-nanum: AUR 전용 → noto-fonts-cjk로 대체
+    libhangul
+)
+
+# Arch nimf: AUR 빌드 (paru) → 실패 시 fcitx5 폴백
+PKGS_PROOT_ARCH_KOREAN_NIMF=(
+    nimf
+    nimf-libhangul
+)
+
+PKGS_PROOT_ARCH_KOREAN_FCITX5=(
     fcitx5-hangul
     fcitx5-configtool
-    libhangul
 )
 
 PKGS_PROOT_ARCH_DEV=(
