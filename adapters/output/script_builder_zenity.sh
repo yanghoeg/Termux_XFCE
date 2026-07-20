@@ -20,6 +20,14 @@ script_build_start_xfce() {
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 
+# 바이너리를 Termux bionic으로 고정 — glibc-runner 셸(예: Claude Code)에서 실행 시
+# PATH 앞의 $PREFIX/glibc/bin이 env/cp/mkdir/grep 등 coreutils를 가려, 세션 전역에
+# preload되는 bionic force_gettext.so와 충돌(libdl.so 로드 실패 → 세션 미기동)하는
+# 것을 방지한다. bionic $PREFIX/bin을 앞세워 coreutils가 bionic으로 해석되게 한다.
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+PATH="$PREFIX/bin:$PREFIX/bin/applets:$PATH"
+export PATH
+
 # XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
 XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
 mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null

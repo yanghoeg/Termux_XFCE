@@ -435,7 +435,7 @@ _install_nimf_native() {
 
 _setup_start_xfce() {
     # 현재 로드된 display 어댑터 = 설치 시 선택된 서버 → 기본 startXFCE로도 연결
-    _build_start_xfce_launcher "${DISPLAY_SERVER:-x11}" default
+    _build_start_xfce_launcher "${DISPLAY_SERVER:-wayland}" default
 }
 
 # 특정 디스플레이 서버용 런처 생성.

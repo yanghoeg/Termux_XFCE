@@ -91,7 +91,7 @@ resolve_interactive_inputs
 
 # -----------------------------------------------------------------------------
 # 6. Output Adapter 선택 — Display Server
-# DISPLAY_SERVER는 CLI/환경변수에서 설정 (기본: x11)
+# DISPLAY_SERVER는 CLI/환경변수/대화형에서 설정 (기본: wayland) — 설치 시 하나 고정
 # -----------------------------------------------------------------------------
 case "${DISPLAY_SERVER}" in
     x11)
@@ -210,17 +210,6 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
 
     _step_msg "유틸리티 설정 (shortcuts, prun, cp2menu)"
     setup_termux_shortcuts
-
-    # 나머지 디스플레이 서버 런처도 생성 — 런타임에 x11/wayland 둘 다 선택 가능
-    # (startXFCE-x11 / startXFCE-wayland). 기본 startXFCE는 선택된 서버를 가리킴.
-    for _srv in x11 wayland; do
-        [ "$_srv" = "${DISPLAY_SERVER}" ] && continue
-        source "$SCRIPT_DIR/adapters/output/display_${_srv}.sh"
-        _build_start_xfce_launcher "$_srv"
-    done
-    # 선택된 어댑터 재로드 — 이후 display_setup_apk 등이 올바른 구현을 쓰도록 복원
-    source "$SCRIPT_DIR/adapters/output/display_${DISPLAY_SERVER}.sh"
-    unset _srv
 
 else
     ui_info "[--proot-only] Termux native 설정 생략 — proot 환경만 구성합니다."

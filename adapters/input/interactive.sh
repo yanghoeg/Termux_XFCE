@@ -35,4 +35,23 @@ resolve_interactive_inputs() {
         export PROOT_DISTRO SKIP_PROOT
     fi
 
+    # 디스플레이 서버 — CLI/환경변수 미지정 시 대화형 선택, 기본 wayland
+    # (stdout이 터미널일 때만 프롬프트 → curl|bash·터미널에선 묻고, 테스트/파이프에선 기본값)
+    if [ -z "${DISPLAY_SERVER:-}" ]; then
+        if [ -t 1 ]; then
+            local display_choice
+            display_choice=$(ui_select \
+                "디스플레이 서버 선택" \
+                "XFCE를 실행할 디스플레이 서버를 선택하세요:" \
+                "wayland (labwc — 기본 권장)" \
+                "x11 (termux-x11)")
+
+            case "$display_choice" in
+                x11*) DISPLAY_SERVER="x11" ;;
+                *)    DISPLAY_SERVER="wayland" ;;
+            esac
+        fi
+        DISPLAY_SERVER="${DISPLAY_SERVER:-wayland}"
+        export DISPLAY_SERVER
+    fi
 }

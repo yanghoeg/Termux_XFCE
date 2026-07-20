@@ -126,9 +126,22 @@ FRAG
 display_emit_session_launch() {
     cat << 'FRAG'
 
-# Wayland: xfce4-session(--wayland)이 컴포지터로 labwc를 직접 기동한다.
-# Termux:X11을 표시면으로 재사용하므로 labwc는 X11 백엔드(WLR_BACKENDS=x11)로
-# nested 실행된다. GPU 환경변수(zink/llvmpipe 등)는 상위 블록에서 export됨.
+# Wayland: startxfce4 --wayland가 기본 컴포지터(labwc)를 `--session xfce4-session`
+# 으로 기동한다. Termux:X11을 표시면으로 재사용하므로 labwc는 X11 백엔드
+# (WLR_BACKENDS=x11)로 nested 실행된다. GPU 환경변수는 상위 블록에서 export됨.
+#
+# 주의: `startxfce4 --wayland labwc`처럼 컴포지터를 인자로 넘기면 startxfce4가
+# 이를 OPTS로 받아 기본값(labwc … --session xfce4-session)을 통째로 대체한다.
+# 그 결과 labwc가 세션 시작 명령(--session xfce4-session) 없이 떠서 컴포지터만
+# 살아 있고 xfce4-session이 뜨지 않는다(검은 화면). 인자를 넘기지 말 것.
+#
+# 렌더러: Termux:X11 nested 백엔드는 DRI3/DMA-BUF·gbm이 없어 wlroots GLES2/EGL
+# 초기화가 실패하지만, wlroots가 자동으로 pixman(소프트웨어)로 폴백해 정상 렌더한다.
+# WLR_RENDERER=pixman을 명시 강제하면 오히려 x11 백엔드 출력 초기화가 막혀
+# 세션이 기동하지 않으므로(검은 화면), 강제하지 말고 자동 폴백에 맡긴다.
+#
+# 세션 로그: 컴포지터/세션 출력을 파일로 남겨 검은 화면 등 문제 진단을 가능케 한다.
+_WL_LOG="${HOME}/.xfce-wayland.log"
 env DISPLAY="$XDISPLAY" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
     XDG_SESSION_TYPE=wayland \
@@ -138,7 +151,38 @@ env DISPLAY="$XDISPLAY" \
     GDK_BACKEND="wayland,x11" \
     QT_QPA_PLATFORM="wayland;xcb" \
     MOZ_ENABLE_WAYLAND=1 \
-    dbus-launch --exit-with-session startxfce4 --wayland labwc &
+    dbus-launch --exit-with-session startxfce4 --wayland >"$_WL_LOG" 2>&1 &
+
+# 출력 크기 보정: wlroots x11 백엔드는 기본 1024x768 창으로 떠서 폰 화면을 다
+# 채우지 못한다. 세션 기동 후 wlr-randr로 표시면(Termux:X11, $XDISPLAY)의 해상도와
+# 동일한 custom-mode를 nested 출력(X11-1)에 적용해 전체 화면을 채운다.
+if command -v wlr-randr >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1; then
+    _PGEOM=$(DISPLAY="$XDISPLAY" xdotool getdisplaygeometry 2>/dev/null)
+    _PW=${_PGEOM% *}; _PH=${_PGEOM#* }
+    if [ -n "$_PW" ] && [ -n "$_PH" ]; then
+        (
+            # labwc가 wayland 소켓을 만들 때까지 대기
+            _WLD=""
+            for _i in $(seq 1 20); do
+                for _f in "$XDG_RUNTIME_DIR"/wayland-*; do
+                    case "$_f" in *.lock) continue ;; esac
+                    [ -S "$_f" ] && { _WLD=$(basename "$_f"); break; }
+                done
+                [ -n "$_WLD" ] && break
+                sleep 0.5
+            done
+            [ -z "$_WLD" ] && exit 0
+            # X11-1 출력이 나타날 때까지 대기 후 부모 해상도로 custom-mode 적용
+            for _i in $(seq 1 20); do
+                _OUT=$(WAYLAND_DISPLAY="$_WLD" wlr-randr 2>/dev/null | awk 'NR==1{print $1; exit}')
+                [ -n "$_OUT" ] && break
+                sleep 0.5
+            done
+            [ -n "$_OUT" ] && WAYLAND_DISPLAY="$_WLD" \
+                wlr-randr --output "$_OUT" --custom-mode "${_PW}x${_PH}" 2>/dev/null
+        ) &
+    fi
+fi
 FRAG
 }
 
@@ -155,7 +199,7 @@ FRAG
 
 display_get_packages() {
     # 표시면은 Termux:X11 재사용 + labwc/xwayland/wl-clipboard 추가
-    echo "termux-x11-nightly labwc xwayland wl-clipboard xdotool xclip wmctrl"
+    echo "termux-x11-nightly labwc xwayland wl-clipboard wlr-randr xdotool xclip wmctrl"
 }
 
 display_setup_apk() {
