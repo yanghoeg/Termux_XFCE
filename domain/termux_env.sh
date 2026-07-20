@@ -434,11 +434,24 @@ _install_nimf_native() {
 }
 
 _setup_start_xfce() {
-    local shortcut="$HOME/.shortcuts/startXFCE"
+    # 현재 로드된 display 어댑터 = 설치 시 선택된 서버 → 기본 startXFCE로도 연결
+    _build_start_xfce_launcher "${DISPLAY_SERVER:-x11}" default
+}
+
+# 특정 디스플레이 서버용 런처 생성.
+# 호출 시점에 로드된 display 어댑터(display_emit_*)로 스크립트를 조립하므로,
+# install.sh(합성 루트)가 어댑터를 순차 소싱하며 서버별로 호출한다.
+_build_start_xfce_launcher() {
+    local server="$1" mode="${2:-}"
+    local shortcut="$HOME/.shortcuts/startXFCE-${server}"
     mkdir -p "$HOME/.shortcuts"
     script_build_start_xfce "$shortcut"
     chmod +x "$shortcut"
-    ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
+    ln -sf "$shortcut" "$PREFIX/bin/startXFCE-${server}"
+    if [ "$mode" = "default" ]; then
+        ln -sf "$shortcut" "$HOME/.shortcuts/startXFCE"
+        ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
+    fi
 }
 
 _setup_kill_display() {

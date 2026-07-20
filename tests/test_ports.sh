@@ -52,6 +52,7 @@ DISPLAY_CONTRACTS=(
     display_emit_kill_session
     display_emit_session_detect
     display_emit_server_start
+    display_emit_session_launch
     display_emit_clipboard_sync
     display_get_packages
     display_setup_apk
