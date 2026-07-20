@@ -1211,4 +1211,46 @@ _test_no_post_increment_in_proot_env() {
 }
 it "proot_env.sh에 ((i++)) post-increment 패턴이 없다" _test_no_post_increment_in_proot_env
 
+# =============================================================================
+# _proot_rootfs — 레이아웃 자동 판별 (신규 containers/<distro>/rootfs vs 레거시)
+# =============================================================================
+
+describe "proot_env — _proot_rootfs 경로 해석"
+
+_test_proot_rootfs_prefers_new_layout() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    local base="${PREFIX}/var/lib/proot-distro"
+    mkdir -p "${base}/containers/ubuntu/rootfs"
+
+    assert_eq "${base}/containers/ubuntu/rootfs" "$(_proot_rootfs)" \
+        "신규 레이아웃이 있으면 containers/<distro>/rootfs를 반환해야 함"
+    cleanup_sandbox "$sb"
+}
+it "신규 레이아웃이 있으면 containers/<distro>/rootfs를 반환한다" _test_proot_rootfs_prefers_new_layout
+
+_test_proot_rootfs_falls_back_to_legacy() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    local base="${PREFIX}/var/lib/proot-distro"
+    mkdir -p "${base}/installed-rootfs/ubuntu"   # 레거시만 존재
+
+    assert_eq "${base}/installed-rootfs/ubuntu" "$(_proot_rootfs)" \
+        "레거시 레이아웃만 있으면 installed-rootfs/<distro>로 폴백해야 함"
+    cleanup_sandbox "$sb"
+}
+it "레거시 레이아웃만 있으면 installed-rootfs/<distro>로 폴백한다" _test_proot_rootfs_falls_back_to_legacy
+
+_test_proot_rootfs_new_wins_when_both_exist() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    local base="${PREFIX}/var/lib/proot-distro"
+    mkdir -p "${base}/containers/ubuntu/rootfs" "${base}/installed-rootfs/ubuntu"
+
+    assert_eq "${base}/containers/ubuntu/rootfs" "$(_proot_rootfs)" \
+        "두 레이아웃이 공존하면 신규를 우선해야 함"
+    cleanup_sandbox "$sb"
+}
+it "두 레이아웃이 공존하면 신규를 우선한다" _test_proot_rootfs_new_wins_when_both_exist
+
 print_results

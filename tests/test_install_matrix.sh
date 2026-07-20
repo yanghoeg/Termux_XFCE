@@ -36,7 +36,7 @@ setup_xfce_wallpaper()    { _trace "setup_xfce_wallpaper"; }
 setup_xfce_fancybash()    { _trace "setup_xfce_fancybash $*"; }
 setup_xfce_autostart()    { _trace "setup_xfce_autostart"; }
 setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
-setup_termux_x11_apk()    { _trace "setup_termux_x11_apk"; }
+display_setup_apk()       { _trace "display_setup_apk"; }
 setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
 setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
 
@@ -122,7 +122,7 @@ _test_minimal_native() {
     _assert_traced "setup_xfce_packages"
     _assert_traced "setup_xfce_autostart"
     _assert_traced "setup_termux_shortcuts"
-    _assert_traced "setup_termux_x11_apk"
+    _assert_traced "display_setup_apk"
     _assert_traced "setup_termux_api_apk"
     _assert_traced "setup_termux_float_apk"
     _assert_not_traced "setup_proot_install"
@@ -139,7 +139,7 @@ _test_proot_only_ubuntu() {
     _run_install --proot-only --distro ubuntu --user testuser
     _assert_not_traced "setup_termux_base"
     _assert_not_traced "setup_xfce_packages"
-    _assert_not_traced "setup_termux_x11_apk"
+    _assert_not_traced "display_setup_apk"
     _assert_not_traced "setup_termux_api_apk"
     _assert_not_traced "setup_termux_float_apk"
     _assert_traced "setup_proot_install"
@@ -168,7 +168,7 @@ _test_full_ubuntu() {
     _assert_traced "setup_proot_install"
     _assert_traced "setup_proot_base_packages"
     _assert_traced "setup_proot_alias"
-    _assert_traced "setup_termux_x11_apk"
+    _assert_traced "display_setup_apk"
 }
 it "Ubuntu 풀 — native + proot 모두 실행" _test_full_ubuntu
 

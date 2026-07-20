@@ -159,15 +159,22 @@ _test_fancybash_created() {
         for (( i=0; i<${#args[@]}; i++ )); do
             [[ "${args[$i]}" == "-O" ]] && out_path="${args[$((i+1))]}" && break
         done
-        # \u 와 \h 포함한 stub 생성
-        echo 'PS1="\u@\h \$ "' > "$out_path"
+        # 실제 fancybash.sh 구조 모사: 프롬프트 user/host 정의 라인 +
+        # 무관한  유니코드 이스케이프(TRIANGLE 구분자)
+        cat > "$out_path" << 'FB'
+local PROMT_USER=$"$TEXT_FORMAT_1 \u "
+local PROMT_HOST=$"$TEXT_FORMAT_2 \h "
+local TRIANGLE=$'\uE0B0'
+FB
     }
 
     _install_fancybash "testuser" "termux"
 
     assert_file_exists "${HOME}/.fancybash.sh"
-    # \u → testuser 로 치환됐는지
+    # PROMT_USER 의 \u → testuser 로 치환됐는지
     assert_file_contains "${HOME}/.fancybash.sh" "testuser"
+    # 무관한 (TRIANGLE 구분자)는 손상되지 않아야 함 (finding #14 회귀 가드)
+    assert_file_contains "${HOME}/.fancybash.sh" 'uE0B0'
     cleanup_sandbox "$sb"
 }
 it "fancybash.sh를 생성하고 사용자명을 치환한다" _test_fancybash_created

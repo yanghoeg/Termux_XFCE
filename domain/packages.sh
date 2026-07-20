@@ -20,7 +20,7 @@ PKGS_TERMUX_BASE=(
     pulseaudio
     yad            # app-installer 검색 가능 GUI (zenity 대체)
     termux-api     # Android API 브리지 (클립보드, 알림, 배터리 등)
-    xclip          # X11 클립보드 — Android↔XFCE 동기화용
+    # xclip: display 어댑터(display_get_packages)로 이동
 )
 
 # XFCE 데스크탑 환경
@@ -30,13 +30,12 @@ PKGS_TERMUX_XFCE=(
     firefox
     flameshot          # 스크린샷 — native 필수 (proot에선 dbus EXTERNAL auth UID 불일치로 작동 불가)
     papirus-icon-theme
-    termux-x11-nightly
+    # termux-x11-nightly, wmctrl: display 어댑터(display_get_packages)로 이동
     libuv
-    wmctrl
     pavucontrol-qt
     fontconfig-utils   # fc-cache/fc-match: Nerd Font 폰트 캐시 갱신용 (xfce 의존성에 미포함)
     libsimdutf         # libvte(xfce4-terminal) 런타임 의존성 (Termux 26.x+에서 자동 pull 안 됨)
-    xdotool            # X11 입력 자동화 — Alt 키 고착 해제, 입력 리셋용
+    # xdotool: display 어댑터(display_get_packages)로 이동
 )
 
 # CLI 강화 도구
@@ -53,6 +52,7 @@ PKGS_TERMUX_CLI=(
     starship
     atuin
     htop
+    btop        # 시각적 리소스 모니터 (htop 후속, root-repo 제공)
     jq
     netcat-openbsd
     neofetch
@@ -60,6 +60,13 @@ PKGS_TERMUX_CLI=(
     zellij      # tmux 대안 — 세션 멀티플렉서
     dust        # du 시각화 — 스토리지 확인
     duf         # df 현대적 대체
+    yazi        # Rust 비동기 터미널 파일매니저 (이미지 프리뷰)
+    procs       # ps 현대적 대체 — 컬러/트리 뷰
+    ncdu        # 디스크 사용량 드릴다운 TUI (duf/dust 보완)
+    glow        # 터미널 마크다운 렌더러 (README·AI 출력 읽기)
+    tealdeer    # tldr — 명령어 치트시트 (man 빠른 조회)
+    xh          # HTTPie 호환 HTTP 클라이언트 (curl 대체)
+    onefetch    # git 저장소 요약 (neofetch의 repo판)
 )
 
 # proot-distro 설치에 필요한 Termux 패키지

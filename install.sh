@@ -6,12 +6,12 @@
 # 사용법:
 #   curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
 #   또는
-#   bash install.sh [--distro ubuntu|archlinux] [--user <name>] [--gpu]
+#   bash install.sh [--distro ubuntu|archlinux] [--user <name>] [--display x11|wayland]
 #
 # 아키텍처:
 #   install.sh  → DI(어댑터 선택) → Domain 실행
-#   ports/      → 계약 정의 (pkg_manager, ui)
-#   adapters/   → 구현체 (pkg_termux, pkg_ubuntu, pkg_arch, ui_terminal, ui_zenity)
+#   ports/      → 계약 정의 (pkg_manager, ui, display, script_builder)
+#   adapters/   → 구현체 (pkg_termux, pkg_ubuntu, pkg_arch, ui_terminal, ui_zenity, display_x11, display_wayland)
 #   domain/     → 비즈니스 로직 (termux_env, xfce_env, proot_env, packages)
 # =============================================================================
 
@@ -59,6 +59,7 @@ trap _on_exit EXIT
 # -----------------------------------------------------------------------------
 source "$SCRIPT_DIR/ports/pkg_manager.sh"
 source "$SCRIPT_DIR/ports/ui.sh"
+source "$SCRIPT_DIR/ports/display.sh"
 source "$SCRIPT_DIR/ports/script_builder.sh"
 
 # -----------------------------------------------------------------------------
@@ -89,7 +90,24 @@ source "$SCRIPT_DIR/adapters/input/interactive.sh"
 resolve_interactive_inputs
 
 # -----------------------------------------------------------------------------
-# 6. Output Adapter 선택 — Package Manager
+# 6. Output Adapter 선택 — Display Server
+# DISPLAY_SERVER는 CLI/환경변수에서 설정 (기본: x11)
+# -----------------------------------------------------------------------------
+case "${DISPLAY_SERVER}" in
+    x11)
+        source "$SCRIPT_DIR/adapters/output/display_x11.sh"
+        ;;
+    wayland)
+        source "$SCRIPT_DIR/adapters/output/display_wayland.sh"
+        ;;
+    *)
+        echo "[ERROR] 지원하지 않는 display server: ${DISPLAY_SERVER}" >&2
+        exit 1
+        ;;
+esac
+
+# -----------------------------------------------------------------------------
+# 7. Output Adapter 선택 — Package Manager
 # Termux native는 항상 pkg_termux.sh,
 # proot 어댑터는 distro에 따라 추가 로드
 # -----------------------------------------------------------------------------
@@ -112,7 +130,7 @@ case "${PROOT_DISTRO:-}" in
 esac
 
 # -----------------------------------------------------------------------------
-# 7. Domain 로드
+# 8. Domain 로드
 # -----------------------------------------------------------------------------
 source "$SCRIPT_DIR/domain/packages.sh"
 source "$SCRIPT_DIR/domain/termux_env.sh"
@@ -121,6 +139,7 @@ source "$SCRIPT_DIR/domain/locale_ko.sh"
 source "$SCRIPT_DIR/domain/proot_env.sh"
 
 _pkg_manager_check
+_display_check
 
 # 테스트 훅: 모든 source 이후, 실제 설치 전에 setup_* 함수를 스텁으로 교체할 수 있는 지점
 # (테스트 매트릭스가 dispatch 로직만 검증하고 실제 설치 수행은 안 하기 위함)
@@ -129,14 +148,14 @@ if [ -n "${_INSTALL_HOOK:-}" ] && [ -f "${_INSTALL_HOOK}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 8. 아키텍처 확인
+# 9. 아키텍처 확인
 # -----------------------------------------------------------------------------
 if [[ "$ARCH" != "aarch64" ]]; then
     ui_warn "이 스크립트는 aarch64(arm64) 기기에 최적화되어 있습니다. 현재: $ARCH"
 fi
 
 # -----------------------------------------------------------------------------
-# 9. 설치 설정 저장 (prun, cp2menu가 읽음)
+# 10. 설치 설정 저장 (prun, cp2menu가 읽음)
 # -----------------------------------------------------------------------------
 mkdir -p "$HOME/.config/termux-xfce"
 cat > "$HOME/.config/termux-xfce/config" << EOF
@@ -144,12 +163,13 @@ cat > "$HOME/.config/termux-xfce/config" << EOF
 PROOT_DISTRO="${PROOT_DISTRO:-}"
 PROOT_USER="${PROOT_USER:-}"
 INSTALL_ARCH="$ARCH"
+DISPLAY_SERVER="${DISPLAY_SERVER}"
 # proot 인터랙티브 셸: bash(기본) 또는 zsh (proot에 zsh 설치 후 변경 가능)
 PROOT_SHELL="${PROOT_SHELL:-bash}"
 EOF
 
 # -----------------------------------------------------------------------------
-# 10. Storage 권한
+# 11. Storage 권한
 # -----------------------------------------------------------------------------
 if [ "${PROOT_ONLY:-false}" != "true" ] && [ ! -d "$HOME/storage" ]; then
     ui_info "저장소 접근 권한을 요청합니다..."
@@ -158,12 +178,12 @@ if [ "${PROOT_ONLY:-false}" != "true" ] && [ ! -d "$HOME/storage" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 11. 실행 — Termux Native
+# 12. 실행 — Termux Native
 # --proot-only 플래그 사용 시 생략 (추가 distro 설치 시 중복 방지)
 # -----------------------------------------------------------------------------
 # 단계 카운터 — 선택 옵션에 따라 총 단계 수 계산
 _step=0
-_total=5  # 기본: base + xfce + shortcuts + x11apk + companion-apks
+_total=5  # 기본: base + xfce + shortcuts + display-apk + companion-apks
 [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ] && _total=$((_total + 1))
 _step_msg() { _step=$((_step + 1)); ui_info "=== [${_step}/${_total}] $1 ==="; }
 
@@ -196,7 +216,7 @@ else
 fi
 
 # -----------------------------------------------------------------------------
-# 12. 실행 — proot (선택)
+# 13. 실행 — proot (선택)
 # -----------------------------------------------------------------------------
 if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     _step_msg "${PROOT_DISTRO} proot 환경 구성"
@@ -222,11 +242,11 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 13. Termux-X11 APK 설치 (proot-only 시 생략)
+# 14. Display Server APK 설치 (proot-only 시 생략)
 # -----------------------------------------------------------------------------
 if [ "${PROOT_ONLY:-false}" != "true" ]; then
-    _step_msg "Termux-X11 APK 설치"
-    setup_termux_x11_apk
+    _step_msg "Display Server 설치"
+    display_setup_apk
 
     _step_msg "Termux 컴패니언 APK 설치 (API, Float)"
     setup_termux_api_apk
@@ -234,7 +254,7 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
 fi
 
 # -----------------------------------------------------------------------------
-# 14. 완료
+# 15. 완료
 # -----------------------------------------------------------------------------
 ui_info "=================================================="
 ui_info "설치가 완료되었습니다!"
@@ -244,7 +264,7 @@ if [ -n "${PROOT_DISTRO:-}" ]; then
     ui_info "proot 진입: ${PROOT_DISTRO} (또는 prun <명령>)"
 fi
 ui_info "앱 설치: app-installer"
-ui_info "클립보드 동기화: XFCE 시작 시 자동 실행 (Android↔X11)"
+ui_info "클립보드 동기화: XFCE 시작 시 자동 실행 (Android↔데스크탑)"
 ui_info ""
 ui_info "⚠ Termux:API, Termux:Float APK를 설치 화면에서 확인하세요"
 ui_info "=================================================="

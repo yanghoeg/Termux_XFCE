@@ -55,6 +55,7 @@ _load_domain() {
     mock_wget
     _stub_external_tools
     source "${DOMAIN_DIR}/packages.sh"
+    source "${DOMAIN_DIR}/../adapters/output/display_x11.sh"
     source "${DOMAIN_DIR}/../adapters/output/script_builder_zenity.sh"
     source "${DOMAIN_DIR}/termux_env.sh"
 }

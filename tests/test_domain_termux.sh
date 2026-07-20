@@ -18,6 +18,7 @@ _load_domain() {
     mock_wget
     source "${DOMAIN_DIR}/packages.sh"
     # script_builder는 순수 파일 생성기(외부 의존 없음) → 실제 어댑터 로드
+    source "${DOMAIN_DIR}/../adapters/output/display_x11.sh"
     source "${DOMAIN_DIR}/../adapters/output/script_builder_zenity.sh"
     source "${DOMAIN_DIR}/termux_env.sh"
 }
@@ -174,7 +175,7 @@ _test_startxfce_overwrites_on_update() {
     _setup_start_xfce
 
     # 새 내용으로 덮어씀 (가드 없음 — 업데이트 보장)
-    assert_file_contains "${HOME}/.shortcuts/startXFCE" "termux-x11"
+    assert_file_contains "${HOME}/.shortcuts/startXFCE" "_kill_display_session"
     cleanup_sandbox "$sb"
 }
 it "startXFCE를 항상 최신 버전으로 재생성한다" _test_startxfce_overwrites_on_update
@@ -282,37 +283,37 @@ it "멱등성 — nimf.desktop이 이미 있으면 덮어쓰지 않는다" _test
 # (_detect_and_log_gpu, _setup_tur_multilib: 삭제된 함수 — 테스트 제거)
 
 # =============================================================================
-# _setup_kill_termux_x11 — bin 생성 및 desktop entry
+# _setup_kill_display — bin 생성 및 desktop entry
 # =============================================================================
 
-describe "termux_env — _setup_kill_termux_x11"
+describe "termux_env — _setup_kill_display"
 
-_test_kill_x11_created() {
+_test_kill_display_created() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
-    _setup_kill_termux_x11 2>/dev/null || true
+    _setup_kill_display 2>/dev/null || true
 
-    assert_file_exists "${PREFIX}/bin/kill_termux_x11"
-    assert_file_exists "${PREFIX}/share/applications/kill_termux_x11.desktop"
+    assert_file_exists "${PREFIX}/bin/kill_display_session"
+    assert_file_exists "${PREFIX}/share/applications/kill_display_session.desktop"
     cleanup_sandbox "$sb"
 }
-it "kill_termux_x11 스크립트와 desktop 파일을 생성한다" _test_kill_x11_created
+it "kill_display_session 스크립트와 desktop 파일을 생성한다" _test_kill_display_created
 
-_test_kill_x11_always_regenerated() {
+_test_kill_display_always_regenerated() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
-    _setup_kill_termux_x11 2>/dev/null || true
-    local mtime1; mtime1=$(stat -c %Y "${PREFIX}/bin/kill_termux_x11")
+    _setup_kill_display 2>/dev/null || true
+    local mtime1; mtime1=$(stat -c %Y "${PREFIX}/bin/kill_display_session")
     sleep 1
-    _setup_kill_termux_x11 2>/dev/null || true
-    local mtime2; mtime2=$(stat -c %Y "${PREFIX}/bin/kill_termux_x11")
+    _setup_kill_display 2>/dev/null || true
+    local mtime2; mtime2=$(stat -c %Y "${PREFIX}/bin/kill_display_session")
 
     assert_ne "$mtime1" "$mtime2" "항상 재생성되어야 한다"
     cleanup_sandbox "$sb"
 }
-it "kill_termux_x11을 항상 최신 버전으로 재생성한다" _test_kill_x11_always_regenerated
+it "kill_display_session을 항상 최신 버전으로 재생성한다" _test_kill_display_always_regenerated
 
 # =============================================================================
 # _migrate_desktop_to_prun_gui — 기존 prun → prun-gui 마이그레이션
@@ -698,7 +699,7 @@ _test_shortcuts_creates_all() {
     assert_file_exists "${PREFIX}/bin/prun"
     assert_file_exists "${PREFIX}/bin/prun-gui"
     assert_file_exists "${PREFIX}/bin/cp2menu"
-    assert_file_exists "${PREFIX}/bin/kill_termux_x11"
+    assert_file_exists "${PREFIX}/bin/kill_display_session"
     assert_file_exists "${PREFIX}/bin/app-installer"
     cleanup_sandbox "$sb"
 }
@@ -736,14 +737,12 @@ _test_install_base_packages_completes_under_set_e() {
 it "_install_base_packages가 set -e 하에서 끝까지 실행된다" _test_install_base_packages_completes_under_set_e
 
 # =============================================================================
-# setup_termux_x11_apk — 아키텍처 분기 + 멱등성 + 폴백
+# display_setup_apk — 아키텍처 분기 + 멱등성 + 폴백
 # =============================================================================
 
-describe "termux_env — setup_termux_x11_apk"
+describe "display_x11 — display_setup_apk"
 
 # uname -m 결과를 지정값으로 고정한 채 함수 실행
-# 주의: setup_termux_x11_apk가 `local arch`를 사용하므로 이름 충돌을 피해
-# _MOCK_ARCH 같은 비충돌 이름을 사용해야 함 (bash dynamic scoping)
 _run_with_arch() {
     local _MOCK_ARCH="$1"; shift
     uname() {
@@ -759,7 +758,7 @@ _test_x11_apk_aarch64_path() {
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" setup_termux_x11_apk
+    _run_with_arch "aarch64" display_setup_apk
 
     assert_was_called "wget"
     assert_was_called "app-arm64-v8a-debug.apk"
@@ -774,7 +773,7 @@ _test_x11_apk_x86_64_path() {
     termux-open() { :; }
     reset_mock_calls
 
-    _run_with_arch "x86_64" setup_termux_x11_apk
+    _run_with_arch "x86_64" display_setup_apk
 
     assert_was_called "app-x86_64-debug.apk"
     cleanup_sandbox "$sb"
@@ -788,7 +787,7 @@ _test_x11_apk_unsupported_arch_warns_and_returns() {
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "armv7l" setup_termux_x11_apk
+    _run_with_arch "armv7l" display_setup_apk
 
     # wget/termux-open 둘 다 호출되지 않아야 함
     assert_not_called "wget"
@@ -806,7 +805,7 @@ _test_x11_apk_idempotent_when_present() {
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" setup_termux_x11_apk
+    _run_with_arch "aarch64" display_setup_apk
 
     assert_not_called "wget"
     assert_was_called "termux-open"
@@ -822,7 +821,7 @@ _test_x11_apk_falls_back_to_home_when_no_storage() {
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" setup_termux_x11_apk
+    _run_with_arch "aarch64" display_setup_apk
 
     # HOME에 APK가 생성되어야 함 (mock_wget이 -O 경로에 touch)
     assert_file_exists "$HOME/app-arm64-v8a-debug.apk"

@@ -17,18 +17,20 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경 + proot-distro(Ubuntu/Arch
 ```bash
 curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
 # 또는
-bash install.sh --distro archlinux --user lideok --gpu
+bash install.sh --distro archlinux --user lideok
 # 또는 환경변수
 DISTRO=ubuntu USERNAME=lideok bash install.sh
+# 디스플레이 서버 선택 (기본: x11)
+bash install.sh --distro ubuntu --user lideok --display wayland
 ```
 
 ## 아키텍처: 헥사고날 (Ports & Adapters)
 
 ```
 install.sh          → DI(어댑터 선택) → Domain 실행
-ports/              → 계약 정의 (인터페이스)
+ports/              → 계약 정의 (pkg_manager, ui, display, script_builder)
 adapters/input/     → CLI 인자 / 대화형 입력
-adapters/output/    → pkg 매니저 구현체 / UI 구현체
+adapters/output/    → pkg 매니저 / UI / 디스플레이 서버 / 스크립트 빌더 구현체
 domain/             → 비즈니스 로직 (HOW 모름, WHAT만 앎)
 tests/              → 단위/통합 테스트, mocks, autopilot
 app-installer/      → Git Submodule (독립 repo)
@@ -37,7 +39,7 @@ app-installer/      → Git Submodule (독립 repo)
 ### 핵심 원칙
 - **Termux native 우선**: XFCE, Firefox, fcitx5, GPU mesa 모두 Termux 네이티브
 - **proot는 선택**: Ubuntu 또는 Arch Linux, 또는 없음
-- **도메인은 pkg_install/ui_info만 호출** (어댑터 주입)
+- **도메인은 pkg_install/ui_info/display_get_packages만 호출** (어댑터 주입)
 - **멱등성**: 모든 함수는 이미 설치된 경우 건너뜀
 
 ### 파일 구조
@@ -47,10 +49,12 @@ Termux_XFCE/
 ├── install.sh                    ← 진입점 + DI 컨테이너
 ├── ports/
 │   ├── pkg_manager.sh            ← 패키지 관리 계약
-│   └── ui.sh                     ← UI 계약
+│   ├── ui.sh                     ← UI 계약
+│   ├── display.sh                ← 디스플레이 서버 계약 (X11/Wayland)
+│   └── script_builder.sh         ← 런타임 스크립트 생성 계약
 ├── adapters/
 │   ├── input/{cli,interactive}.sh
-│   └── output/{pkg_termux,pkg_ubuntu,pkg_arch,ui_terminal,ui_zenity}.sh
+│   └── output/{pkg_*,ui_*,display_x11,display_wayland,script_builder_zenity}.sh
 ├── domain/
 │   ├── packages.sh               ← 패키지 정의 목록
 │   ├── termux_env.sh             ← Termux 환경 (zsh+p10k 포함)
@@ -85,9 +89,10 @@ Termux_XFCE/
 - `local` 키워드는 bash 함수 내에서만 유효 (함수 밖에서 쓰면 에러)
 - Termux 패키지: `--force-confold` 옵션으로 설정 파일 충돌 방지
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
-- **Termux:X11 실행 순서**: `termux-x11 :1 &` → 소켓 생성 → `am start` (APK 화면 표시)
-  - `am start`만 호출하면 APK가 이미 태스크에 있을 경우 X 소켓이 생성되지 않음
-  - `termux-x11 :1 &`이 실제 X 서버(소켓 생성), APK는 화면 출력 담당
-  - DISPLAY는 `:1` 고정이 아니라 소켓 자동 감지로 결정 (`${TMPDIR}/.X11-unix/X*`)
+- **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
+  - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
+  - Wayland 어댑터(`display_wayland.sh`): labwc 기반 (스텁 — 구현 예정)
+  - `--display x11|wayland` CLI 옵션 또는 `DISPLAY_SERVER` 환경변수로 선택
+  - X11 기본: `termux-x11 :N` → 소켓 자동 감지 (`${TMPDIR}/.X11-unix/X*`)
 - **기본 쉘은 zsh + Powerlevel10k**: `domain/termux_env.sh` `_setup_zsh_p10k()`가 설치 시 자동 구성
   - RC 파일 수정은 bash/zsh 양쪽 모두 반영해야 함 (`_get_rc_files()` 참조)

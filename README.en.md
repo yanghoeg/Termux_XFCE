@@ -154,7 +154,7 @@ hud         # run app with FPS overlay
 |----------|----------|
 | Base utils | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, htop, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
 | APKs | Termux:X11, Termux:API, Termux:Float |
 
 ### proot (optional)

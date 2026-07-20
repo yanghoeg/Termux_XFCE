@@ -31,6 +31,19 @@ setup_xfce_packages() {
         fi
     done
 
+    # 디스플레이 서버 패키지 설치
+    local _dp
+    local -a _dp_arr
+    IFS=' ' read -ra _dp_arr <<< "$(display_get_packages)"
+    for _dp in "${_dp_arr[@]}"; do
+        if pkg_is_installed "$_dp"; then
+            ui_info "  ${_dp} — 이미 설치됨 (display)"
+        else
+            ui_info "  ${_dp} 설치 중... (display)"
+            pkg_install "$_dp"
+        fi
+    done
+
     # Firefox 데스크탑 아이콘
     local firefox_desktop="$HOME/Desktop/firefox.desktop"
     [ -f "$firefox_desktop" ] || \
@@ -133,6 +146,7 @@ _install_fluent_cursor() {
         || { ui_warn "Fluent 커서 다운로드 실패"; return 1; }
     unzip -o -q "$tmpdir/$zip" -d "$tmpdir" \
         || { ui_warn "Fluent 커서 압축 해제 실패"; return 1; }
+    rm -rf "$PREFIX/share/icons/dist" "$PREFIX/share/icons/dist-dark"
     mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist"      "$PREFIX/share/icons/"
     mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist-dark" "$PREFIX/share/icons/"
 }
@@ -192,8 +206,10 @@ _install_fancybash() {
         || { ui_warn "fancybash.sh 다운로드 실패"; rm -f "$target"; return 1; }
 
     # 사용자명/호스트명 치환 (line 326, 327은 원본 기준)
-    sed -i "s/\\\\u/${username}/" "$target"
-    sed -i "s/\\\\h/${hostname}/" "$target"
+    # PROMT_USER/PROMT_HOST 정의 라인으로 한정 — 라인 미지정 시 TRIANGLE 구분자 등
+    # 무관한 유니코드 이스케이프의 첫 \u,\h 까지 손상됨
+    sed -i "/local PROMT_USER=/s/\\\\u/${username}/" "$target"
+    sed -i "/local PROMT_HOST=/s/\\\\h/${hostname}/" "$target"
 
     local bashrc="$PREFIX/etc/bash.bashrc"
     grep -q "source.*\.fancybash\.sh" "$bashrc" 2>/dev/null || \
@@ -295,8 +311,23 @@ _migrate_remove_actions_plugin() {
     grep -q 'value="actions"' "$xml" 2>/dev/null || return 0
     # plugin-ids에서 plugin-20 제거
     sed -i '/<value type="int" value="20"\/>/d' "$xml"
-    # actions 플러그인 정의 블록 제거
-    sed -i '/<property name="plugin-20".*value="actions">/,/<\/property>/d' "$xml"
+    # actions 플러그인 정의 블록 제거 — depth 추적 awk 사용
+    # (line-range sed는 중첩 <property>(예: items 배열)가 있으면 그 첫 </property>에서
+    #  멈춰 plugin-20 자신의 종료 태그가 남는 XML 손상을 유발함)
+    local tmp="${xml}.tmp"
+    awk '
+        skip == 0 && /<property name="plugin-20"[^>]*value="actions"/ { skip = 1 }
+        skip == 1 {
+            line = $0
+            opens = gsub(/<property[^>]*>/, "&", line)
+            selfclose = gsub(/<property[^>]*\/>/, "&", line)
+            closes = gsub(/<\/property>/, "&", line)
+            depth += (opens - selfclose) - closes
+            if (depth <= 0) { skip = 0 }
+            next
+        }
+        { print }
+    ' "$xml" > "$tmp" && mv "$tmp" "$xml"
 }
 
 # 기존 설치본의 dbus-propagate autostart에서 /usr/bin/env → bash 직접 호출로 전환

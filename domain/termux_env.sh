@@ -32,7 +32,7 @@ setup_termux_base() {
 setup_termux_shortcuts() {
     ui_info "Termux 단축키(startXFCE) 설정"
     _setup_start_xfce
-    _setup_kill_termux_x11
+    _setup_kill_display
     _setup_prun
     _setup_prun_gui
     _setup_cp2menu
@@ -65,24 +65,8 @@ _download_and_open_apk() {
         ui_warn "APK 자동 열기 실패 — 수동으로 설치하세요: ${apk_path}"
 }
 
-setup_termux_x11_apk() {
-    local arch
-    arch=$(uname -m)
-    local apk_name
 
-    case "$arch" in
-        aarch64) apk_name="app-arm64-v8a-debug.apk" ;;
-        x86_64)  apk_name="app-x86_64-debug.apk" ;;
-        *)
-            ui_warn "아키텍처 ${arch}용 Termux-X11 APK를 지원하지 않습니다. 수동 설치하세요."
-            return 0
-            ;;
-    esac
-
-    _download_and_open_apk \
-        "https://github.com/termux/termux-x11/releases/download/nightly/${apk_name}" \
-        "$apk_name"
-}
+# setup_termux_x11_apk: display_x11.sh:display_setup_apk()로 이동됨
 
 setup_termux_api_apk() {
     _download_and_open_apk \
@@ -106,10 +90,7 @@ setup_termux_widget() {
         ui_warn "startXFCE 단축키가 없습니다. setup_termux_shortcuts 를 먼저 실행하세요."
     fi
 
-    local apk_path="$HOME/storage/downloads/termux-widget.apk"
-    wget -q "$apk_url" -O "$apk_path"
-    termux-open "$apk_path"
-    rm -f "$apk_path"
+    _download_and_open_apk "$apk_url" 'termux-widget.apk'
 }
 
 # -----------------------------------------------------------------------------
@@ -448,6 +429,8 @@ _install_nimf_native() {
     apt --fix-broken install -y 2>/dev/null || true
     rm -f "$deb"
     glib-compile-schemas "${PREFIX}/share/glib-2.0/schemas/" 2>/dev/null || true
+
+    command -v nimf &>/dev/null || return 1
 }
 
 _setup_start_xfce() {
@@ -458,20 +441,19 @@ _setup_start_xfce() {
     ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
 }
 
-_setup_kill_termux_x11() {
-    local bin="$PREFIX/bin/kill_termux_x11"
+_setup_kill_display() {
+    local bin="$PREFIX/bin/kill_display_session"
 
     mkdir -p "$PREFIX/share/applications"
-    script_build_kill_x11 "$bin"
+    script_build_kill_display "$bin"
     chmod +x "$bin"
 
-    # Desktop entry
-    cat > "$PREFIX/share/applications/kill_termux_x11.desktop" << 'EOF'
+    cat > "$PREFIX/share/applications/kill_display_session.desktop" << 'EOF'
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Kill Termux X11
-Exec=kill_termux_x11
+Name=Kill Display Session
+Exec=kill_display_session
 Icon=system-shutdown
 Categories=System;
 StartupNotify=false
@@ -554,7 +536,7 @@ EOF
 # 이 함수는 업그레이드 시 기존 파일만 패치
 _migrate_desktop_to_prun_gui() {
     local apps_dir="$PREFIX/share/applications"
-    local f app_name
+    local f app_name line content repl
     for f in "$apps_dir"/*.desktop; do
         [ -f "$f" ] || continue
         # 이미 prun-gui 사용 중이면 건너뜀
@@ -563,11 +545,18 @@ _migrate_desktop_to_prun_gui() {
         grep -q "prun " "$f" 2>/dev/null || continue
         app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-)
         app_name="${app_name:-App}"
-        # sed 구분자(|)와 작은따옴표 충돌 방지
+        # 홑따옴표 안에 리터럴 작은따옴표를 넣기 위한 셸 이스케이프: ' → '\''
         app_name="${app_name//\'/\'\\\'\'}"
-        app_name="${app_name//&/\\&}"
-        app_name="${app_name//|/\\|}"
-        sed -i "s|\"prun |\"prun-gui '${app_name}' -- |g" "$f"
+        # sed 대신 순수 bash 문자열 치환 사용 (sed 치환 문자열의 백슬래시 소비 방지).
+        # 치환 문자열을 사전 변수로 빌드 — ${line//..} 안에 ${app_name}를 직접 중첩하면
+        # bash가 확장하지 못하고 리터럴로 남으므로 반드시 분리한다.
+        repl="\"prun-gui '${app_name}' -- "
+        content=""
+        while IFS= read -r line || [ -n "$line" ]; do
+            line="${line/\"prun /$repl}"
+            content+="$line"$'\n'
+        done < "$f"
+        printf '%s' "$content" > "$f"
     done
 }
 

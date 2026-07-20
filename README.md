@@ -160,7 +160,7 @@ hud         # FPS 오버레이로 앱 실행
 |------|--------|
 | 기본 유틸 | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, htop, jq, neofetch |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
 | APK | Termux:X11, Termux:API, Termux:Float |
 
 ### proot (선택)

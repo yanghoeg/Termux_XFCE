@@ -9,17 +9,20 @@
 
 # script_build_start_xfce <output_path>
 #   설명: startXFCE 런타임 스크립트 생성
-#         X11 서버 시작, dbus 중복 감지, GPU 분기, pulseaudio 등 포함
+#         디스플레이 서버 시작, 세션 중복 감지, GPU 분기, pulseaudio 등 포함
+#         display 포트(display_emit_*)를 조립하여 디스플레이 서버 추상화
 #   인자: $1 = 스크립트 출력 경로
 #   반환: 0=성공, 1=실패
 # script_build_start_xfce() { ... }
 
-# script_build_kill_x11 <output_path>
-#   설명: kill_termux_x11 런타임 스크립트 생성
-#         Termux-X11 및 XFCE 세션 종료
+# script_build_kill_display <output_path>
+#   설명: kill_display_session 런타임 스크립트 생성
+#         디스플레이 서버 및 XFCE 세션 종료
 #   인자: $1 = 스크립트 출력 경로
 #   반환: 0=성공, 1=실패
-# script_build_kill_x11() { ... }
+# script_build_kill_display() { ... }
+#
+# 하위 호환 별칭: script_build_kill_x11 → script_build_kill_display
 
 # script_build_cp2menu <output_path>
 #   설명: cp2menu 런타임 스크립트 생성

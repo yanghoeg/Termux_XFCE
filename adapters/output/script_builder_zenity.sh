@@ -4,13 +4,18 @@
 # -----------------------------------------------------------------------------
 # Output Adapter — zenity 기반 런타임 스크립트 빌더
 # script_builder.sh 포트의 zenity 구현체
-# 생성되는 스크립트: startXFCE, kill_termux_x11, cp2menu
+# 생성되는 스크립트: startXFCE, kill_display_session, cp2menu
+#
+# display_emit_* 함수(display 포트)를 조립하여 런타임 스크립트 생성.
+# 공유 로직(GPU/PulseAudio/로케일)은 이 파일에 인라인으로 유지.
 # =============================================================================
 
 script_build_start_xfce() {
     local output="$1"
 
-    cat > "$output" << 'EOF'
+    {
+        # ── 1. Shebang + 환경 초기화 (공유) ──
+        cat << 'HEADER'
 #!/data/data/com.termux/files/usr/bin/bash
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
@@ -21,126 +26,35 @@ mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
 chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
 export XDG_RUNTIME_DIR
 
-_kill_x11_session() {
-    pkill -9 -f "termux-x11" 2>/dev/null || true
-    killall -9 Xwayland xfce4-session xfwm4 xfdesktop xfce4-panel \
-        xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd \
-        xfce4-screensaver nimf pulseaudio dbus-daemon dbus-launch 2>/dev/null || true
-    pkill -9 -f conky 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-    pkill -f termux-clipboard-sync 2>/dev/null || true
-    local _w; for _w in 1 2 3; do
-        pgrep -f "termux-x11" >/dev/null 2>&1 || break
-        sleep 1
-    done
-    rm -f "${TMPDIR}/.X11-unix/X"* "${TMPDIR}/.X"*"-lock" 2>/dev/null || true
-}
+HEADER
 
-# ─── X11 세션 중복 감지: X 소켓 또는 세션 프로세스가 남아 있으면 다이얼로그 ───
-# 기존 dbus-daemon 카운트 방식은 세션 1개일 때 count=1이라 > 1 조건 미충족 → 감지 실패
-# 더 직접적인 지표(X 소켓, xfce4-session, termux-x11)로 판별
-_EXISTING_SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
-_EXISTING_XFCE=$(pgrep -x xfce4-session 2>/dev/null | head -1 || echo "")
-_EXISTING_TX11=$(pgrep -f "termux-x11 :" 2>/dev/null | head -1 || echo "")
+        # ── 2. 세션 종료 함수 (display 어댑터) ──
+        display_emit_kill_session
 
-if [ -n "$_EXISTING_SOCK" ] || [ -n "$_EXISTING_XFCE" ] || [ -n "$_EXISTING_TX11" ]; then
-    if [ -z "$_EXISTING_TX11" ] || [ -z "$_EXISTING_XFCE" ]; then
-        # stale/zombie 세션 — termux-x11 또는 xfce4-session 중 하나라도 없으면 자동 정리
-        _kill_x11_session
-    else
-        # live 세션 — APK를 포그라운드로 올린 뒤 다이얼로그 표시
-        if [ -n "$_EXISTING_SOCK" ]; then
-            _NUM=$(basename "$_EXISTING_SOCK" | sed 's/^X//')
-            export DISPLAY=":${_NUM}"
-        fi
+        # ── 3. 세션 중복 감지 (display 어댑터) ──
+        display_emit_session_detect
 
-        am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null
-        sleep 1
+        # ── 4. 디스플레이 서버 시작 (display 어댑터) ──
+        # _kill_display_session + wake-lock + 서버 시작 + XDISPLAY 설정
+        display_emit_server_start
 
-        XFCE_STATUS="실행 중 (PID: ${_EXISTING_XFCE})"
-        TX11_STATUS="실행 중 (PID: ${_EXISTING_TX11})"
-        DBUS_COUNT=$(pgrep dbus-daemon 2>/dev/null | wc -l | tr -d ' ')
-
-        choice=$(zenity --list \
-            --title="XFCE 세션 중복 감지" \
-            --text="⚠ X11 세션이 이미 실행 중입니다\n\n현황\n  • XFCE4 세션 : ${XFCE_STATUS}\n  • Termux:X11 : ${TX11_STATUS}\n  • dbus 수     : ${DBUS_COUNT:-0}개" \
-            --column="동작" --height=320 \
-            "기존 세션으로 이동" \
-            "세션 종료 후 재시작" \
-            "세션 전체 종료" \
-            2>/dev/null || true)
-
-        case "$choice" in
-            "기존 세션으로 이동")
-                exit 0
-                ;;
-            "세션 종료 후 재시작")
-                _kill_x11_session
-                ;;
-            "세션 전체 종료")
-                _kill_x11_session
-                termux-wake-unlock 2>/dev/null || true
-                exit 0
-                ;;
-            *)
-                # 취소(ESC/닫기) — 아무것도 안 함
-                exit 0
-                ;;
-        esac
-    fi
-fi
-# ───────────────���────────────────────────────────��───────────────
-
-_kill_x11_session
-
-termux-wake-lock
-
-# X 서버 실행 — 사용 가능한 디스플레이 번호 자동 탐색 (:0~:3)
-# APK 버전에 따라 :0 또는 :1을 내부 점유하므로 첫 성공 번호를 사용
-TX11_PID=""
-for _DTRY in 0 1 2 3; do
-    termux-x11 :${_DTRY} 2>/dev/null &
-    TX11_PID=$!
-    sleep 2
-    if [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ]; then
-        break
-    fi
-    kill $TX11_PID 2>/dev/null || true
-    TX11_PID=""
-done
-
-# Termux:X11 APK 열기 (APK는 위에서 이미 force-stop 됨)
-am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
-
-# X 소켓이 생길 때까지 최대 10초 추가 대기 (위 루프에서 이미 감지된 경우 즉시 통과)
-DISPLAY_NUM=""
-for i in $(seq 1 10); do
-    SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
-    if [ -n "$SOCK" ]; then
-        DISPLAY_NUM=$(basename "$SOCK" | sed 's/^X//')
-        break
-    fi
-    sleep 1
-done
-
-if [ -z "$DISPLAY_NUM" ]; then
-    echo "ERROR: Termux:X11 X 소켓을 찾을 수 없습니다. Termux:X11 앱을 먼저 열어주세요." >&2
-    exit 1
-fi
-
-XDISPLAY=":${DISPLAY_NUM}"
-echo "Detected DISPLAY=${XDISPLAY}"
+        # ── 5. PulseAudio 시작 (공유) ──
+        cat << 'PULSE'
 
 _PA_PRELOAD=""
 [ -f /system/lib64/libskcodec.so ] && _PA_PRELOAD="/system/lib64/libskcodec.so"
 
-LD_PRELOAD="\$_PA_PRELOAD" pulseaudio --start \
+LD_PRELOAD="$_PA_PRELOAD" pulseaudio --start \
     --load="module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1" \
     --exit-idle-time=-1
 
-LD_PRELOAD="\$_PA_PRELOAD" pacmd load-module \
+LD_PRELOAD="$_PA_PRELOAD" pacmd load-module \
     module-native-protocol-tcp auth-ip-acl=127.0.0.1 auth-anonymous=1 2>/dev/null || true
 
+PULSE
+
+        # ── 6. 한글 로케일 (공유) ──
+        cat << 'LOCALE'
 # 한글 로케일 — force_gettext.so가 설치되어 있으면 자동 적용
 _PREFIX="/data/data/com.termux/files/usr"
 if [ -f "$_PREFIX/lib/force_gettext.so" ]; then
@@ -156,18 +70,31 @@ if [ -f "$_PREFIX/lib/force_gettext.so" ]; then
       export LD_PRELOAD="$_PREFIX/lib/force_gettext.so${LD_PRELOAD:+:$LD_PRELOAD}";; esac
 fi
 
-# Android ↔ X11 클립보드 동기화
-if command -v termux-clipboard-get >/dev/null 2>&1 && command -v xclip >/dev/null 2>&1; then
-    pkill -f termux-clipboard-sync 2>/dev/null || true
-    DISPLAY="$XDISPLAY" termux-clipboard-sync &
+LOCALE
+
+        # ── 7. nimf 한글 입력기 (공유) ──
+        cat << 'NIMF'
+# nimf 입력기 — 설치되어 있으면 세션 전체에 적용
+if command -v nimf >/dev/null 2>&1; then
+    export XMODIFIERS="@im=nimf"
+    export GTK_IM_MODULE=nimf
+    export QT_IM_MODULE=nimf
 fi
+
+NIMF
+
+        # ── 8. 클립보드 동기화 (display 어댑터) ──
+        display_emit_clipboard_sync
+
+        # ── 9. GPU 감지 + XFCE 세션 시작 (공유) ──
+        cat << 'GPU_SESSION'
 
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
 if [ -n "$GPU_MODEL" ]; then
     # Adreno GPU 감지 → Zink(OpenGL→Vulkan) + Turnip
-    # 주의: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우
-    #       설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
+    # xfwm4 컴포지터가 검은 화면 유발 시:
+    #   설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
     env DISPLAY="$XDISPLAY" \
         PULSE_SERVER=tcp:127.0.0.1:4713 \
         MESA_LOADER_DRIVER_OVERRIDE=zink \
@@ -190,50 +117,48 @@ else
         GSK_RENDERER=cairo \
         dbus-launch --exit-with-session xfce4-session &
 fi
-EOF
+GPU_SESSION
+    } > "$output"
+
     sed -i "s|__KOREAN_FALLBACK_DOMAINS__|${_KOREAN_FALLBACK_DOMAINS:-}|" "$output"
 }
 
-script_build_kill_x11() {
+script_build_kill_display() {
     local output="$1"
 
-    cat > "$output" << 'EOF'
+    {
+        cat << 'HEADER'
 #!/data/data/com.termux/files/usr/bin/bash
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 
-_kill_x11_session() {
-    pkill -9 -f "termux-x11" 2>/dev/null || true
-    killall -9 Xwayland xfce4-session xfwm4 xfdesktop xfce4-panel \
-        xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd \
-        xfce4-screensaver nimf pulseaudio dbus-daemon dbus-launch 2>/dev/null || true
-    pkill -9 -f conky 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-    pkill -f termux-clipboard-sync 2>/dev/null || true
-    local _w; for _w in 1 2 3; do
-        pgrep -f "termux-x11" >/dev/null 2>&1 || break
-        sleep 1
-    done
-    rm -f "${TMPDIR}/.X11-unix/X"* "${TMPDIR}/.X"*"-lock" 2>/dev/null || true
-}
+HEADER
+
+        display_emit_kill_session
+
+        cat << 'BODY'
 
 if pgrep -f '[a]pt|[a]pt-get|[d]pkg|[n]ala' > /dev/null; then
     zenity --info --text="패키지 설치 중입니다. 완료 후 시도하세요."
     exit 1
 fi
 
-# X 서버 종료 전에 세션 존재 여부 확인
+# 디스플레이 세션 종료 전 존재 여부 확인
 XFCE_PID=$(pgrep -x xfce4-session 2>/dev/null | head -1)
-TX11_PID=$(pgrep -f termux-x11 2>/dev/null | head -1)
+DISPLAY_PID=$(pgrep -f "termux-x11\|labwc" 2>/dev/null | head -1)
 
-if [ -z "$XFCE_PID" ] && [ -z "$TX11_PID" ]; then
+if [ -z "$XFCE_PID" ] && [ -z "$DISPLAY_PID" ]; then
     zenity --info --text="실행 중인 세션을 찾을 수 없습니다."
     exit 0
 fi
 
-_kill_x11_session
+_kill_display_session
 termux-wake-unlock 2>/dev/null || true
-EOF
+BODY
+    } > "$output"
 }
+
+# 하위 호환 별칭
+script_build_kill_x11() { script_build_kill_display "$@"; }
 
 script_build_cp2menu() {
     local output="$1"
@@ -265,6 +190,7 @@ if [[ "$action" == "Copy .desktop file" ]]; then
     app_name=$(grep -m1 '^Name=' "$PREFIX/share/applications/$filename" | cut -d= -f2-)
     app_name="${app_name:-App}"
     # sed 구분자(|)와 작은따옴표 충돌 방지
+    app_name="${app_name//\\/\\\\}"
     app_name="${app_name//\'/\'\\\'\'}"
     app_name="${app_name//&/\\&}"
     app_name="${app_name//|/\\|}"
