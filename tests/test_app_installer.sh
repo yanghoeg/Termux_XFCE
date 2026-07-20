@@ -171,6 +171,8 @@ describe "app-installer/install.sh — _detect_proot_user"
 
 # install.sh의 _detect_proot_user만 추출해서 source (다른 부분 부작용 회피)
 _load_detect_only() {
+    # _detect_proot_user는 _proot_rootfs에 의존 → 리졸버 먼저 로드
+    source "${APP_DIR}/lib/proot_path.sh"
     local tmp="${TMPDIR}/detect_only_$$.sh"
     awk '
         /^_detect_proot_user\(\) \{/{ in_fn=1 }
