@@ -56,8 +56,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 | `--user <이름>` | `USERNAME=` | proot 사용자 이름 |
 | `--no-proot` | `SKIP_PROOT=true` | proot 없이 native만 |
 | `--proot-only` | `PROOT_ONLY=true` | proot만 설치 (두 번째 distro 추가 시) |
+| `--display x11\|wayland` | `DISPLAY_SERVER=` | 디스플레이 서버 (기본: `x11`) |
 
 > GPU 가속, 한글 입력기 등 선택적 구성요소는 설치 후 `app-installer`에서 관리합니다.
+
+> ⚠️ **Wayland(labwc)는 실험적(테스트 중)입니다.** 한글 입력·스크린샷 등 알려진 이슈가 많아
+> 기본값은 `x11`이며, 안정적인 사용을 원하면 `x11`을 권장합니다.
 
 ## 사용법
 

@@ -701,6 +701,7 @@ _test_shortcuts_creates_all() {
     assert_file_exists "${PREFIX}/bin/cp2menu"
     assert_file_exists "${PREFIX}/bin/kill_display_session"
     assert_file_exists "${PREFIX}/bin/app-installer"
+    assert_file_exists "${PREFIX}/bin/screenshot"
     cleanup_sandbox "$sb"
 }
 it "모든 유틸리티 스크립트를 생성한다" _test_shortcuts_creates_all
@@ -990,6 +991,39 @@ _test_clipboard_sync_contains_sync_logic() {
     cleanup_sandbox "$sb"
 }
 it "동기화 스크립트에 양방향 클립보드 로직이 포함된다" _test_clipboard_sync_contains_sync_logic
+
+# =============================================================================
+# _setup_screenshot — 세션 인식 스크린샷 래퍼
+# =============================================================================
+
+describe "termux_env — _setup_screenshot"
+
+_test_screenshot_creates_executable() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_screenshot
+
+    assert_file_exists "$PREFIX/bin/screenshot"
+    [ -x "$PREFIX/bin/screenshot" ]
+    bash -n "$PREFIX/bin/screenshot"
+    cleanup_sandbox "$sb"
+}
+it "screenshot 스크립트를 생성하고 실행 권한을 부여한다" _test_screenshot_creates_executable
+
+_test_screenshot_forces_x11_backend_on_wayland() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_screenshot
+
+    local bin="$PREFIX/bin/screenshot"
+    # Wayland 세션에서는 X11 백엔드로 강제해 표시면(Termux:X11)을 캡처
+    grep -q 'GDK_BACKEND=x11' "$bin"
+    grep -q 'xfce4-screenshooter' "$bin"
+    cleanup_sandbox "$sb"
+}
+it "Wayland 세션에서 X11 백엔드를 강제한다" _test_screenshot_forces_x11_backend_on_wayland
 
 # =============================================================================
 # _setup_termux_repos — 3개 repo + pkg_update

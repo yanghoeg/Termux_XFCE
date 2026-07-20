@@ -105,6 +105,7 @@ setup_xfce_autostart() {
     _migrate_remove_actions_plugin
     _migrate_dbus_propagate_path
     _migrate_conky_exec_ampersand
+    _migrate_screenshot_keybindings
 }
 
 # -----------------------------------------------------------------------------
@@ -348,4 +349,18 @@ _migrate_conky_exec_ampersand() {
     [ -f "$desktop" ] || return 0
     grep -q 'Exec=.*&$' "$desktop" 2>/dev/null || return 0
     sed -i 's| &$||' "$desktop"
+}
+
+# 기존 설치본의 Print 계열 스크린샷 키를 세션 인식 래퍼(screenshot)로 전환
+# Why: xfce4-screenshooter/flameshot은 X11 API라 labwc(Wayland) nested 세션에서
+#      캡처가 깨진다. screenshot 래퍼가 세션을 감지해 grim/slurp 또는 X11 도구로 분기.
+_migrate_screenshot_keybindings() {
+    local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
+    [ -f "$xml" ] || return 0
+    grep -q 'value="xfce4-screenshooter' "$xml" 2>/dev/null || return 0
+    sed -i \
+        -e 's#value="xfce4-screenshooter -w"#value="screenshot window"#' \
+        -e 's#value="xfce4-screenshooter -r"#value="screenshot region"#' \
+        -e 's#value="xfce4-screenshooter"#value="screenshot full"#' \
+        "$xml"
 }

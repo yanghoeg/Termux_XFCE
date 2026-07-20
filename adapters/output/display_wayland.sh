@@ -47,6 +47,14 @@ if [ -n "$_EXISTING_LABWC" ] || [ -n "$_EXISTING_XFCE" ] || [ -n "$_EXISTING_TX1
         # stale/zombie 세션 — labwc 또는 xfce4-session 중 하나라도 없으면 자동 정리
         _kill_display_session
     else
+        # 표시면(Termux:X11) 소켓에서 DISPLAY 복원 — zenity 다이얼로그 표시에 필요.
+        # (shortcut/터미널에서 실행 시 DISPLAY가 unset이라, 없으면 zenity가 조용히
+        #  실패해 choice가 비고 `*) exit 0`으로 빠져 재시작이 안 됨)
+        _EXISTING_SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
+        if [ -n "$_EXISTING_SOCK" ]; then
+            export DISPLAY=":$(basename "$_EXISTING_SOCK" | sed 's/^X//')"
+        fi
+
         am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null
         sleep 1
 
@@ -141,6 +149,10 @@ display_emit_session_launch() {
 # 세션이 기동하지 않으므로(검은 화면), 강제하지 말고 자동 폴백에 맡긴다.
 #
 # 세션 로그: 컴포지터/세션 출력을 파일로 남겨 검은 화면 등 문제 진단을 가능케 한다.
+# 입력기(nimf): GTK/Qt 앱을 Xwayland(X11 백엔드)로 강제해 nimf의 클라이언트측
+# immodule(GTK_IM_MODULE=nimf) + XIM 경로를 그대로 사용한다. wayland 백엔드에서는
+# 같은 설정이 동작 방식이 달라 Hangul 토글이 nimf로 전달되지 않아 한글이 안 됨
+# (영문만 입력됨). labwc 컴포지터는 유지하되 클라이언트는 Xwayland로 붙는다.
 _WL_LOG="${HOME}/.xfce-wayland.log"
 env DISPLAY="$XDISPLAY" \
     XDG_RUNTIME_DIR="$XDG_RUNTIME_DIR" \
@@ -148,40 +160,53 @@ env DISPLAY="$XDISPLAY" \
     WLR_BACKENDS=x11 \
     WLR_LIBINPUT_NO_DEVICES=1 \
     WLR_NO_HARDWARE_CURSORS=1 \
-    GDK_BACKEND="wayland,x11" \
-    QT_QPA_PLATFORM="wayland;xcb" \
-    MOZ_ENABLE_WAYLAND=1 \
+    GDK_BACKEND=x11 \
+    QT_QPA_PLATFORM=xcb \
+    MOZ_ENABLE_WAYLAND=0 \
     dbus-launch --exit-with-session startxfce4 --wayland >"$_WL_LOG" 2>&1 &
 
-# 출력 크기 보정: wlroots x11 백엔드는 기본 1024x768 창으로 떠서 폰 화면을 다
-# 채우지 못한다. 세션 기동 후 wlr-randr로 표시면(Termux:X11, $XDISPLAY)의 해상도와
-# 동일한 custom-mode를 nested 출력(X11-1)에 적용해 전체 화면을 채운다.
+# 출력 크기 보정 + 회전 추적: wlroots x11 백엔드는 기본 1024x768 창으로 떠서 폰
+# 화면을 다 채우지 못한다. 세션 기동 후 표시면(Termux:X11, $XDISPLAY)의 해상도와
+# 동일한 custom-mode를 nested 출력(예: X11-1)에 적용하고, 이후 폰 회전 등으로
+# 표시면 크기가 바뀌면 이를 감지해 재적용한다.
+#   - 폴링 루프: 표시면 해상도가 직전과 다를 때만 wlr-randr 호출(불필요한 깜빡임 방지)
+#   - labwc가 종료되면 루프도 함께 종료되어 좀비 프로세스로 남지 않는다
 if command -v wlr-randr >/dev/null 2>&1 && command -v xdotool >/dev/null 2>&1; then
-    _PGEOM=$(DISPLAY="$XDISPLAY" xdotool getdisplaygeometry 2>/dev/null)
-    _PW=${_PGEOM% *}; _PH=${_PGEOM#* }
-    if [ -n "$_PW" ] && [ -n "$_PH" ]; then
-        (
-            # labwc가 wayland 소켓을 만들 때까지 대기
-            _WLD=""
-            for _i in $(seq 1 20); do
-                for _f in "$XDG_RUNTIME_DIR"/wayland-*; do
-                    case "$_f" in *.lock) continue ;; esac
-                    [ -S "$_f" ] && { _WLD=$(basename "$_f"); break; }
-                done
-                [ -n "$_WLD" ] && break
-                sleep 0.5
+    (
+        # labwc가 wayland 소켓을 만들 때까지 대기
+        _WLD=""
+        for _i in $(seq 1 20); do
+            for _f in "$XDG_RUNTIME_DIR"/wayland-*; do
+                case "$_f" in *.lock) continue ;; esac
+                [ -S "$_f" ] && { _WLD=$(basename "$_f"); break; }
             done
-            [ -z "$_WLD" ] && exit 0
-            # X11-1 출력이 나타날 때까지 대기 후 부모 해상도로 custom-mode 적용
-            for _i in $(seq 1 20); do
-                _OUT=$(WAYLAND_DISPLAY="$_WLD" wlr-randr 2>/dev/null | awk 'NR==1{print $1; exit}')
-                [ -n "$_OUT" ] && break
-                sleep 0.5
-            done
-            [ -n "$_OUT" ] && WAYLAND_DISPLAY="$_WLD" \
-                wlr-randr --output "$_OUT" --custom-mode "${_PW}x${_PH}" 2>/dev/null
-        ) &
-    fi
+            [ -n "$_WLD" ] && break
+            sleep 0.5
+        done
+        [ -z "$_WLD" ] && exit 0
+
+        # nested 출력 이름이 나타날 때까지 대기 (예: X11-1)
+        _OUT=""
+        for _i in $(seq 1 20); do
+            _OUT=$(WAYLAND_DISPLAY="$_WLD" wlr-randr 2>/dev/null | awk 'NR==1{print $1; exit}')
+            [ -n "$_OUT" ] && break
+            sleep 0.5
+        done
+        [ -z "$_OUT" ] && exit 0
+
+        # 표시면 해상도를 추적하며 변할 때만 custom-mode 재적용 (회전 대응)
+        _LAST=""
+        while pgrep -x labwc >/dev/null 2>&1; do
+            _PGEOM=$(DISPLAY="$XDISPLAY" xdotool getdisplaygeometry 2>/dev/null)
+            _PW=${_PGEOM% *}; _PH=${_PGEOM#* }
+            if [ -n "$_PW" ] && [ -n "$_PH" ] && [ "${_PW}x${_PH}" != "$_LAST" ]; then
+                WAYLAND_DISPLAY="$_WLD" \
+                    wlr-randr --output "$_OUT" --custom-mode "${_PW}x${_PH}" 2>/dev/null \
+                    && _LAST="${_PW}x${_PH}"
+            fi
+            sleep 2
+        done
+    ) &
 fi
 FRAG
 }
@@ -198,8 +223,9 @@ FRAG
 }
 
 display_get_packages() {
-    # 표시면은 Termux:X11 재사용 + labwc/xwayland/wl-clipboard 추가
-    echo "termux-x11-nightly labwc xwayland wl-clipboard wlr-randr xdotool xclip wmctrl"
+    # 표시면은 Termux:X11 재사용 + labwc/xwayland 추가
+    # 클립보드 동기화는 Xwayland 경유 xclip 사용(wl-clipboard는 Termux 저장소에 없음)
+    echo "termux-x11-nightly labwc xwayland wlr-randr xdotool xclip wmctrl"
 }
 
 display_setup_apk() {
