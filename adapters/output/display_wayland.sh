@@ -95,36 +95,29 @@ if ! command -v labwc >/dev/null 2>&1; then
 fi
 
 # 표시면: Termux:X11 — 사용 가능한 디스플레이 번호 자동 탐색 (:0~:3)
-TX11_PID=""
+# 띄운 번호를 그대로 확정한다(ls|head 재스캔 금지 — 남의/죽은 소켓 선택 방지)
+DISPLAY_NUM=""
 for _DTRY in 0 1 2 3; do
     termux-x11 :${_DTRY} 2>/dev/null &
     TX11_PID=$!
-    sleep 2
+    for _w in 1 2 3 4 5; do
+        [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ] && break
+        sleep 1
+    done
     if [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ]; then
+        DISPLAY_NUM=$_DTRY
         break
     fi
-    kill $TX11_PID 2>/dev/null || true
-    TX11_PID=""
-done
-
-# Termux:X11 APK 열기
-am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
-
-# X 소켓이 생길 때까지 최대 10초 추가 대기
-DISPLAY_NUM=""
-for i in $(seq 1 10); do
-    SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
-    if [ -n "$SOCK" ]; then
-        DISPLAY_NUM=$(basename "$SOCK" | sed 's/^X//')
-        break
-    fi
-    sleep 1
+    kill "$TX11_PID" 2>/dev/null || true
 done
 
 if [ -z "$DISPLAY_NUM" ]; then
     echo "ERROR: Termux:X11 X 소켓을 찾을 수 없습니다. Termux:X11 앱을 먼저 열어주세요." >&2
     exit 1
 fi
+
+# Termux:X11 APK(표시면) 열기
+am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity 2>/dev/null || true
 
 XDISPLAY=":${DISPLAY_NUM}"
 echo "Detected DISPLAY=${XDISPLAY} (Wayland/labwc nested)"
