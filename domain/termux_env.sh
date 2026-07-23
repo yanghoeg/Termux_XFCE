@@ -38,6 +38,7 @@ setup_termux_shortcuts() {
     _setup_cp2menu
     _setup_app_installer
     _setup_clipboard_sync
+    _setup_screenshot
 }
 
 _download_and_open_apk() {
@@ -434,11 +435,24 @@ _install_nimf_native() {
 }
 
 _setup_start_xfce() {
-    local shortcut="$HOME/.shortcuts/startXFCE"
+    # 현재 로드된 display 어댑터 = 설치 시 선택된 서버 → 기본 startXFCE로도 연결
+    _build_start_xfce_launcher "${DISPLAY_SERVER:-x11}" default
+}
+
+# 특정 디스플레이 서버용 런처 생성.
+# 호출 시점에 로드된 display 어댑터(display_emit_*)로 스크립트를 조립하므로,
+# install.sh(합성 루트)가 어댑터를 순차 소싱하며 서버별로 호출한다.
+_build_start_xfce_launcher() {
+    local server="$1" mode="${2:-}"
+    local shortcut="$HOME/.shortcuts/startXFCE-${server}"
     mkdir -p "$HOME/.shortcuts"
     script_build_start_xfce "$shortcut"
     chmod +x "$shortcut"
-    ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
+    ln -sf "$shortcut" "$PREFIX/bin/startXFCE-${server}"
+    if [ "$mode" = "default" ]; then
+        ln -sf "$shortcut" "$HOME/.shortcuts/startXFCE"
+        ln -sf "$shortcut" "$PREFIX/bin/startXFCE"
+    fi
 }
 
 _setup_kill_display() {
@@ -650,5 +664,37 @@ while true; do
     PREV_ANDROID="$ANDROID" PREV_X11="$X11"
 done
 SYNCEOF
+    chmod +x "$bin"
+}
+
+_setup_screenshot() {
+    # 세션 인식 스크린샷 래퍼 — Print/Shift+Print/Alt+Print 키에서 호출.
+    # Wayland(labwc) 세션은 Termux:X11을 표시면으로 nested 실행하므로, X11 백엔드로
+    # 강제해 그 표시면(=합성된 데스크탑)을 xfce4-screenshooter로 캡처한다.
+    # (GTK가 wayland 백엔드를 고르면 labwc의 미완성 스크린샷 API로 캡처가 깨진다.
+    #  grim/slurp는 Termux 저장소에 없어 X11 도구를 표시면에 직접 사용한다.)
+    local bin="$PREFIX/bin/screenshot"
+    mkdir -p "$(dirname "$bin")"
+
+    cat > "$bin" << 'SHOTEOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 세션 인식 스크린샷 — Wayland(labwc nested on Termux:X11)에서도 X11 도구를 표시면에 사용
+# 사용: screenshot [full|region|window]
+set -u
+_mode="${1:-full}"
+
+case "$_mode" in
+    region) set -- -r ;;
+    window) set -- -w ;;
+    *)      set -- ;;
+esac
+
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
+    # 표시면(Termux:X11)을 X11 백엔드로 직접 캡처 — DISPLAY는 세션에서 이미 표시면을 가리킴
+    exec env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb xfce4-screenshooter "$@"
+else
+    exec xfce4-screenshooter "$@"
+fi
+SHOTEOF
     chmod +x "$bin"
 }

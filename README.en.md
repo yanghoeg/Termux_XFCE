@@ -56,8 +56,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 | `--user <name>` | `USERNAME=` | proot username |
 | `--no-proot` | `SKIP_PROOT=true` | Termux native only |
 | `--proot-only` | `PROOT_ONLY=true` | proot only (for adding a 2nd distro) |
+| `--display x11\|wayland` | `DISPLAY_SERVER=` | display server (default: `x11`) |
 
 > GPU acceleration, Korean input, and other optional components are managed via `app-installer` after installation.
+
+> ⚠️ **Wayland (labwc) is experimental (under testing).** It has many known issues
+> (Korean input, screenshots, etc.), so the default is `x11`. Use `x11` for a stable setup.
 
 ## Usage
 

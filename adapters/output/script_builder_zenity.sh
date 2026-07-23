@@ -20,6 +20,14 @@ script_build_start_xfce() {
 # shortcut 실행 시 TMPDIR 미상속 방지
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 
+# 바이너리를 Termux bionic으로 고정 — glibc-runner 셸(예: Claude Code)에서 실행 시
+# PATH 앞의 $PREFIX/glibc/bin이 env/cp/mkdir/grep 등 coreutils를 가려, 세션 전역에
+# preload되는 bionic force_gettext.so와 충돌(libdl.so 로드 실패 → 세션 미기동)하는
+# 것을 방지한다. bionic $PREFIX/bin을 앞세워 coreutils가 bionic으로 해석되게 한다.
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
+PATH="$PREFIX/bin:$PREFIX/bin/applets:$PATH"
+export PATH
+
 # XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
 XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
 mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
@@ -86,38 +94,33 @@ NIMF
         # ── 8. 클립보드 동기화 (display 어댑터) ──
         display_emit_clipboard_sync
 
-        # ── 9. GPU 감지 + XFCE 세션 시작 (공유) ──
-        cat << 'GPU_SESSION'
+        # ── 9. GPU 감지 (공유) — 환경변수 export 후 세션 시작은 display 어댑터가 상속 ──
+        cat << 'GPU_ENV'
 
+# GPU 자동 감지 → Zink(OpenGL→Vulkan)+Turnip 또는 llvmpipe 소프트웨어 폴백
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
+export PULSE_SERVER=tcp:127.0.0.1:4713
+export MESA_NO_ERROR=1
+export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
+export MESA_GLES_VERSION_OVERRIDE=3.2
+export GSK_RENDERER=cairo
+
 if [ -n "$GPU_MODEL" ]; then
-    # Adreno GPU 감지 → Zink(OpenGL→Vulkan) + Turnip
-    # xfwm4 컴포지터가 검은 화면 유발 시:
-    #   설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
-    env DISPLAY="$XDISPLAY" \
-        PULSE_SERVER=tcp:127.0.0.1:4713 \
-        MESA_LOADER_DRIVER_OVERRIDE=zink \
-        TU_DEBUG=noconform \
-        ZINK_DESCRIPTORS=lazy \
-        MESA_NO_ERROR=1 \
-        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
-        MESA_GLES_VERSION_OVERRIDE=3.2 \
-        MESA_VK_WSI_PRESENT_MODE=fifo \
-        GSK_RENDERER=cairo \
-        dbus-launch --exit-with-session xfce4-session &
+    # Adreno GPU 감지 → Zink + Turnip
+    export MESA_LOADER_DRIVER_OVERRIDE=zink
+    export TU_DEBUG=noconform
+    export ZINK_DESCRIPTORS=lazy
+    export MESA_VK_WSI_PRESENT_MODE=fifo
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
-    env DISPLAY="$XDISPLAY" \
-        PULSE_SERVER=tcp:127.0.0.1:4713 \
-        MESA_NO_ERROR=1 \
-        MESA_GL_VERSION_OVERRIDE=4.6COMPAT \
-        MESA_GLES_VERSION_OVERRIDE=3.2 \
-        LIBGL_ALWAYS_SOFTWARE=1 \
-        GSK_RENDERER=cairo \
-        dbus-launch --exit-with-session xfce4-session &
+    export LIBGL_ALWAYS_SOFTWARE=1
 fi
-GPU_SESSION
+GPU_ENV
+
+        # ── 10. 세션 시작 (display 어댑터) ──
+        # X11: xfce4-session on $XDISPLAY / Wayland: nested labwc + startxfce4 --wayland
+        display_emit_session_launch
     } > "$output"
 
     sed -i "s|__KOREAN_FALLBACK_DOMAINS__|${_KOREAN_FALLBACK_DOMAINS:-}|" "$output"

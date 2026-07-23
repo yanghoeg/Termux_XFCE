@@ -91,8 +91,9 @@ Termux_XFCE/
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
-  - Wayland 어댑터(`display_wayland.sh`): labwc 기반 (스텁 — 구현 예정)
-  - `--display x11|wayland` CLI 옵션 또는 `DISPLAY_SERVER` 환경변수로 선택
-  - X11 기본: `termux-x11 :N` → 소켓 자동 감지 (`${TMPDIR}/.X11-unix/X*`)
+  - Wayland 어댑터(`display_wayland.sh`): labwc 기반 (구현됨)
+  - `--display x11|wayland` CLI 옵션 / `DISPLAY_SERVER` 환경변수 / 미지정 시 대화형 선택
+  - **설치 시 하나 고정**: 선택된 서버의 런처(`startXFCE`)만 생성 (기본: x11, wayland는 실험적)
+  - X11: `termux-x11 :N` → 소켓 자동 감지 (`${TMPDIR}/.X11-unix/X*`)
 - **기본 쉘은 zsh + Powerlevel10k**: `domain/termux_env.sh` `_setup_zsh_p10k()`가 설치 시 자동 구성
   - RC 파일 수정은 bash/zsh 양쪽 모두 반영해야 함 (`_get_rc_files()` 참조)

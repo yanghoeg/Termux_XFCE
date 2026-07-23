@@ -91,7 +91,8 @@ resolve_interactive_inputs
 
 # -----------------------------------------------------------------------------
 # 6. Output Adapter 선택 — Display Server
-# DISPLAY_SERVER는 CLI/환경변수에서 설정 (기본: x11)
+# DISPLAY_SERVER는 CLI/환경변수/대화형에서 설정 (기본: x11) — 설치 시 하나 고정
+# wayland(labwc)는 실험적 — 한글 입력·스크린샷 등 이슈가 있어 x11이 기본이다.
 # -----------------------------------------------------------------------------
 case "${DISPLAY_SERVER}" in
     x11)

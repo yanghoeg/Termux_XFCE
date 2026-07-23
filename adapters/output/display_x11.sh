@@ -125,6 +125,17 @@ echo "Detected DISPLAY=${XDISPLAY}"
 FRAG
 }
 
+display_emit_session_launch() {
+    cat << 'FRAG'
+
+# XFCE 세션 시작 (GPU 환경변수는 상위 블록에서 export됨)
+# xfwm4 컴포지터가 검은 화면 유발 시:
+#   설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
+env DISPLAY="$XDISPLAY" \
+    dbus-launch --exit-with-session xfce4-session &
+FRAG
+}
+
 display_emit_clipboard_sync() {
     cat << 'FRAG'
 # Android ↔ X11 클립보드 동기화
