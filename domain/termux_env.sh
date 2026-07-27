@@ -426,12 +426,20 @@ _install_nimf_native() {
 
     ui_info "nimf 한글 입력기 설치 중..."
     wget -q "$url" -O "$deb" || { ui_warn "nimf deb 다운로드 실패"; return 1; }
-    dpkg -i --force-overwrite "$deb" 2>/dev/null || true
-    apt --fix-broken install -y 2>/dev/null || true
-    rm -f "$deb"
-    glib-compile-schemas "${PREFIX}/share/glib-2.0/schemas/" 2>/dev/null || true
 
+    # dpkg는 의존성이 빠져 있으면 패키지를 unpack한 뒤 non-zero를 반환할 수 있다.
+    # 이 경우 apt로 복구하되, 복구 자체가 실패하면 설치 성공으로 보고하지 않는다.
+    if ! dpkg -i --force-overwrite "$deb" 2>/dev/null; then
+        if ! apt --fix-broken install -y 2>/dev/null; then
+            rm -f "$deb"
+            return 1
+        fi
+    fi
+    rm -f "$deb"
+
+    # dpkg/apt의 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
     command -v nimf &>/dev/null || return 1
+    glib-compile-schemas "${PREFIX}/share/glib-2.0/schemas/" 2>/dev/null || true
 }
 
 _setup_start_xfce() {
@@ -577,6 +585,8 @@ _migrate_desktop_to_prun_gui() {
 _setup_app_installer() {
     local bin="$PREFIX/bin/app-installer"
     local desktop="$PREFIX/share/applications/app-installer.desktop"
+    local installer_path_q
+    printf -v installer_path_q '%q' "${SCRIPT_DIR}/app-installer/install.sh"
 
     # SCRIPT_DIR은 install.sh 실행 시점 기준 — curl-pipe(~/.termux-xfce-installer),
     # 수동 clone(~/Termux_XFCE) 양쪽 모두 정확한 경로를 기록한다.
@@ -585,7 +595,7 @@ _setup_app_installer() {
 #!/data/data/com.termux/files/usr/bin/bash
 # GTK4 zenity: Zink+Turnip GLX 스왑체인 크래시 방지
 export GSK_RENDERER=cairo
-exec bash ${SCRIPT_DIR}/app-installer/install.sh "\$@"
+exec bash ${installer_path_q} "\$@"
 EOF
     chmod +x "$bin"
 

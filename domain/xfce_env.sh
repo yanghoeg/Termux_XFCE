@@ -116,13 +116,13 @@ setup_xfce_autostart() {
 # 테스트는 tests/test_domain_xfce.sh의 멱등성 케이스(파일 존재 시 건너뜀)만 커버.
 # 실제 다운로드 경로 검증은 e2e(autopilot) 환경에서만 가능.
 
-_install_whitesur_theme() {
+_install_whitesur_theme() (
     local theme_dir="$PREFIX/share/themes/WhiteSur-Dark"
     [ -d "$theme_dir" ] && return 0  # 멱등성
 
     local tmpdir
     tmpdir=$(mktemp -d)
-    trap "rm -rf '$tmpdir'" RETURN
+    trap 'rm -rf "$tmpdir"' EXIT
 
     local zip="2024-11-18.zip"
     wget -q "https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${zip}" -O "$tmpdir/$zip" \
@@ -132,32 +132,34 @@ _install_whitesur_theme() {
     tar -xf "$tmpdir/WhiteSur-gtk-theme-2024-11-18/release/WhiteSur-Dark.tar.xz" -C "$tmpdir" \
         || { ui_warn "WhiteSur 테마 tar 해제 실패"; return 1; }
     mv "$tmpdir/WhiteSur-Dark/" "$PREFIX/share/themes/"
-}
+)
 
-_install_fluent_cursor() {
+_install_fluent_cursor() (
     local cursor_dir="$PREFIX/share/icons/dist-dark"
     [ -d "$cursor_dir" ] && return 0  # 멱등성
 
     local tmpdir
     tmpdir=$(mktemp -d)
-    trap "rm -rf '$tmpdir'" RETURN
+    trap 'rm -rf "$tmpdir"' EXIT
 
     local zip="2024-02-25.zip"
     wget -q "https://github.com/vinceliuice/Fluent-icon-theme/archive/refs/tags/${zip}" -O "$tmpdir/$zip" \
         || { ui_warn "Fluent 커서 다운로드 실패"; return 1; }
     unzip -o -q "$tmpdir/$zip" -d "$tmpdir" \
         || { ui_warn "Fluent 커서 압축 해제 실패"; return 1; }
+    # proot-only 클린 설치에서는 native XFCE 패키지가 이 경로를 만들지 않는다.
+    mkdir -p "$PREFIX/share/icons"
     rm -rf "$PREFIX/share/icons/dist" "$PREFIX/share/icons/dist-dark"
     mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist"      "$PREFIX/share/icons/"
     mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist-dark" "$PREFIX/share/icons/"
-}
+)
 
-_install_cascadia_code() {
+_install_cascadia_code() (
     [ -f "$HOME/.fonts/CascadiaCode.otf" ] && return 0
 
     local tmpdir
     tmpdir=$(mktemp -d)
-    trap "rm -rf '$tmpdir'" RETURN
+    trap 'rm -rf "$tmpdir"' EXIT
 
     local zip="CascadiaCode-2111.01.zip"
     wget -q "https://github.com/microsoft/cascadia-code/releases/download/v2111.01/${zip}" -O "$tmpdir/$zip" \
@@ -166,23 +168,23 @@ _install_cascadia_code() {
         || { ui_warn "CascadiaCode 폰트 압축 해제 실패"; return 1; }
     mv "$tmpdir/otf/static/"*.otf "$HOME/.fonts/" 2>/dev/null || true
     mv "$tmpdir/ttf/"*.ttf       "$HOME/.fonts/" 2>/dev/null || true
-}
+)
 
-_install_meslo_nerd() {
+_install_meslo_nerd() (
     # ryanoasis/nerd-fonts v3.2.1 Meslo.zip은 "MesloLGSNerdFont-Regular.ttf" 형태로 압축
     # (family: "MesloLGS Nerd Font" / "MesloLGS Nerd Font Mono")
     [ -f "$HOME/.fonts/MesloLGSNerdFont-Regular.ttf" ] && return 0
 
     local tmpdir
     tmpdir=$(mktemp -d)
-    trap "rm -rf '$tmpdir'" RETURN
+    trap 'rm -rf "$tmpdir"' EXIT
 
     wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip" -O "$tmpdir/Meslo.zip" \
         || { ui_warn "Meslo Nerd Font 다운로드 실패"; return 1; }
     unzip -q "$tmpdir/Meslo.zip" -d "$tmpdir/meslo_tmp" \
         || { ui_warn "Meslo Nerd Font 압축 해제 실패"; return 1; }
     mv "$tmpdir/meslo_tmp/"*.ttf "$HOME/.fonts/" 2>/dev/null || true
-}
+)
 
 _install_noto_emoji() {
     [ -f "$HOME/.fonts/NotoColorEmoji-Regular.ttf" ] && return 0

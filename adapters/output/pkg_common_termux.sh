@@ -9,12 +9,17 @@
 pkg_update() {
     # 일부 미러 fetch 실패(exit 100)는 캐시된 인덱스로 계속 진행 가능 — 관대 처리.
     # Why: tur.kcubeterm.com 등 외부 미러 동기화 지연이 전체 설치를 중단시키는 일을 방지.
-    local tmplog exit_code
+    local tmplog exit_code pipefail_was_enabled=false
     tmplog=$(mktemp)
+    if shopt -qo pipefail; then
+        pipefail_was_enabled=true
+    fi
     set +o pipefail
     pkg update -y -o Dpkg::Options::="--force-confold" 2>&1 | tee "$tmplog"
     exit_code=${PIPESTATUS[0]}
-    set -o pipefail
+    if [ "$pipefail_was_enabled" = true ]; then
+        set -o pipefail
+    fi
     if [ $exit_code -ne 0 ]; then
         if grep -q "Some index files failed to download" "$tmplog" && \
            ! grep -qE "Could not get lock|Unable to lock|dpkg was interrupted" "$tmplog"; then
