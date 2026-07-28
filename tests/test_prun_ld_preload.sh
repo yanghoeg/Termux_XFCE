@@ -91,6 +91,18 @@ it "unset LD_PRELOAD가 proot-distro login 호출보다 앞에 있다" _test_pru
 
 describe "_setup_prun — PROOT_USER 처리 로직"
 
+_test_prun_supports_both_rootfs_layouts() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_prun
+
+    assert_file_contains "${PREFIX}/bin/prun" 'containers/$DISTRO/rootfs'
+    assert_file_contains "${PREFIX}/bin/prun" 'installed-rootfs/$DISTRO'
+    cleanup_sandbox "$sb"
+}
+it "신규·레거시 proot rootfs 레이아웃을 모두 지원한다" _test_prun_supports_both_rootfs_layouts
+
 _test_prun_uses_proot_user_var() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"

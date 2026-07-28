@@ -14,8 +14,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${SCRIPT_DIR}/framework.sh"
 
 REPO_ROOT="${SCRIPT_DIR}/.."
-TRACE_FILE="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/install_matrix_trace.$$"
-HOOK_FILE="${TMPDIR:-/data/data/com.termux/files/usr/tmp}/install_matrix_hook.$$"
+TRACE_FILE=$(mktemp "$(_test_tmp_base)/install_matrix_trace_XXXXXX")
+HOOK_FILE=$(mktemp "$(_test_tmp_base)/install_matrix_hook_XXXXXX")
 
 # -----------------------------------------------------------------------------
 # 훅 파일: install.sh가 source하는 스텁
@@ -73,7 +73,7 @@ HOOK_EOF
 # -----------------------------------------------------------------------------
 _run_install() {
     local sandbox
-    sandbox=$(mktemp -d "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/install_matrix_XXXXXX")
+    sandbox=$(mktemp -d "$(_test_tmp_base)/install_matrix_XXXXXX")
     > "$TRACE_FILE"
 
     # install.sh가 자체적으로 sandbox HOME에 .config 디렉토리 생성하므로 별도 셋업 불필요
@@ -242,6 +242,34 @@ _test_invalid_distro_exits_nonzero() {
 }
 it "지원하지 않는 distro는 non-zero exit" _test_invalid_distro_exits_nonzero
 
+_test_invalid_username_exits_nonzero() {
+    local rc=0
+    _run_install --distro ubuntu --user 'bad;name' || rc=$?
+    assert_nonzero "$rc" "위험한 문자가 포함된 사용자 이름을 거부해야 함"
+}
+it "잘못된 사용자 이름은 non-zero exit" _test_invalid_username_exits_nonzero
+
+_test_conflicting_modes_exit_nonzero() {
+    local rc=0
+    _run_install --no-proot --proot-only || rc=$?
+    assert_nonzero "$rc" "--no-proot와 --proot-only를 함께 허용하면 안 됨"
+}
+it "--no-proot와 --proot-only 충돌은 non-zero exit" _test_conflicting_modes_exit_nonzero
+
+_test_no_proot_with_distro_exits_nonzero() {
+    local rc=0
+    _run_install --no-proot --distro ubuntu || rc=$?
+    assert_nonzero "$rc" "--no-proot와 distro 지정을 함께 허용하면 안 됨"
+}
+it "--no-proot와 --distro 충돌은 non-zero exit" _test_no_proot_with_distro_exits_nonzero
+
+_test_invalid_shell_exits_nonzero() {
+    local rc=0
+    PROOT_SHELL=fish _run_install --distro ubuntu --user testuser || rc=$?
+    assert_nonzero "$rc" "지원하지 않는 proot shell을 거부해야 함"
+}
+it "지원하지 않는 PROOT_SHELL은 non-zero exit" _test_invalid_shell_exits_nonzero
+
 # =============================================================================
 # 매트릭스 6: config 파일 생성 검증
 # =============================================================================
@@ -259,9 +287,12 @@ _test_config_file_records_distro() {
     assert_file_exists "$cfg"
     assert_file_contains "$cfg" 'PROOT_DISTRO="ubuntu"'
     assert_file_contains "$cfg" 'PROOT_USER="lideok"'
+    local mode
+    mode=$(stat -c '%a' "$cfg")
+    assert_eq "600" "$mode" "config는 사용자만 읽고 쓸 수 있어야 함"
     rm -rf "$sandbox"
 }
-it "config 파일에 distro/user가 기록됨" _test_config_file_records_distro
+it "config 파일에 distro/user가 기록되고 권한은 600" _test_config_file_records_distro
 
 _test_config_file_no_distro_when_no_proot() {
     local sandbox; sandbox=$(mktemp -d)

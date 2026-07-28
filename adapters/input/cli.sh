@@ -10,12 +10,24 @@
 # =============================================================================
 
 parse_cli_args() {
+    local initial_argc=$#
+    local scripted=false
+    if [ "$initial_argc" -gt 0 ] || [ -n "${DISTRO+x}${USERNAME+x}${SKIP_PROOT+x}${PROOT_ONLY+x}${DISPLAY_SERVER+x}${PROOT_SHELL+x}" ]; then
+        scripted=true
+    fi
+
     # 환경변수 우선, 그 다음 CLI 인자
     export PROOT_DISTRO="${DISTRO:-}"
     export PROOT_USER="${USERNAME:-}"
     export SKIP_PROOT="${SKIP_PROOT:-false}"
     export PROOT_ONLY="${PROOT_ONLY:-false}"
     export DISPLAY_SERVER="${DISPLAY_SERVER:-}"
+    export PROOT_SHELL="${PROOT_SHELL:-bash}"
+
+    # CLI 인자나 설치용 환경변수를 사용한 경우 디스플레이 선택도 묻지 않고
+    # 기본값(x11)을 사용한다. distro/user처럼 설치에 필수인 값은 여전히
+    # resolve_interactive_inputs에서 보충한다.
+    export INSTALL_NONINTERACTIVE="$scripted"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -39,6 +51,70 @@ parse_cli_args() {
                 _cli_usage; exit 1 ;;
         esac
     done
+
+    validate_install_inputs false
+}
+
+_input_error() {
+    echo "[ERROR] $1" >&2
+    return 1
+}
+
+_validate_bool() {
+    local name="$1" value="$2"
+    case "$value" in
+        true|false) ;;
+        *) _input_error "${name} 값은 true 또는 false여야 합니다: ${value}" ;;
+    esac
+}
+
+# $1=true면 대화형 입력까지 끝난 최종 상태를 검증한다.
+validate_install_inputs() {
+    local final="${1:-true}"
+
+    _validate_bool "SKIP_PROOT" "${SKIP_PROOT:-false}" || return 1
+    _validate_bool "PROOT_ONLY" "${PROOT_ONLY:-false}" || return 1
+
+    case "${PROOT_DISTRO:-}" in
+        ""|ubuntu|archlinux) ;;
+        *) _input_error "지원하지 않는 distro: ${PROOT_DISTRO}" || return 1 ;;
+    esac
+
+    case "${DISPLAY_SERVER:-}" in
+        ""|x11|wayland) ;;
+        *) _input_error "지원하지 않는 display server: ${DISPLAY_SERVER}" || return 1 ;;
+    esac
+
+    case "${PROOT_SHELL:-bash}" in
+        bash|zsh) ;;
+        *) _input_error "PROOT_SHELL은 bash 또는 zsh만 허용됩니다: ${PROOT_SHELL}" || return 1 ;;
+    esac
+
+    if [ -n "${PROOT_USER:-}" ] && [[ ! "${PROOT_USER}" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+        _input_error "사용자 이름은 영문 소문자/숫자/_/-만 사용할 수 있으며 문자 또는 _로 시작해야 합니다: ${PROOT_USER}" || return 1
+    fi
+
+    if [ "${SKIP_PROOT:-false}" = true ] && [ "${PROOT_ONLY:-false}" = true ]; then
+        _input_error "--no-proot와 --proot-only는 함께 사용할 수 없습니다." || return 1
+    fi
+
+    if [ "${SKIP_PROOT:-false}" = true ]; then
+        [ -z "${PROOT_DISTRO:-}" ] || {
+            _input_error "--no-proot와 distro 지정은 함께 사용할 수 없습니다." || return 1
+        }
+        [ -z "${PROOT_USER:-}" ] || {
+            _input_error "--no-proot에서는 proot 사용자 이름을 지정할 수 없습니다." || return 1
+        }
+    fi
+
+    if [ "$final" = true ] && [ "${SKIP_PROOT:-false}" != true ]; then
+        [ -n "${PROOT_DISTRO:-}" ] || {
+            _input_error "proot 설치에는 distro가 필요합니다." || return 1
+        }
+        [ -n "${PROOT_USER:-}" ] || {
+            _input_error "proot 설치에는 사용자 이름이 필요합니다." || return 1
+        }
+    fi
 }
 
 _cli_usage() {

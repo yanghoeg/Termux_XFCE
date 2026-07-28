@@ -21,7 +21,8 @@ IFS=$'\n\t'
 # -----------------------------------------------------------------------------
 # 0. 경로 설정
 # -----------------------------------------------------------------------------
-export SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+export SCRIPT_DIR
 ARCH=$(uname -m)
 
 # curl로 직접 실행 시 (파일이 없는 경우) 임시 디렉토리에 클론
@@ -88,6 +89,19 @@ parse_cli_args "$@"
 # -----------------------------------------------------------------------------
 source "$SCRIPT_DIR/adapters/input/interactive.sh"
 resolve_interactive_inputs
+
+# 실제 패키지 변경 전에 Termux 환경인지 확인한다. 테스트 훅은 호스트에서
+# dispatch를 검증해야 하므로 명시적으로 설정된 경우에만 예외로 둔다.
+if [ -z "${_INSTALL_HOOK:-}" ]; then
+    case "${PREFIX:-}" in
+        /data/data/com.termux/files/usr) ;;
+        *)
+            echo "[ERROR] 이 설치기는 Android Termux 환경에서만 실행할 수 있습니다." >&2
+            echo "[ERROR] 현재 PREFIX: ${PREFIX:-<unset>}" >&2
+            exit 1
+            ;;
+    esac
+fi
 
 # -----------------------------------------------------------------------------
 # 6. Output Adapter 선택 — Display Server
@@ -168,6 +182,7 @@ DISPLAY_SERVER="${DISPLAY_SERVER}"
 # proot 인터랙티브 셸: bash(기본) 또는 zsh (proot에 zsh 설치 후 변경 가능)
 PROOT_SHELL="${PROOT_SHELL:-bash}"
 EOF
+chmod 600 "$HOME/.config/termux-xfce/config"
 
 # -----------------------------------------------------------------------------
 # 11. Storage 권한
@@ -184,8 +199,12 @@ fi
 # -----------------------------------------------------------------------------
 # 단계 카운터 — 선택 옵션에 따라 총 단계 수 계산
 _step=0
-_total=5  # 기본: base + xfce + shortcuts + display-apk + companion-apks
-[ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ] && _total=$((_total + 1))
+if [ "${PROOT_ONLY:-false}" = true ]; then
+    _total=1
+else
+    _total=5  # base + xfce + shortcuts + display-apk + companion-apks
+    [ "${SKIP_PROOT:-false}" != true ] && [ -n "${PROOT_DISTRO:-}" ] && _total=$((_total + 1))
+fi
 _step_msg() { _step=$((_step + 1)); ui_info "=== [${_step}/${_total}] $1 ==="; }
 
 if [ "${PROOT_ONLY:-false}" != "true" ]; then
@@ -203,7 +222,9 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     # zsh가 기본 쉘이면 fancybash 건너뜀 (p10k가 대체)
     _login_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
     if [[ "$_login_shell" != */zsh ]]; then
-        setup_xfce_fancybash "$PROOT_USER"
+        _termux_user=$(id -un 2>/dev/null || printf 'termux')
+        setup_xfce_fancybash "$_termux_user"
+        unset _termux_user
     fi
     unset _login_shell
     ui_info "  자동시작 설정..."

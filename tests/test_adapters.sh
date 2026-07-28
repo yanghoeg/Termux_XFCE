@@ -235,6 +235,32 @@ _test_sb_start_xfce_has_session_duplicate_check() {
 }
 it "X11 세션 중복 감지 로직이 있다" _test_sb_start_xfce_has_session_duplicate_check
 
+_test_sb_start_xfce_tracks_session_pids() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    assert_file_contains "$out" "SESSION_STATE_DIR"
+    assert_file_contains "$out" "display.pid"
+    assert_file_contains "$out" "session.pid"
+    assert_file_contains "$out" "_cleanup_failed_start"
+    cleanup_sandbox "$sb"
+}
+it "세션 PID를 기록하고 시작 실패 시 정리한다" _test_sb_start_xfce_tracks_session_pids
+
+_test_sb_start_xfce_does_not_kill_shared_services() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    assert_file_not_contains "$out" "killall -9"
+    assert_file_not_contains "$out" "pkill -9 -f conky"
+    cleanup_sandbox "$sb"
+}
+it "공유 dbus·PulseAudio·Conky를 광역 종료하지 않는다" _test_sb_start_xfce_does_not_kill_shared_services
+
 _test_sb_start_xfce_am_start_force() {
     source "${ADAPTER_DIR}/display_x11.sh"
     source "${ADAPTER_DIR}/script_builder_zenity.sh"
@@ -306,6 +332,18 @@ _test_sb_cp2menu_reads_config() {
     cleanup_sandbox "$sb"
 }
 it "termux-xfce/config에서 distro를 읽는다" _test_sb_cp2menu_reads_config
+
+_test_sb_cp2menu_supports_new_rootfs_layout() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/cp2menu"
+    script_build_cp2menu "$out"
+    assert_file_contains "$out" 'containers/$DISTRO/rootfs'
+    assert_file_contains "$out" 'installed-rootfs/$DISTRO'
+    cleanup_sandbox "$sb"
+}
+it "신규·레거시 proot rootfs 레이아웃을 모두 지원한다" _test_sb_cp2menu_supports_new_rootfs_layout
 
 _test_sb_cp2menu_uses_prun_gui() {
     source "${ADAPTER_DIR}/display_x11.sh"

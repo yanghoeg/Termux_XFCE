@@ -45,21 +45,33 @@ _download_and_open_apk() {
     local apk_url="$1" apk_filename="$2"
     local dl_dir="$HOME/storage/downloads"
     local apk_path="${dl_dir}/${apk_filename}"
+    local apk_tmp="${apk_path}.part.$$"
 
     if [ ! -d "$dl_dir" ]; then
         dl_dir="$HOME"
         apk_path="${dl_dir}/${apk_filename}"
+        apk_tmp="${apk_path}.part.$$"
         ui_warn "storage/downloads 없음 — ${apk_path} 에 저장합니다."
     fi
 
-    if [ -f "$apk_path" ]; then
+    # APK는 ZIP 컨테이너이므로 PK magic과 non-empty를 최소 검증한다.
+    # 기존 파일도 검증해 중단된 다운로드를 설치 화면으로 넘기지 않는다.
+    if [ -s "$apk_path" ] && [ "$(head -c 2 "$apk_path" 2>/dev/null)" = "PK" ]; then
         ui_warn "APK가 이미 다운로드되어 있습니다: ${apk_path}"
     else
-        if ! wget -q "$apk_url" -O "$apk_path"; then
-            rm -f "$apk_path"
+        rm -f "$apk_path" "$apk_tmp"
+        if ! wget -q "$apk_url" -O "$apk_tmp"; then
+            rm -f "$apk_tmp"
             ui_warn "APK 다운로드 실패: ${apk_url}"
             return 0
         fi
+        if [ ! -s "$apk_tmp" ] || [ "$(head -c 2 "$apk_tmp" 2>/dev/null)" != "PK" ]; then
+            rm -f "$apk_tmp"
+            ui_warn "APK 형식 검증 실패: ${apk_url}"
+            return 0
+        fi
+        chmod 600 "$apk_tmp"
+        mv "$apk_tmp" "$apk_path"
     fi
 
     termux-open "$apk_path" 2>/dev/null || \
@@ -144,8 +156,10 @@ _install_base_packages() {
     local all_pkgs=(
         "${PKGS_TERMUX_BASE[@]}"
         "${PKGS_TERMUX_CLI[@]}"
-        "${PKGS_TERMUX_PROOT[@]}"
     )
+    if [ "${SKIP_PROOT:-false}" != true ] && [ -n "${PROOT_DISTRO:-}" ]; then
+        all_pkgs+=("${PKGS_TERMUX_PROOT[@]}")
+    fi
 
     # dbus 리셋: dbus 락/소켓 상태 초기화로 startXFCE의 dbus-launch와
     # proot-distro 내부 dbus-daemon 간 소켓 경합을 예방.
@@ -333,7 +347,7 @@ _setup_zsh_p10k() {
     local zshrc="$HOME/.zshrc"
     [ -f "$zshrc" ] && return 0
 
-    ui_info "~/.zshrc 생성"
+    ui_info "$HOME/.zshrc 생성"
     cat > "$zshrc" << 'ZSHRC'
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
@@ -492,12 +506,18 @@ CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 DISTRO="${PROOT_DISTRO:-archlinux}"
+ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
+if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
+    ROOTFS="$ROOTFS_BASE/containers/$DISTRO/rootfs"
+else
+    ROOTFS="$ROOTFS_BASE/installed-rootfs/$DISTRO"
+fi
 
 # config에 PROOT_USER 있으면 사용, 없으면 home/ 디렉토리에서 탐색 (alarm 제외)
 if [ -n "${PROOT_USER:-}" ]; then
     USER_NAME="$PROOT_USER"
 else
-    USER_NAME=$(ls "$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO/home/" 2>/dev/null \
+    USER_NAME=$(ls "$ROOTFS/home/" 2>/dev/null \
         | grep -v '^alarm$' | head -1)
     USER_NAME="${USER_NAME:-user}"
 fi

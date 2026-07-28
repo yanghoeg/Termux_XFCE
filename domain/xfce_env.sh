@@ -7,7 +7,26 @@
 # - 테마, 폰트, 배경화면, fancybash
 # =============================================================================
 
-[[ -v REPO_BASE ]] || readonly REPO_BASE="https://github.com/yanghoeg/Termux_XFCE/raw/main"
+_repo_asset_path() {
+    local name="$1"
+    local candidate="${SCRIPT_DIR:-}/$name"
+    if [ -f "$candidate" ]; then
+        printf '%s\n' "$candidate"
+        return 0
+    fi
+    candidate="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/$name"
+    [ -f "$candidate" ] || return 1
+    printf '%s\n' "$candidate"
+}
+
+_install_repo_asset() {
+    local name="$1" target="$2" source_path
+    source_path=$(_repo_asset_path "$name") || {
+        ui_warn "저장소 자산을 찾을 수 없습니다: $name"
+        return 1
+    }
+    cp "$source_path" "$target"
+}
 
 # -----------------------------------------------------------------------------
 # Public API
@@ -81,11 +100,9 @@ setup_xfce_wallpaper() {
     mkdir -p "$bg_dir"
 
     [ -f "$bg_dir/dark_waves.png" ] || \
-        wget -q "${REPO_BASE}/dark_waves.png" -O "$bg_dir/dark_waves.png" \
-        || { ui_warn "dark_waves.png 다운로드 실패"; rm -f "$bg_dir/dark_waves.png"; }
+        _install_repo_asset "dark_waves.png" "$bg_dir/dark_waves.png" || true
     [ -f "$bg_dir/TheSolarSystem.jpg" ] || \
-        wget -q "${REPO_BASE}/TheSolarSystem.jpg" -O "$bg_dir/TheSolarSystem.jpg" \
-        || { ui_warn "TheSolarSystem.jpg 다운로드 실패"; rm -f "$bg_dir/TheSolarSystem.jpg"; }
+        _install_repo_asset "TheSolarSystem.jpg" "$bg_dir/TheSolarSystem.jpg" || true
 }
 
 setup_xfce_fancybash() {
@@ -188,14 +205,13 @@ _install_meslo_nerd() (
 
 _install_noto_emoji() {
     [ -f "$HOME/.fonts/NotoColorEmoji-Regular.ttf" ] && return 0
-    wget -q "${REPO_BASE}/NotoColorEmoji-Regular.ttf" -O "$HOME/.fonts/NotoColorEmoji-Regular.ttf" \
-        || { ui_warn "Noto Emoji 폰트 다운로드 실패"; rm -f "$HOME/.fonts/NotoColorEmoji-Regular.ttf"; return 1; }
+    _install_repo_asset "NotoColorEmoji-Regular.ttf" \
+        "$HOME/.fonts/NotoColorEmoji-Regular.ttf"
 }
 
 _install_termux_font() {
     [ -f "$HOME/.termux/font.ttf" ] && return 0
-    wget -q "${REPO_BASE}/font.ttf" -O "$HOME/.termux/font.ttf" \
-        || { ui_warn "Termux 폰트 다운로드 실패"; rm -f "$HOME/.termux/font.ttf"; return 1; }
+    _install_repo_asset "font.ttf" "$HOME/.termux/font.ttf"
 }
 
 _install_fancybash() {
@@ -205,8 +221,7 @@ _install_fancybash() {
 
     [ -f "$target" ] && return 0
 
-    wget -q "${REPO_BASE}/fancybash.sh" -O "$target" \
-        || { ui_warn "fancybash.sh 다운로드 실패"; rm -f "$target"; return 1; }
+    _install_repo_asset "fancybash.sh" "$target" || return 1
 
     # 사용자명/호스트명 치환 (line 326, 327은 원본 기준)
     # PROMT_USER/PROMT_HOST 정의 라인으로 한정 — 라인 미지정 시 TRIANGLE 구분자 등

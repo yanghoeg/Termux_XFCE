@@ -120,7 +120,7 @@ mock_wget() {
                 break
             fi
         done
-        [ -n "$out_path" ] && touch "$out_path"
+        [ -n "$out_path" ] && printf 'PKmock\n' > "$out_path"
         return 0
     }
 }

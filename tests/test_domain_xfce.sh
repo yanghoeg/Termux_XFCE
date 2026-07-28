@@ -16,7 +16,6 @@ _load_domain() {
     mock_ui_adapter
     mock_wget
     source "${DOMAIN_DIR}/packages.sh"
-    # xfce_env는 REPO_BASE readonly 재선언 방지를 위해 subshell에서 로드
     source "${DOMAIN_DIR}/xfce_env.sh" 2>/dev/null || \
         source "${DOMAIN_DIR}/xfce_env.sh"
 }
@@ -78,16 +77,18 @@ it "firefox.desktop을 Desktop에 복사한다" _test_xfce_firefox_desktop_copie
 
 describe "xfce_env — setup_xfce_wallpaper"
 
-_test_wallpaper_downloads_files() {
+_test_wallpaper_installs_repo_files() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     reset_mock_calls
 
     setup_xfce_wallpaper 2>/dev/null || true
-    assert_was_called "wget"
+    assert_file_exists "${PREFIX}/share/backgrounds/xfce/dark_waves.png"
+    assert_file_exists "${PREFIX}/share/backgrounds/xfce/TheSolarSystem.jpg"
+    assert_not_called "wget"
     cleanup_sandbox "$sb"
 }
-it "배경화면 파일을 다운로드한다" _test_wallpaper_downloads_files
+it "저장소에 포함된 배경화면을 네트워크 없이 설치한다" _test_wallpaper_installs_repo_files
 
 _test_wallpaper_idempotent() {
     local sb; sb=$(make_sandbox)
@@ -129,15 +130,25 @@ _test_theme_downloads_if_missing() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     reset_mock_calls
+    local download_marker="${sb}/whitesur.downloaded"
 
     # unzip/tar 등 mock
+    wget() {
+        touch "$download_marker"
+        local out_path="" arg
+        while [ "$#" -gt 0 ]; do
+            arg="$1"; shift
+            if [ "$arg" = "-O" ]; then out_path="$1"; shift; fi
+        done
+        [ -n "$out_path" ] && touch "$out_path"
+    }
     unzip() { _record_call "unzip $*"; mkdir -p WhiteSur-gtk-theme-2024-11-18/release; touch WhiteSur-gtk-theme-2024-11-18/release/WhiteSur-Dark.tar.xz; }
     tar()   { _record_call "tar $*"; mkdir -p WhiteSur-Dark; }
     mv()    { _record_call "mv $*"; mkdir -p "${PREFIX}/share/themes/WhiteSur-Dark" 2>/dev/null || true; }
     rm()    { _record_call "rm $*"; }
 
     _install_whitesur_theme 2>/dev/null || true
-    assert_was_called "wget"
+    assert_file_exists "$download_marker"
     cleanup_sandbox "$sb"
 }
 it "테마가 없으면 다운로드를 시도한다" _test_theme_downloads_if_missing
@@ -724,7 +735,7 @@ _test_xfce_autostart_calls_in_order() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
-    AUTOSTART_LOG=$(mktemp "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/autostart_log_XXXXXX")
+    AUTOSTART_LOG=$(mktemp "$(_test_tmp_base)/autostart_log_XXXXXX")
     : > "$AUTOSTART_LOG"
     _setup_autostart_config()        { echo "config"   >> "$AUTOSTART_LOG"; }
     _migrate_fix_x11_input()         { echo "x11"      >> "$AUTOSTART_LOG"; }

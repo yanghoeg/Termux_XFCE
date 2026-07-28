@@ -16,21 +16,46 @@
 
 display_emit_kill_session() {
     cat << 'FRAG'
-_kill_display_session() {
-    pkill -9 -x labwc 2>/dev/null || true
-    pkill -9 -f "termux-x11" 2>/dev/null || true
-    killall -9 Xwayland xfce4-session xfwm4 xfdesktop xfce4-panel \
-        xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd \
-        xfce4-screensaver nimf pulseaudio dbus-daemon dbus-launch 2>/dev/null || true
-    pkill -9 -f conky 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-    pkill -f termux-clipboard-sync 2>/dev/null || true
-    local _w; for _w in 1 2 3; do
-        pgrep -f "termux-x11" >/dev/null 2>&1 || break
+_kill_pidfile() {
+    local file="$1" pid expected cmdline
+    [ -r "$file" ] || return 0
+    read -r pid expected < "$file" || true
+    case "$pid" in ""|*[!0-9]*) rm -f "$file"; return 0 ;; esac
+    if [ -n "$expected" ]; then
+        [ -r "/proc/$pid/cmdline" ] || { rm -f "$file"; return 0; }
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        case "$cmdline" in *"$expected"*) ;; *) rm -f "$file"; return 0 ;; esac
+    fi
+    kill "$pid" 2>/dev/null || true
+    local _w
+    for _w in 1 2 3; do
+        kill -0 "$pid" 2>/dev/null || break
         sleep 1
     done
-    rm -f "${XDG_RUNTIME_DIR}/wayland-"* 2>/dev/null || true
-    rm -f "${TMPDIR}/.X11-unix/X"* "${TMPDIR}/.X"*"-lock" 2>/dev/null || true
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$file"
+}
+
+_kill_display_session() {
+    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/session.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/display.pid"
+
+    # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.
+    pkill -x labwc 2>/dev/null || true
+    pkill -x xfce4-session 2>/dev/null || true
+    pkill -f '(^|/)termux-x11( |$)' 2>/dev/null || true
+    am force-stop com.termux.x11 2>/dev/null || true
+
+    local display_num=""
+    [ -r "$SESSION_STATE_DIR/display-num" ] && read -r display_num < "$SESSION_STATE_DIR/display-num"
+    case "$display_num" in
+        ""|*[!0-9]*) ;;
+        *) rm -f "${TMPDIR}/.X11-unix/X${display_num}" \
+              "${TMPDIR}/.X${display_num}-lock" 2>/dev/null || true ;;
+    esac
+    rm -f "$SESSION_STATE_DIR/display-num"
+    termux-wake-unlock 2>/dev/null || true
 }
 FRAG
 }
@@ -87,7 +112,7 @@ display_emit_server_start() {
     cat << 'FRAG'
 _kill_display_session
 
-termux-wake-lock
+termux-wake-lock || { echo "ERROR: wake lock을 획득할 수 없습니다." >&2; exit 1; }
 
 if ! command -v labwc >/dev/null 2>&1; then
     echo "ERROR: labwc가 설치되어 있지 않습니다. 'pkg install labwc' 후 다시 시도하세요." >&2
@@ -106,6 +131,8 @@ for _DTRY in 0 1 2 3; do
     done
     if [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ]; then
         DISPLAY_NUM=$_DTRY
+        printf '%s\t%s\n' "$TX11_PID" "termux-x11" > "$SESSION_STATE_DIR/display.pid"
+        printf '%s\n' "$_DTRY" > "$SESSION_STATE_DIR/display-num"
         break
     fi
     kill "$TX11_PID" 2>/dev/null || true
@@ -157,6 +184,7 @@ env DISPLAY="$XDISPLAY" \
     QT_QPA_PLATFORM=xcb \
     MOZ_ENABLE_WAYLAND=0 \
     dbus-launch --exit-with-session startxfce4 --wayland >"$_WL_LOG" 2>&1 &
+printf '%s\t%s\n' "$!" "startxfce4" > "$SESSION_STATE_DIR/session.pid"
 
 # 출력 크기 보정 + 회전 추적: wlroots x11 백엔드는 기본 1024x768 창으로 떠서 폰
 # 화면을 다 채우지 못한다. 세션 기동 후 표시면(Termux:X11, $XDISPLAY)의 해상도와
@@ -209,8 +237,9 @@ display_emit_clipboard_sync() {
 # Android ↔ Wayland 클립보드 동기화 (X11 소켓을 통한 termux-clipboard-sync)
 # labwc가 Xwayland를 통해 X11 클립보드를 노출하므로 xclip 경로를 재사용한다.
 if command -v termux-clipboard-get >/dev/null 2>&1 && command -v xclip >/dev/null 2>&1; then
-    pkill -f termux-clipboard-sync 2>/dev/null || true
+    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
     DISPLAY="$XDISPLAY" termux-clipboard-sync &
+    printf '%s\t%s\n' "$!" "termux-clipboard-sync" > "$SESSION_STATE_DIR/clipboard.pid"
 fi
 FRAG
 }

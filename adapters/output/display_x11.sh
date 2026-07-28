@@ -8,19 +8,45 @@
 
 display_emit_kill_session() {
     cat << 'FRAG'
-_kill_display_session() {
-    pkill -9 -f "termux-x11" 2>/dev/null || true
-    killall -9 Xwayland xfce4-session xfwm4 xfdesktop xfce4-panel \
-        xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd \
-        xfce4-screensaver nimf pulseaudio dbus-daemon dbus-launch 2>/dev/null || true
-    pkill -9 -f conky 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-    pkill -f termux-clipboard-sync 2>/dev/null || true
-    local _w; for _w in 1 2 3; do
-        pgrep -f "termux-x11" >/dev/null 2>&1 || break
+_kill_pidfile() {
+    local file="$1" pid expected cmdline
+    [ -r "$file" ] || return 0
+    read -r pid expected < "$file" || true
+    case "$pid" in ""|*[!0-9]*) rm -f "$file"; return 0 ;; esac
+    if [ -n "$expected" ]; then
+        [ -r "/proc/$pid/cmdline" ] || { rm -f "$file"; return 0; }
+        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
+        case "$cmdline" in *"$expected"*) ;; *) rm -f "$file"; return 0 ;; esac
+    fi
+    kill "$pid" 2>/dev/null || true
+    local _w
+    for _w in 1 2 3; do
+        kill -0 "$pid" 2>/dev/null || break
         sleep 1
     done
-    rm -f "${TMPDIR}/.X11-unix/X"* "${TMPDIR}/.X"*"-lock" 2>/dev/null || true
+    kill -9 "$pid" 2>/dev/null || true
+    rm -f "$file"
+}
+
+_kill_display_session() {
+    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/session.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/display.pid"
+
+    # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.
+    pkill -x xfce4-session 2>/dev/null || true
+    pkill -f '(^|/)termux-x11( |$)' 2>/dev/null || true
+    am force-stop com.termux.x11 2>/dev/null || true
+
+    local display_num=""
+    [ -r "$SESSION_STATE_DIR/display-num" ] && read -r display_num < "$SESSION_STATE_DIR/display-num"
+    case "$display_num" in
+        ""|*[!0-9]*) ;;
+        *) rm -f "${TMPDIR}/.X11-unix/X${display_num}" \
+              "${TMPDIR}/.X${display_num}-lock" 2>/dev/null || true ;;
+    esac
+    rm -f "$SESSION_STATE_DIR/display-num"
+    termux-wake-unlock 2>/dev/null || true
 }
 FRAG
 }
@@ -36,6 +62,8 @@ if [ -n "$_EXISTING_SOCK" ] || [ -n "$_EXISTING_XFCE" ] || [ -n "$_EXISTING_TX11
     if [ -z "$_EXISTING_TX11" ] || [ -z "$_EXISTING_XFCE" ]; then
         # stale/zombie 세션 — termux-x11 또는 xfce4-session 중 하나라도 없으면 자동 정리
         _kill_display_session
+        [ -n "$_EXISTING_SOCK" ] && rm -f "$_EXISTING_SOCK" \
+            "${TMPDIR}/.$(basename "$_EXISTING_SOCK")-lock" 2>/dev/null || true
     else
         # live 세션 — APK를 포그라운드로 올린 뒤 다이얼로그 표시
         if [ -n "$_EXISTING_SOCK" ]; then
@@ -86,7 +114,7 @@ display_emit_server_start() {
     cat << 'FRAG'
 _kill_display_session
 
-termux-wake-lock
+termux-wake-lock || { echo "ERROR: wake lock을 획득할 수 없습니다." >&2; exit 1; }
 
 # X 서버 실행 — 사용 가능한 디스플레이 번호 자동 탐색 (:0~:3)
 TX11_PID=""
@@ -95,6 +123,8 @@ for _DTRY in 0 1 2 3; do
     TX11_PID=$!
     sleep 2
     if [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ]; then
+        printf '%s\t%s\n' "$TX11_PID" "termux-x11" > "$SESSION_STATE_DIR/display.pid"
+        printf '%s\n' "$_DTRY" > "$SESSION_STATE_DIR/display-num"
         break
     fi
     kill $TX11_PID 2>/dev/null || true
@@ -133,6 +163,7 @@ display_emit_session_launch() {
 #   설정 → 창관리자(작업) → 컴포지터 → '화면 컴포지팅 활성화' 해제
 env DISPLAY="$XDISPLAY" \
     dbus-launch --exit-with-session xfce4-session &
+printf '%s\t%s\n' "$!" "xfce4-session" > "$SESSION_STATE_DIR/session.pid"
 FRAG
 }
 
@@ -140,8 +171,9 @@ display_emit_clipboard_sync() {
     cat << 'FRAG'
 # Android ↔ X11 클립보드 동기화
 if command -v termux-clipboard-get >/dev/null 2>&1 && command -v xclip >/dev/null 2>&1; then
-    pkill -f termux-clipboard-sync 2>/dev/null || true
+    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
     DISPLAY="$XDISPLAY" termux-clipboard-sync &
+    printf '%s\t%s\n' "$!" "termux-clipboard-sync" > "$SESSION_STATE_DIR/clipboard.pid"
 fi
 FRAG
 }
