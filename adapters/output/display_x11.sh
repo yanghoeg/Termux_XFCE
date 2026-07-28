@@ -28,6 +28,18 @@ _kill_pidfile() {
     rm -f "$file"
 }
 
+# 세션 리더가 비정상 종료돼 남은 XFCE 컴포넌트 고아를 정리한다.
+# 과거 방식의 "확실한 정리"와 현재 PID 방식의 "graceful 종료"를 결합:
+# 정확한 프로세스명(-x)만 골라 SIGTERM 후 잔존분만 SIGKILL 한다.
+# (-f 부분일치를 쓰지 않으므로 이름이 다른 무관 프로세스는 건드리지 않는다.)
+_kill_orphans() {
+    local names="Xwayland xfwm4 xfdesktop xfce4-panel xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd xfce4-screensaver nimf pulseaudio conky dbus-daemon dbus-launch $*"
+    local _n
+    for _n in $names; do pkill -TERM -x "$_n" 2>/dev/null || true; done
+    sleep 1
+    for _n in $names; do pkill -KILL -x "$_n" 2>/dev/null || true; done
+}
+
 _kill_display_session() {
     _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
     _kill_pidfile "$SESSION_STATE_DIR/session.pid"
@@ -37,6 +49,9 @@ _kill_display_session() {
     pkill -x xfce4-session 2>/dev/null || true
     pkill -f '(^|/)termux-x11( |$)' 2>/dev/null || true
     am force-stop com.termux.x11 2>/dev/null || true
+
+    # 세션 리더 사망 후 남을 수 있는 컴포넌트 고아를 정리 (graceful → SIGKILL)
+    _kill_orphans
 
     local display_num=""
     [ -r "$SESSION_STATE_DIR/display-num" ] && read -r display_num < "$SESSION_STATE_DIR/display-num"

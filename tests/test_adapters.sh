@@ -249,17 +249,21 @@ _test_sb_start_xfce_tracks_session_pids() {
 }
 it "세션 PID를 기록하고 시작 실패 시 정리한다" _test_sb_start_xfce_tracks_session_pids
 
-_test_sb_start_xfce_does_not_kill_shared_services() {
+_test_sb_start_xfce_reaps_orphans_gracefully() {
     source "${ADAPTER_DIR}/display_x11.sh"
     source "${ADAPTER_DIR}/script_builder_zenity.sh"
     local sb; sb=$(make_sandbox)
     local out="${sb}/startXFCE"
     script_build_start_xfce "$out"
+    # 과거의 무차별 강제 종료 형태는 쓰지 않는다
     assert_file_not_contains "$out" "killall -9"
     assert_file_not_contains "$out" "pkill -9 -f conky"
+    # 고아는 정확한 이름(-x) + graceful(SIGTERM→SIGKILL)으로만 정리한다
+    assert_file_contains "$out" "pkill -TERM -x"
+    assert_file_contains "$out" "pkill -KILL -x"
     cleanup_sandbox "$sb"
 }
-it "공유 dbus·PulseAudio·Conky를 광역 종료하지 않는다" _test_sb_start_xfce_does_not_kill_shared_services
+it "고아 프로세스를 무차별 강제 종료 대신 정확한 이름+graceful로 정리한다" _test_sb_start_xfce_reaps_orphans_gracefully
 
 _test_sb_start_xfce_am_start_force() {
     source "${ADAPTER_DIR}/display_x11.sh"
