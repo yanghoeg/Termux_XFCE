@@ -1122,7 +1122,7 @@ _test_install_yay_invokes_proot_exec_with_makepkg() {
     _load_domain "$sb" "archlinux" "testuser"
 
     # proot_exec 호출 인자를 파일로 기록 (서브셸 없이도 가능하지만 안전)
-    YAY_LOG=$(mktemp "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/yay_log_XXXXXX")
+    YAY_LOG=$(mktemp "$(_test_tmp_base)/yay_log_XXXXXX")
     proot_exec() { echo "$*" >> "$YAY_LOG"; return 0; }
 
     _install_yay

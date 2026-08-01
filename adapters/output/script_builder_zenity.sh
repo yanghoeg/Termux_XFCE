@@ -34,6 +34,22 @@ mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
 chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
 export XDG_RUNTIME_DIR
 
+SESSION_STATE_DIR="$HOME/.cache/termux-xfce/session"
+mkdir -p "$SESSION_STATE_DIR"
+chmod 700 "$SESSION_STATE_DIR" 2>/dev/null || true
+
+_cleanup_failed_start() {
+    local rc=$?
+    trap - EXIT INT TERM
+    if [ "$rc" -ne 0 ]; then
+        _kill_display_session
+        termux-wake-unlock 2>/dev/null || true
+    fi
+    exit "$rc"
+}
+trap _cleanup_failed_start EXIT
+trap 'exit 130' INT TERM
+
 HEADER
 
         # ── 2. 세션 종료 함수 (display 어댑터) ──
@@ -133,6 +149,7 @@ script_build_kill_display() {
         cat << 'HEADER'
 #!/data/data/com.termux/files/usr/bin/bash
 TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
+SESSION_STATE_DIR="$HOME/.cache/termux-xfce/session"
 
 HEADER
 
@@ -155,7 +172,6 @@ if [ -z "$XFCE_PID" ] && [ -z "$DISPLAY_PID" ]; then
 fi
 
 _kill_display_session
-termux-wake-unlock 2>/dev/null || true
 BODY
     } > "$output"
 }
@@ -172,8 +188,16 @@ CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 DISTRO="${PROOT_DISTRO:-ubuntu}"
-ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$DISTRO"
-USERNAME=$(ls "$ROOTFS/home/" 2>/dev/null | head -1)
+ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
+if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
+    ROOTFS="$ROOTFS_BASE/containers/$DISTRO/rootfs"
+else
+    ROOTFS="$ROOTFS_BASE/installed-rootfs/$DISTRO"
+fi
+USERNAME="${PROOT_USER:-}"
+if [ -z "$USERNAME" ]; then
+    USERNAME=$(ls "$ROOTFS/home/" 2>/dev/null | grep -v '^alarm$' | head -1)
+fi
 USERNAME="${USERNAME:-user}"
 
 action=$(zenity --list --title="cp2menu" --text="작업 선택:" \

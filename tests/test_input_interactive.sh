@@ -24,7 +24,7 @@ _setup_controllable_ui() {
     UI_INPUT_RESPONSE="${UI_INPUT_RESPONSE:-defaultuser}"
     UI_SELECT_RESPONSE="${UI_SELECT_RESPONSE:-ubuntu}"
     UI_CONFIRM_RESPONSE="${UI_CONFIRM_RESPONSE:-0}"
-    UI_LOG_FILE=$(mktemp "${TMPDIR:-/data/data/com.termux/files/usr/tmp}/ui_log_XXXXXX")
+    UI_LOG_FILE=$(mktemp "$(_test_tmp_base)/ui_log_XXXXXX")
     : > "$UI_LOG_FILE"
 
     ui_info()    { :; }

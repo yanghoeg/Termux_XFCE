@@ -721,6 +721,7 @@ _test_install_base_packages_completes_under_set_e() {
     _load_domain "$sb"
     reset_mock_calls
     MOCK_INSTALLED_PKGS=""
+    export PROOT_DISTRO="archlinux" SKIP_PROOT=false
 
     # || true 없이 직접 호출 — set -e 하에서 첫 반복부터 끝까지 가야 함
     _install_base_packages
@@ -802,7 +803,7 @@ _test_x11_apk_idempotent_when_present() {
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
     # 이미 다운로드된 상태
-    touch "$HOME/storage/downloads/app-arm64-v8a-debug.apk"
+    printf 'PKmock\n' > "$HOME/storage/downloads/app-arm64-v8a-debug.apk"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
@@ -814,6 +815,22 @@ _test_x11_apk_idempotent_when_present() {
 }
 it "APK가 이미 있으면 wget 건너뛰고 termux-open만 호출" _test_x11_apk_idempotent_when_present
 
+_test_x11_apk_replaces_invalid_existing_file() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    printf 'broken\n' > "$HOME/storage/downloads/app-arm64-v8a-debug.apk"
+    termux-open() { _record_call "termux-open $*"; }
+    reset_mock_calls
+
+    _run_with_arch "aarch64" display_setup_apk
+
+    assert_was_called "wget"
+    assert_output_contains "$(head -c 2 "$HOME/storage/downloads/app-arm64-v8a-debug.apk")" "PK"
+    cleanup_sandbox "$sb"
+}
+it "손상된 기존 APK는 다시 다운로드한다" _test_x11_apk_replaces_invalid_existing_file
+
 _test_x11_apk_falls_back_to_home_when_no_storage() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
@@ -824,7 +841,7 @@ _test_x11_apk_falls_back_to_home_when_no_storage() {
 
     _run_with_arch "aarch64" display_setup_apk
 
-    # HOME에 APK가 생성되어야 함 (mock_wget이 -O 경로에 touch)
+    # HOME에 검증된 APK가 생성되어야 함
     assert_file_exists "$HOME/app-arm64-v8a-debug.apk"
     cleanup_sandbox "$sb"
 }
@@ -911,7 +928,7 @@ _test_api_apk_idempotent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
-    touch "$HOME/storage/downloads/termux-api.apk"
+    printf 'PKmock\n' > "$HOME/storage/downloads/termux-api.apk"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
@@ -948,7 +965,7 @@ _test_float_apk_idempotent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
-    touch "$HOME/storage/downloads/termux-float.apk"
+    printf 'PKmock\n' > "$HOME/storage/downloads/termux-float.apk"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 

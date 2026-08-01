@@ -130,7 +130,7 @@ app-installer wine     # Wine apps only
 - **Tabbed UI** — Apps / System / Termux API / Wine tabs
 - **Search** — type to filter by name/description (yad notebook, zenity fallback)
 - **Termux native first** — GIMP, Inkscape, Thunderbird install as native
-- **proot auto-routing** — VLC, LibreOffice etc. install inside proot
+- **proot auto-routing** — LibreOffice, DBeaver, etc. install inside proot
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
@@ -171,7 +171,8 @@ hud         # run app with FPS overlay
 ## Tests
 
 ```bash
-bash tests/run_tests.sh              # all 343+ tests
+bash tests/run_tests.sh              # main installer suite
+bash app-installer/tests/test_domain_apps.sh  # app installer domain
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
@@ -217,7 +218,7 @@ Termux_XFCE/
 │   ├── xfce_env.sh               ← XFCE setup
 │   ├── proot_env.sh              ← proot logic (Ubuntu/Arch common)
 │   └── locale_ko.sh              ← Korean locale (LD_PRELOAD gettext hook)
-├── tests/                        ← 343+ automated tests
+├── tests/                        ← main installer automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
     ├── install.sh                ← yad notebook tabbed GUI
     └── domain/installers/        ← per-app install scripts (31 apps)

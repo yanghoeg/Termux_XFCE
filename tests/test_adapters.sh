@@ -235,6 +235,36 @@ _test_sb_start_xfce_has_session_duplicate_check() {
 }
 it "X11 세션 중복 감지 로직이 있다" _test_sb_start_xfce_has_session_duplicate_check
 
+_test_sb_start_xfce_tracks_session_pids() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    assert_file_contains "$out" "SESSION_STATE_DIR"
+    assert_file_contains "$out" "display.pid"
+    assert_file_contains "$out" "session.pid"
+    assert_file_contains "$out" "_cleanup_failed_start"
+    cleanup_sandbox "$sb"
+}
+it "세션 PID를 기록하고 시작 실패 시 정리한다" _test_sb_start_xfce_tracks_session_pids
+
+_test_sb_start_xfce_reaps_orphans_gracefully() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    # 과거의 무차별 강제 종료 형태는 쓰지 않는다
+    assert_file_not_contains "$out" "killall -9"
+    assert_file_not_contains "$out" "pkill -9 -f conky"
+    # 고아는 정확한 이름(-x) + graceful(SIGTERM→SIGKILL)으로만 정리한다
+    assert_file_contains "$out" "pkill -TERM -x"
+    assert_file_contains "$out" "pkill -KILL -x"
+    cleanup_sandbox "$sb"
+}
+it "고아 프로세스를 무차별 강제 종료 대신 정확한 이름+graceful로 정리한다" _test_sb_start_xfce_reaps_orphans_gracefully
+
 _test_sb_start_xfce_am_start_force() {
     source "${ADAPTER_DIR}/display_x11.sh"
     source "${ADAPTER_DIR}/script_builder_zenity.sh"
@@ -306,6 +336,18 @@ _test_sb_cp2menu_reads_config() {
     cleanup_sandbox "$sb"
 }
 it "termux-xfce/config에서 distro를 읽는다" _test_sb_cp2menu_reads_config
+
+_test_sb_cp2menu_supports_new_rootfs_layout() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/cp2menu"
+    script_build_cp2menu "$out"
+    assert_file_contains "$out" 'containers/$DISTRO/rootfs'
+    assert_file_contains "$out" 'installed-rootfs/$DISTRO'
+    cleanup_sandbox "$sb"
+}
+it "신규·레거시 proot rootfs 레이아웃을 모두 지원한다" _test_sb_cp2menu_supports_new_rootfs_layout
 
 _test_sb_cp2menu_uses_prun_gui() {
     source "${ADAPTER_DIR}/display_x11.sh"

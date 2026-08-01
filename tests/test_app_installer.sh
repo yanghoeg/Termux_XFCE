@@ -117,7 +117,8 @@ EOF
 
     # install.sh의 메인 루프는 실행 안 함 — 함수 정의만 source
     # 메인 루프(while true) 전까지만 로드
-    local tmp="${TMPDIR}/install_partial_$$.sh"
+    local tmp
+    tmp=$(mktemp "$(_test_tmp_base)/install_partial_XXXXXX.sh")
     # install.sh의 `SCRIPT_DIR=$(...)` 라인은 source 시점 $0이 테스트라 잘못 잡히므로 제거 후 외부에서 주입
     awk '
         /^while true/{ exit }
@@ -148,7 +149,8 @@ _test_config_fallback() {
     # config 없음 → fallback
     zenity()       { echo "ZENITY: $*"; }
     proot-distro() { echo "PROOT: $*"; }
-    local tmp="${TMPDIR}/install_partial_$$.sh"
+    local tmp
+    tmp=$(mktemp "$(_test_tmp_base)/install_partial_XXXXXX.sh")
     # install.sh의 `SCRIPT_DIR=$(...)` 라인은 source 시점 $0이 테스트라 잘못 잡히므로 제거 후 외부에서 주입
     awk '
         /^while true/{ exit }
@@ -173,7 +175,8 @@ describe "app-installer/install.sh — _detect_proot_user"
 _load_detect_only() {
     # _detect_proot_user는 _proot_rootfs에 의존 → 리졸버 먼저 로드
     source "${APP_DIR}/lib/proot_path.sh"
-    local tmp="${TMPDIR}/detect_only_$$.sh"
+    local tmp
+    tmp=$(mktemp "$(_test_tmp_base)/detect_only_XXXXXX.sh")
     awk '
         /^_detect_proot_user\(\) \{/{ in_fn=1 }
         in_fn{ print }

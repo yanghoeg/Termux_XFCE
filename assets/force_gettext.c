@@ -35,7 +35,8 @@ static void normalize_into(const char* in_raw, char* out, size_t cap, int to_low
     else if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x93 || u8(p,2)==0x94)){ c='-';  p+=3; }
     if(ws){ if(o+1<cap) out[o++]=' '; ws=0; }
     if(to_lower && c>='A'&&c<='Z') c=(char)(c-'A'+'a');
-    if(o+1<cap) out[o++]=c; p++;
+    if(o+1<cap) out[o++]=c;
+    p++;
   }
   if(ws && o+1<cap) out[o++]=' ';
   out[o]='\0'; while(o>0 && out[o-1]==' ') out[--o]='\0';
@@ -240,9 +241,13 @@ static const char* lookup(const char* dom,const char* key){ if(!dom||!key) retur
 static const char* fallback(const char* key){
   const char* list=getenv("FALLBACK_DOMAINS"); if(!list||!key||!*key) return NULL;
   const char* p=list; while(*p){
-    while(*p==' ') p++; const char* s=p; while(*p && *p!=' ') p++;
+    while(*p==' ') p++;
+    const char* s=p;
+    while(*p && *p!=' ') p++;
     size_t n=(size_t)(p-s); if(!n) break; char dom[128];
-    if(n>=sizeof(dom)) n=sizeof(dom)-1; memcpy(dom,s,n); dom[n]='\0';
+    if(n>=sizeof(dom)) n=sizeof(dom)-1;
+    memcpy(dom,s,n);
+    dom[n]='\0';
     const char* t=lookup(dom,key); if(t) return t;
   } return NULL;
 }
@@ -349,7 +354,8 @@ const char* g_dpgettext2(const char* domain,const char* context,const char* msgi
     if(k){ const char* t=lookup(D,k); if(!t) t=fallback(k); free(k); if(t) return t; }
   }
   const char* t=lookup(D,msgid); if(!t&&msgid[0]=='_') t=lookup(D,msgid+1);
-  if(!t) t=fallback(msgid); if(!t&&msgid[0]=='_') t=fallback(msgid+1);
+  if(!t) t=fallback(msgid);
+  if(!t&&msgid[0]=='_') t=fallback(msgid+1);
   return t ? t : (rgdp2?rgdp2(domain,context,msgid):msgid);
 }
 

@@ -128,15 +128,15 @@ _test_force_gettext_builds_so() {
     _load_domain "$sb"
     reset_mock_calls
 
-    # force_gettext.c stub
-    local src_dir="${SCRIPT_DIR}/../assets"
+    # 테스트 저장소 내부가 아닌 샌드박스에 force_gettext.c stub을 둔다.
+    export SCRIPT_DIR="${sb}/repo"
+    local src_dir="${SCRIPT_DIR}/assets"
     mkdir -p "$src_dir"
     touch "${src_dir}/force_gettext.c"
 
     _build_force_gettext 2>/dev/null || true
     assert_was_called "clang -shared"
     cleanup_sandbox "$sb"
-    rm -rf "$src_dir"
 }
 it "clang -shared로 force_gettext.so를 빌드한다" _test_force_gettext_builds_so
 
