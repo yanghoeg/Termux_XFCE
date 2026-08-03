@@ -8,6 +8,8 @@
 [![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/Termux_XFCE)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
+<img src="assets/desktop.png" alt="Termux XFCE desktop running on Galaxy Fold6" width="720">
+
 </div>
 
 ---
