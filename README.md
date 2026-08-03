@@ -100,7 +100,7 @@ hud glxgears                         # FPS HUD 오버레이
 | `MESA_NO_ERROR` | `1` | GL 에러 체크 비활성 |
 | `MESA_GL_VERSION_OVERRIDE` | `4.6COMPAT` | OpenGL 4.6 compat 광고 |
 | `MESA_GLES_VERSION_OVERRIDE` | `3.2` | GLES 3.2 광고 |
-| `MESA_VK_WSI_PRESENT_MODE` | `immediate` | Vulkan VSync 비활성 |
+| `MESA_VK_WSI_PRESENT_MODE` | `fifo` | Vulkan 표시 모드 (VSync, 테어링 방지) |
 | `GSK_RENDERER` | `cairo` | GTK4 Cairo 렌더러 (GLX 크래시 방지) |
 
 > **주의**: XFCE4 컴포지터(xfwm4)가 검은 화면을 유발할 경우  
@@ -204,7 +204,7 @@ bash tests/run_tests.sh e2e_install
 | ports | 12 | 어댑터 계약 준수 |
 | adapters | 33 | pkg_termux, ui_terminal, script_builder_zenity |
 | domain_termux | 62 | termux_env 로직 (API APK, 클립보드 동기화 포함) |
-| domain_xfce | 39 | xfce_env + 마이그레이션 |
+| domain_xfce | 44 | xfce_env + 마이그레이션 |
 | domain_proot | 69 | proot_env (Ubuntu/Arch) |
 | domain_locale_ko | 24 | 한글 로케일 |
 | input_interactive | 5 | 대화형 입력 |
@@ -212,7 +212,7 @@ bash tests/run_tests.sh e2e_install
 | app_installer | 72 | app-installer 검증 |
 | prun_ld_preload | 18 | prun / LD_PRELOAD 회귀 |
 | e2e_install | 26 | E2E 통합 & 회귀 |
-| **합계** | **376** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+| **합계** | **381** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
 
 ## Android 시스템 최적화
 
