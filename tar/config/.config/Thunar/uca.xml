@@ -5,7 +5,7 @@
 	<name>Open Terminal Here</name>
 	<submenu></submenu>
 	<unique-id>1691345989639744-1</unique-id>
-	<command>exo-open --working-directory %f --launch TerminalEmulator</command>
+	<command>xfce4-terminal --disable-server --working-directory %f</command>
 	<description>Example for a custom action</description>
 	<range></range>
 	<patterns>*</patterns>

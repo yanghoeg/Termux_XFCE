@@ -766,4 +766,83 @@ conky"
 }
 it "_setup_autostart_config → 마이그레이션 8건 순서대로 호출" _test_xfce_autostart_calls_in_order
 
+# =============================================================================
+# _migrate_terminal_disable_server — 패널/단축키/Thunar 터미널 실행에 --disable-server
+# =============================================================================
+
+describe "xfce_env — _migrate_terminal_disable_server"
+
+_test_disable_server_patches_launcher() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/xfce4/panel/launcher-7"
+    printf 'Exec=xfce4-terminal\nIcon=org.xfce.terminal\n' \
+        > "${HOME}/.config/xfce4/panel/launcher-7/x.desktop"
+
+    _migrate_terminal_disable_server
+
+    assert_file_contains "${HOME}/.config/xfce4/panel/launcher-7/x.desktop" "Exec=xfce4-terminal --disable-server"
+    cleanup_sandbox "$sb"
+}
+it "패널 런처의 Exec=xfce4-terminal에 --disable-server를 추가한다" _test_disable_server_patches_launcher
+
+_test_disable_server_preserves_preferences() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/xfce4/panel/launcher-7"
+    printf 'Exec=xfce4-terminal --preferences\n' \
+        > "${HOME}/.config/xfce4/panel/launcher-7/x.desktop"
+
+    _migrate_terminal_disable_server
+
+    assert_file_not_contains "${HOME}/.config/xfce4/panel/launcher-7/x.desktop" "disable-server"
+    cleanup_sandbox "$sb"
+}
+it "--preferences 액션 Exec은 건드리지 않는다" _test_disable_server_preserves_preferences
+
+_test_disable_server_patches_keybinding() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml"
+    echo '<property name="&lt;Primary&gt;&lt;Alt&gt;t" type="string" value="exo-open --launch TerminalEmulator"/>' \
+        > "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
+
+    _migrate_terminal_disable_server
+
+    assert_file_contains "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml" 'value="xfce4-terminal --disable-server"'
+    cleanup_sandbox "$sb"
+}
+it "Ctrl+Alt+T 단축키를 직접 실행(--disable-server)으로 전환한다" _test_disable_server_patches_keybinding
+
+_test_disable_server_patches_thunar_uca() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/Thunar"
+    echo '<command>exo-open --working-directory %f --launch TerminalEmulator</command>' \
+        > "${HOME}/.config/Thunar/uca.xml"
+
+    _migrate_terminal_disable_server
+
+    assert_file_contains "${HOME}/.config/Thunar/uca.xml" 'xfce4-terminal --disable-server --working-directory %f'
+    cleanup_sandbox "$sb"
+}
+it "Thunar '여기서 터미널 열기'를 직접 실행으로 전환한다" _test_disable_server_patches_thunar_uca
+
+# =============================================================================
+# _setup_terminal_override — 애플리케이션 메뉴용 사용자 override .desktop
+# =============================================================================
+
+describe "xfce_env — _setup_terminal_override"
+
+_test_terminal_override_created() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_terminal_override
+
+    assert_file_contains "${HOME}/.local/share/applications/xfce4-terminal.desktop" "Exec=xfce4-terminal --disable-server"
+    cleanup_sandbox "$sb"
+}
+it "메뉴 override .desktop에 --disable-server Exec을 심는다" _test_terminal_override_created
+
 print_results

@@ -123,6 +123,8 @@ setup_xfce_autostart() {
     _migrate_dbus_propagate_path
     _migrate_conky_exec_ampersand
     _migrate_screenshot_keybindings
+    _migrate_terminal_disable_server
+    _setup_terminal_override
 }
 
 # -----------------------------------------------------------------------------
@@ -380,4 +382,59 @@ _migrate_screenshot_keybindings() {
         -e 's#value="xfce4-screenshooter -r"#value="screenshot region"#' \
         -e 's#value="xfce4-screenshooter"#value="screenshot full"#' \
         "$xml"
+}
+
+# 기존 설치본의 xfce4-terminal 실행에 --disable-server 부여
+# Why: xfce4-terminal은 기본 단일 인스턴스(D-Bus server) — 모든 창이 한 프로세스에 종속돼,
+#      server를 품은 창에서 exit 하면 나머지 창까지 전부 닫힌다. --disable-server로
+#      창마다 독립 프로세스가 되어 개별 종료된다.
+# Note: _setup_autostart_config의 cp -rn + 멱등 가드로 기존 config는 갱신되지 않음
+_migrate_terminal_disable_server() {
+    # 1) 패널 런처 (.desktop) — 인자 없는 `Exec=xfce4-terminal`만 대상 (--preferences 제외)
+    local desktop
+    for desktop in "$HOME"/.config/xfce4/panel/launcher-*/*.desktop; do
+        [ -f "$desktop" ] || continue
+        grep -qx 'Exec=xfce4-terminal' "$desktop" 2>/dev/null || continue
+        sed -i 's#^Exec=xfce4-terminal$#Exec=xfce4-terminal --disable-server#' "$desktop"
+    done
+
+    # 2) 키보드 단축키 (<Primary><Alt>t) — exo-open 헬퍼 경유 시 플래그 전달 불가 → 직접 실행으로 전환
+    local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
+    if [ -f "$xml" ] && grep -q 'value="exo-open --launch TerminalEmulator"' "$xml" 2>/dev/null; then
+        sed -i 's#value="exo-open --launch TerminalEmulator"#value="xfce4-terminal --disable-server"#' "$xml"
+    fi
+
+    # 3) Thunar "여기서 터미널 열기" 커스텀 액션 — exo 헬퍼 경유 → 직접 실행으로 전환
+    local uca="$HOME/.config/Thunar/uca.xml"
+    if [ -f "$uca" ] && grep -q 'exo-open --working-directory %f --launch TerminalEmulator' "$uca" 2>/dev/null; then
+        sed -i 's#exo-open --working-directory %f --launch TerminalEmulator#xfce4-terminal --disable-server --working-directory %f#' "$uca"
+    fi
+}
+
+# 애플리케이션 메뉴(Whisker)·데스크탑 아이콘용 xfce4-terminal override 설치
+# Why: 메뉴/아이콘 실행은 패키지 소유 $PREFIX/share/applications/xfce4-terminal.desktop을
+#      쓰므로 패널·단축키 수정만으론 커버되지 않는다. XDG 우선순위상 사용자 데이터 디렉터리의
+#      동일 id(.desktop)가 시스템 것을 가려 --disable-server 실행을 강제한다.
+# Note: 항상 덮어씀 — 멱등이며 신규/기존 설치 모두에 적용
+_setup_terminal_override() {
+    local dir="$HOME/.local/share/applications"
+    mkdir -p "$dir"
+    cat > "$dir/xfce4-terminal.desktop" << 'EOF'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Xfce Terminal
+Comment=Terminal Emulator
+GenericName=Terminal Emulator
+Exec=xfce4-terminal --disable-server
+Icon=org.xfce.terminal
+Terminal=false
+Categories=GTK;System;TerminalEmulator;
+StartupNotify=true
+Actions=preferences;
+
+[Desktop Action preferences]
+Name=Terminal Preferences
+Exec=xfce4-terminal --preferences
+EOF
 }
