@@ -465,22 +465,15 @@ _install_ubuntu_nimf_deb() {
     # nimf이 Ubuntu 공식 repo에 없으므로 GitHub Releases .deb 직접 설치
     proot_exec bash -c "command -v nimf &>/dev/null" && return 0
 
-    proot_exec bash -c "sudo apt-get install -y --no-install-recommends libglib2.0-0 libgtk-3-0 libdbus-1-3 2>/dev/null || true"
+    # nimf 런타임 의존성 (Ubuntu 패키지명 — 어떤 패키지가 필요한지는 도메인 지식)
+    proot_pkg_install libglib2.0-0 libgtk-3-0 libdbus-1-3 2>/dev/null || true
 
-    local deb url
+    local deb
+    local -a urls=()
     for deb in "${NIMF_DEBS[@]}"; do
-        url="${NIMF_DEB_BASE_URL}/${deb}"
-        proot_exec bash -c "
-            if wget -q -O '/tmp/${deb}' '${url}' && [ -s '/tmp/${deb}' ]; then
-                sudo dpkg -i '/tmp/${deb}' 2>/dev/null || true
-            else
-                echo '[WARN] ${deb} 다운로드 실패' >&2
-            fi
-            rm -f '/tmp/${deb}'
-        "
+        urls+=("${NIMF_DEB_BASE_URL}/${deb}")
     done
-
-    proot_exec bash -c "sudo apt-get install -f -y 2>/dev/null || true"
+    proot_pkg_install_deb_url "${urls[@]}"
 
     proot_exec bash -c "command -v nimf &>/dev/null" || \
         ui_warn "nimf 설치 실패 — 한글 입력기가 동작하지 않을 수 있습니다"
@@ -496,11 +489,11 @@ _setup_arch_nimf_or_fcitx5() {
     local use_nimf=false
 
     ui_info "Arch: nimf AUR 빌드 시도 (실패 시 fcitx5 폴백)"
-    if _install_yay; then
+    if proot_ensure_aur_helper; then
         local nimf_ok=true
         for p in "${PKGS_PROOT_ARCH_KOREAN_NIMF[@]}"; do
             proot_pkg_is_installed "$p" && continue
-            proot_exec yay -S --noconfirm --needed "$p" 2>/dev/null || { nimf_ok=false; break; }
+            proot_aur_install "$p" 2>/dev/null || { nimf_ok=false; break; }
         done
         $nimf_ok && use_nimf=true
     fi
@@ -521,18 +514,6 @@ _setup_arch_nimf_or_fcitx5() {
     fi
 
     _write_arch_im_env "$use_nimf"
-}
-
-_install_yay() {
-    proot_exec bash -c "
-        set -e
-        command -v yay &>/dev/null && exit 0
-        sudo pacman -S --noconfirm --needed git base-devel
-        git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin
-        cd /tmp/yay-bin && makepkg -si --noconfirm
-        rm -rf /tmp/yay-bin
-    "
-    proot_exec bash -c "command -v yay &>/dev/null"
 }
 
 _write_arch_im_env() {

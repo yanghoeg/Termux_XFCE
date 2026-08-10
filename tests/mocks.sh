@@ -68,6 +68,11 @@ mock_pkg_adapter() {
     proot_pkg_remove()    { _record_call "proot_pkg_remove $*"; }
     proot_pkg_autoremove() { _record_call "proot_pkg_autoremove"; }
     proot_pkg_is_installed() { return 1; }  # 기본: 미설치
+    # 비표준 설치 포트 (URL .deb / AUR) — 도메인은 HOW를 모르고 이 포트만 호출
+    proot_pkg_install_deb_url() { _record_call "proot_pkg_install_deb_url $*"; }
+    proot_aur_install()   { _record_call "proot_aur_install $*"; }
+    proot_ensure_aur_helper() { _record_call "proot_ensure_aur_helper"; return 0; }  # 기본: yay 사용 가능
+    pkg_install_deb_url() { _record_call "pkg_install_deb_url $*"; return 0; }
 }
 
 # =============================================================================

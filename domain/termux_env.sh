@@ -436,22 +436,11 @@ _install_nimf_native() {
     command -v nimf &>/dev/null && return 0
 
     local url="https://github.com/yanghoeg/Termux_XFCE/releases/download/nimf-termux-v1.4.19/nimf_1.4.19_aarch64.deb"
-    local deb="${TMPDIR:-/tmp}/nimf_1.4.19_aarch64.deb"
 
     ui_info "nimf 한글 입력기 설치 중..."
-    wget -q "$url" -O "$deb" || { ui_warn "nimf deb 다운로드 실패"; return 1; }
+    pkg_install_deb_url "$url" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
 
-    # dpkg는 의존성이 빠져 있으면 패키지를 unpack한 뒤 non-zero를 반환할 수 있다.
-    # 이 경우 apt로 복구하되, 복구 자체가 실패하면 설치 성공으로 보고하지 않는다.
-    if ! dpkg -i --force-overwrite "$deb" 2>/dev/null; then
-        if ! apt --fix-broken install -y 2>/dev/null; then
-            rm -f "$deb"
-            return 1
-        fi
-    fi
-    rm -f "$deb"
-
-    # dpkg/apt의 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
+    # 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
     command -v nimf &>/dev/null || return 1
     glib-compile-schemas "${PREFIX}/share/glib-2.0/schemas/" 2>/dev/null || true
 }

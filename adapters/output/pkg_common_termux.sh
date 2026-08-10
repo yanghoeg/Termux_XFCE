@@ -59,3 +59,20 @@ pkg_autoremove() {
     apt autoremove -y
     apt autoclean -y
 }
+
+# URL의 .deb를 native에 설치. dpkg가 의존성 부족으로 non-zero를 반환하면
+# apt로 복구하되, 복구 실패 시 설치 성공으로 보고하지 않는다.
+pkg_install_deb_url() {
+    local url="$1"
+    local deb="${TMPDIR:-/tmp}/$(basename "$url")"
+
+    wget -q "$url" -O "$deb" || { rm -f "$deb"; return 1; }
+
+    if ! dpkg -i --force-overwrite "$deb" 2>/dev/null; then
+        if ! apt --fix-broken install -y 2>/dev/null; then
+            rm -f "$deb"
+            return 1
+        fi
+    fi
+    rm -f "$deb"
+}
