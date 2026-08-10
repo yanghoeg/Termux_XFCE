@@ -45,3 +45,21 @@ proot_pkg_autoremove() {
     proot_exec sudo apt autoremove -y
     proot_exec sudo apt autoclean -y
 }
+
+# 공식 repo에 없는 .deb를 URL로 직접 설치 (nimf 등).
+# 각 .deb를 다운로드 후 dpkg -i, 마지막에 apt-get install -f로 의존성 해결.
+proot_pkg_install_deb_url() {
+    local url deb
+    for url in "$@"; do
+        deb="/tmp/$(basename "$url")"
+        proot_exec bash -c "
+            if wget -q -O '${deb}' '${url}' && [ -s '${deb}' ]; then
+                sudo dpkg -i '${deb}' 2>/dev/null || true
+            else
+                echo '[WARN] $(basename "$url") 다운로드 실패' >&2
+            fi
+            rm -f '${deb}'
+        "
+    done
+    proot_exec sudo apt-get install -f -y 2>/dev/null || true
+}

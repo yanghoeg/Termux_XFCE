@@ -509,13 +509,8 @@ _test_arch_nimf_success_writes_nimf_env() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    # paru + nimf 설치 성공 mock
-    _install_yay()  { return 0; }
-    proot_exec() {
-        # yay -S nimf → 성공
-        _record_call "proot_exec $*"
-        return 0
-    }
+    # yay 사용 가능 + AUR nimf 설치 성공 mock (proot_aur_install 스파이는 기본 성공)
+    proot_ensure_aur_helper() { return 0; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -532,7 +527,7 @@ _test_arch_nimf_failure_falls_back_to_fcitx5() {
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
     # paru 설치 실패 mock → fcitx5 폴백 경로
-    _install_yay() { return 1; }
+    proot_ensure_aur_helper() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -548,7 +543,7 @@ _test_arch_nimf_fcitx5_idempotent() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    _install_yay() { return 1; }
+    proot_ensure_aur_helper() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
@@ -567,7 +562,7 @@ _test_arch_nimf_fallback_installs_fcitx5_pkgs() {
     _make_proot_rootfs "$sb" "archlinux" "testuser"
     reset_mock_calls
 
-    _install_yay() { return 1; }
+    proot_ensure_aur_helper() { return 1; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
     assert_was_called "proot_pkg_install"
@@ -652,8 +647,8 @@ _test_nimf_deb_skips_when_installed() {
     }
 
     _install_ubuntu_nimf_deb 2>/dev/null || true
-    # nimf 존재 확인 후 return → wget 호출 없어야 함
-    assert_not_called "wget"
+    # nimf 존재 확인 후 return → deb 설치 포트 호출 없어야 함
+    assert_not_called "proot_pkg_install_deb_url"
     cleanup_sandbox "$sb"
 }
 it "nimf 이미 설치 시 건너뛴다" _test_nimf_deb_skips_when_installed
@@ -677,7 +672,10 @@ _test_nimf_deb_downloads_all_debs() {
 }
 it "nimf 미설치 시 모든 .deb를 다운로드한다" _test_nimf_deb_downloads_all_debs
 
-_test_nimf_deb_calls_apt_fix() {
+# 헥사고날: 도메인은 apt/dpkg를 모른다. .deb URL 설치는 포트로 위임하고
+# 런타임 의존성 패키지명(도메인 지식)은 proot_pkg_install 포트로 요청한다.
+# (apt-get/dpkg raw 명령 검증은 tests/test_adapters.sh의 pkg_ubuntu 어댑터 테스트)
+_test_nimf_deb_delegates_to_port() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb" "ubuntu" "testuser"
     reset_mock_calls
@@ -689,45 +687,13 @@ _test_nimf_deb_calls_apt_fix() {
     }
 
     _install_ubuntu_nimf_deb 2>/dev/null || true
-    assert_was_called "apt-get install -f -y"
+    # 런타임 의존성은 포트로 설치
+    assert_was_called "proot_pkg_install libglib2.0-0 libgtk-3-0 libdbus-1-3"
+    # .deb 설치는 URL 포트로 위임 (도메인은 dpkg/apt를 모름)
+    assert_was_called "proot_pkg_install_deb_url"
     cleanup_sandbox "$sb"
 }
-it "deb 설치 후 apt-get install -f로 의존성을 해결한다" _test_nimf_deb_calls_apt_fix
-
-_test_nimf_deb_uses_sudo_for_dpkg() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    proot_exec() {
-        _record_call "proot_exec $*"
-        if [[ "$*" == *"command -v nimf"* ]]; then return 1; fi
-        return 0
-    }
-
-    _install_ubuntu_nimf_deb 2>/dev/null || true
-    assert_was_called "sudo dpkg -i"
-    cleanup_sandbox "$sb"
-}
-it "dpkg -i를 sudo로 실행한다" _test_nimf_deb_uses_sudo_for_dpkg
-
-_test_nimf_deb_uses_sudo_for_apt() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    proot_exec() {
-        _record_call "proot_exec $*"
-        if [[ "$*" == *"command -v nimf"* ]]; then return 1; fi
-        return 0
-    }
-
-    _install_ubuntu_nimf_deb 2>/dev/null || true
-    assert_was_called "sudo apt-get install -y"
-    assert_was_called "sudo apt-get install -f -y"
-    cleanup_sandbox "$sb"
-}
-it "apt-get을 sudo로 실행한다" _test_nimf_deb_uses_sudo_for_apt
+it "deb 설치를 포트(proot_pkg_install_deb_url)로 위임한다" _test_nimf_deb_delegates_to_port
 
 # =============================================================================
 # _setup_ubuntu_korean_locale — nimf & 가드
@@ -772,11 +738,7 @@ _test_arch_nimf_profile_guards_nimf_exec() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    _install_yay() { return 0; }
-    proot_exec() {
-        _record_call "proot_exec $*"
-        return 0
-    }
+    proot_ensure_aur_helper() { return 0; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -794,8 +756,7 @@ _test_arch_nimf_profile_uses_disown() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    _install_yay() { return 0; }
-    proot_exec() { _record_call "proot_exec $*"; return 0; }
+    proot_ensure_aur_helper() { return 0; }
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -811,7 +772,7 @@ _test_arch_fcitx5_profile_uses_disown() {
     _load_domain "$sb" "archlinux" "testuser"
     _make_proot_rootfs "$sb" "archlinux" "testuser"
 
-    _install_yay() { return 1; }  # nimf 빌드 실패 → fcitx5 폴백
+    proot_ensure_aur_helper() { return 1; }  # nimf 빌드 실패 → fcitx5 폴백
 
     _setup_arch_nimf_or_fcitx5 2>/dev/null || true
 
@@ -1109,49 +1070,8 @@ _test_write_arch_im_env_fcitx5() {
 it "use_nimf=false 시 fcitx5 환경변수를 쓴다" _test_write_arch_im_env_fcitx5
 
 # =============================================================================
-# _install_yay — proot_exec 명령 구조 검증
-# -----------------------------------------------------------------------------
-# yay-bin AUR clone + makepkg 흐름이 proot_exec에 전달되는지 검증.
-# 실제 빌드는 mock proot_exec로 차단.
-# =============================================================================
-
-describe "proot_env — _install_yay"
-
-_test_install_yay_invokes_proot_exec_with_makepkg() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-
-    # proot_exec 호출 인자를 파일로 기록 (서브셸 없이도 가능하지만 안전)
-    YAY_LOG=$(mktemp "$(_test_tmp_base)/yay_log_XXXXXX")
-    proot_exec() { echo "$*" >> "$YAY_LOG"; return 0; }
-
-    _install_yay
-
-    # 인자에 yay-bin clone, makepkg, base-devel, idempotency check가 포함되어야 함
-    assert_file_contains "$YAY_LOG" "yay-bin"
-    assert_file_contains "$YAY_LOG" "makepkg -si --noconfirm"
-    assert_file_contains "$YAY_LOG" "git base-devel"
-    assert_file_contains "$YAY_LOG" "command -v yay"
-    rm -f "$YAY_LOG"
-    cleanup_sandbox "$sb"
-}
-it "yay-bin clone + makepkg + 멱등성 체크가 proot_exec에 전달된다" _test_install_yay_invokes_proot_exec_with_makepkg
-
-_test_install_yay_runs_in_subshell_via_bash_c() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-
-    YAY_FIRST_ARG=""
-    proot_exec() { YAY_FIRST_ARG="$1"; return 0; }
-
-    _install_yay
-
-    # proot_exec의 첫 인자는 'bash' 여야 함 (proot_exec bash -c "...")
-    assert_eq "bash" "$YAY_FIRST_ARG"
-    cleanup_sandbox "$sb"
-}
-it "proot_exec bash -c 형태로 호출된다" _test_install_yay_runs_in_subshell_via_bash_c
-
+# (yay 빌드 raw 명령 검증은 tests/test_adapters.sh의 pkg_arch 어댑터 테스트로 이동.
+#  헥사고날: 도메인은 AUR 헬퍼를 proot_ensure_aur_helper 포트로만 호출한다.)
 # =============================================================================
 # 회귀: set -e + ((_i++)) 폭탄 — proot_env.sh의 카운터 루프 5곳
 # -----------------------------------------------------------------------------

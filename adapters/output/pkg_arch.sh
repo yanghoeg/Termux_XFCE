@@ -44,3 +44,21 @@ proot_pkg_autoremove() {
     # 캐시 정리
     proot_exec sudo pacman -Sc --noconfirm
 }
+
+# AUR 헬퍼(yay)로 패키지 설치 (공식 repo 밖 패키지, nimf 등)
+proot_aur_install() {
+    proot_exec yay -S --noconfirm --needed "$@"
+}
+
+# yay가 없으면 yay-bin을 AUR에서 빌드/설치 (멱등성)
+proot_ensure_aur_helper() {
+    proot_exec bash -c "
+        set -e
+        command -v yay &>/dev/null && exit 0
+        sudo pacman -S --noconfirm --needed git base-devel
+        git clone https://aur.archlinux.org/yay-bin.git /tmp/yay-bin
+        cd /tmp/yay-bin && makepkg -si --noconfirm
+        rm -rf /tmp/yay-bin
+    "
+    proot_exec bash -c "command -v yay &>/dev/null"
+}
