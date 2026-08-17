@@ -88,6 +88,15 @@ Termux_XFCE/
 - `set -euo pipefail` 사용 중 — 오류 시 즉시 종료
 - `local` 키워드는 bash 함수 내에서만 유효 (함수 밖에서 쓰면 에러)
 - Termux 패키지: `--force-confold` 옵션으로 설정 파일 충돌 방지
+- **패키지 배치 규칙**: `PKGS_TERMUX_*`(항상 설치)에는 **termux-main 제공 패키지만** 넣는다.
+  x11-repo/tur-repo 패키지는 App Installer 선택 항목으로 — TUR은 커뮤니티 빌드라
+  base에 넣으면 저장소 장애가 설치 전체를 깨뜨린다. 선택 항목 설치기 안에서는
+  `termux_pkg_enable_repo <repo>`로 저장소를 먼저 켠다.
+- **새 패키지 추가 시 오라클 대조 필수** (패키지명 추측 금지):
+  `curl -s https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages | grep '^Package: '`
+  (x11 = `termux-x11/dists/x11/main/binary-aarch64/Packages`,
+   root = `termux-root/dists/root/stable/binary-aarch64/Packages`,
+   tur = `https://tur.kcubeterm.com/dists/tur-packages/tur/binary-aarch64/Packages`)
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
@@ -96,4 +105,12 @@ Termux_XFCE/
   - **설치 시 하나 고정**: 선택된 서버의 런처(`startXFCE`)만 생성 (기본: x11, wayland는 실험적)
   - X11: `termux-x11 :N` → 소켓 자동 감지 (`${TMPDIR}/.X11-unix/X*`)
 - **기본 쉘은 zsh + Powerlevel10k**: `domain/termux_env.sh` `_setup_zsh_p10k()`가 설치 시 자동 구성
-  - RC 파일 수정은 bash/zsh 양쪽 모두 반영해야 함 (`_get_rc_files()` 참조)
+  - RC 파일 수정은 bash/zsh 양쪽 모두 반영해야 함 (`_rc_targets()` + `_append_to_rc()` 참조)
+- **Wine 백엔드는 2종 공존**: `app-installer/lib/wine_backend.sh`가 선택 로직을 소유
+  - `$PREFIX/bin/wine` = 디스패처, `wine-box64` / `wine-hangover` = 실제 래퍼
+  - 활성 백엔드는 `$HOME/.config/termux-xfce/wine-backend` (config 파일은 install.sh가
+    덮어쓰므로 별도 파일), 사용자 전환은 `wine-backend` CLI
+  - WINEPREFIX가 백엔드별로 분리됨 — Wine 앱은 `wine_exec_shell`로 실행하고
+    스니펫 안에서 `$WINEPREFIX`를 쓸 것 (`$HOME/.wine` 하드코딩 금지)
+- **부팅 자동 기동**: `termux-services`(runit) + Termux:Boot APK,
+  `~/.termux/boot/start-services`는 `_setup_termux_boot_script()`가 생성 (기존 파일 보존)

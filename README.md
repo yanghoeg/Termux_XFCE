@@ -158,10 +158,10 @@ hud         # run app with FPS overlay
 
 | Category | Packages |
 |----------|----------|
-| Base utils | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
+| Base utils | wget, unzip, dbus, pulseaudio, yad, termux-api, termux-services, xclip |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
-| APKs | Termux:X11, Termux:API, Termux:Float |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch |
+| APKs | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (optional)
 
@@ -169,6 +169,53 @@ hud         # run app with FPS overlay
 |--------|------|---------------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+## Wine — Two Backends
+
+You can choose between two Windows-app backends, and **install both side by side**.
+
+| | Wine (Box64+Staging) | Wine (Hangover) |
+|---|---|---|
+| Approach | Emulates all of Wine through Box64 | Wine runs native arm64; **only app binaries** go through FEX/ARM64EC |
+| Speed | Baseline | Faster |
+| Location | inside proot, or glibc-runner | Termux native (no proot needed) |
+| Source | Kron4ek/Wine-Builds tarball | Termux x11-repo `hangover` package |
+| WINEPREFIX | `$HOME/.wine` | `$HOME/.wine-hangover` |
+| Wrapper | `$PREFIX/bin/wine-box64` | `$PREFIX/bin/wine-hangover` |
+
+`wine` on your PATH is a **dispatcher that forwards to the active backend**. Wine apps
+(Notepad++, 7-Zip, SumatraPDF, WinMerge) are installed into whichever backend's
+WINEPREFIX is active at install time.
+
+```bash
+wine-backend              # show active backend + install status
+wine-backend hangover     # switch to Hangover
+wine-backend box64        # switch to Box64 + Wine-Staging
+wine notepad.exe          # run through the active backend
+wine-hangover notepad.exe # target a backend explicitly
+```
+
+> The WINEPREFIXes are deliberately separate: two different Wine builds (wow64 staging
+> vs ARM64EC) sharing one prefix would make `wineboot --update` thrash. After switching
+> backends, reinstall the Wine apps you need in that backend.
+
+## Autostart on Boot
+
+`termux-services` (runit) plus the Termux:Boot APK bring services up right after the
+device boots.
+
+```bash
+sv-enable sshd      # register (starts on boot)
+sv-disable sshd     # unregister
+sv status sshd      # check
+sv up sshd          # start now
+```
+
+The installer creates `~/.termux/boot/start-services`, which takes a `termux-wake-lock`
+and then starts runit. An existing file is never overwritten.
+
+> Android requires the Termux:Boot app to be **opened at least once** after install
+> before it becomes active.
 
 ## Tests
 
@@ -178,6 +225,12 @@ bash app-installer/tests/test_domain_apps.sh  # app installer domain
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
+
+Main installer suite: **401** tests. The app-installer submodule has its own suites
+(`test_domain_apps.sh` 134, `test_adapters.sh` 14, `test_ports.sh` 11,
+`test_proot_path.sh` 3 — **162** total).
+
+> On Arch these are mock / static checks only — final verification needs a real Termux device.
 
 ## Android System Optimization
 

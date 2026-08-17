@@ -333,7 +333,9 @@ _test_wine_apps_have_wine_check() {
         if [ ! -f "$f" ]; then
             echo "[ASSERT] ${id}.sh 파일 없음" >&2; failed=1; continue
         fi
-        if ! command grep -q "app_is_installed_wine" "$f"; then
+        # 백엔드 이중화 이후: app_is_installed_wine(box64 전용) 대신
+        # wine_backend_available(box64/hangover 무관)로 판정한다
+        if ! command grep -q "wine_backend_available" "$f"; then
             echo "[ASSERT] ${id}.sh에 Wine 설치 확인 없음" >&2; failed=1
         fi
     done

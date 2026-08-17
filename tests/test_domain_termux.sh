@@ -904,6 +904,80 @@ _test_widget_no_warn_when_startxfce_present() {
 it "startXFCE 단축키 존재 시 경고 안나옴" _test_widget_no_warn_when_startxfce_present
 
 # =============================================================================
+# setup_termux_boot_apk — Termux:Boot APK + 부팅 스크립트
+# =============================================================================
+
+describe "termux_env — setup_termux_boot_apk"
+
+_test_boot_creates_boot_script() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    assert_dir_exists "$HOME/.termux/boot"
+    assert_file_exists "$HOME/.termux/boot/start-services"
+    assert_file_contains "$HOME/.termux/boot/start-services" "start-services.sh"
+    cleanup_sandbox "$sb"
+}
+it "부팅 스크립트 ~/.termux/boot/start-services 를 생성한다" _test_boot_creates_boot_script
+
+_test_boot_script_is_executable() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    [ -x "$HOME/.termux/boot/start-services" ] || {
+        echo "[ASSERT] 부팅 스크립트에 실행 권한 없음" >&2; return 1
+    }
+    cleanup_sandbox "$sb"
+}
+it "부팅 스크립트에 실행 권한이 있다" _test_boot_script_is_executable
+
+_test_boot_script_preserves_user_edits() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads" "$HOME/.termux/boot"
+    printf '%s\n' '# user customised' > "$HOME/.termux/boot/start-services"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    assert_file_contains "$HOME/.termux/boot/start-services" "user customised"
+    cleanup_sandbox "$sb"
+}
+it "기존 부팅 스크립트를 덮어쓰지 않는다 (멱등)" _test_boot_script_preserves_user_edits
+
+_test_boot_downloads_apk() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+    reset_mock_calls
+
+    setup_termux_boot_apk
+
+    assert_was_called "termux-boot.apk"
+    cleanup_sandbox "$sb"
+}
+it "Termux:Boot APK를 내려받는다" _test_boot_downloads_apk
+
+_test_termux_services_in_base_packages() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    printf '%s\n' "${PKGS_TERMUX_BASE[@]}" | grep -qx "termux-services" || {
+        echo "[ASSERT] termux-services가 PKGS_TERMUX_BASE에 없음" >&2; return 1
+    }
+    cleanup_sandbox "$sb"
+}
+it "termux-services가 기본 패키지에 포함된다" _test_termux_services_in_base_packages
+
+# =============================================================================
 # setup_termux_api_apk — APK 다운로드 + 멱등성
 # =============================================================================
 

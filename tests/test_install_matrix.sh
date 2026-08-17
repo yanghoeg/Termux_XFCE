@@ -39,6 +39,8 @@ setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
 display_setup_apk()       { _trace "display_setup_apk"; }
 setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
 setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
+setup_termux_widget()     { _trace "setup_termux_widget"; }
+setup_termux_boot_apk()   { _trace "setup_termux_boot_apk"; }
 
 # proot setup
 setup_proot_install()         { _trace "setup_proot_install"; }

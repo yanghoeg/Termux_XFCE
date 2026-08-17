@@ -94,7 +94,7 @@ setup_termux_float_apk() {
 }
 
 setup_termux_widget() {
-    local apk_url='https://github.com/termux/termux-widget/releases/download/v0.13.0/termux-widget_v0.13.0+github-debug.apk'
+    local apk_url='https://github.com/termux/termux-widget/releases/download/v0.15.0/termux-widget-app_v0.15.0+github.debug.apk'
     ui_info "Termux-Widget 설치"
 
     [ -d "$HOME/.shortcuts" ] || mkdir -p "$HOME/.shortcuts"
@@ -104,6 +104,16 @@ setup_termux_widget() {
     fi
 
     _download_and_open_apk "$apk_url" 'termux-widget.apk'
+}
+
+# Termux:Boot — 기기 부팅 시 ~/.termux/boot/ 안의 스크립트를 실행하는 애드온.
+# APK 설치 후 최소 한 번 앱을 열어야 활성화된다(Android 제약).
+setup_termux_boot_apk() {
+    ui_info "Termux:Boot 설치 (부팅 시 서비스 자동 기동)"
+    _download_and_open_apk \
+        'https://github.com/termux/termux-boot/releases/download/v0.8.1/termux-boot-app_v0.8.1+github.debug.apk' \
+        'termux-boot.apk'
+    _setup_termux_boot_script
 }
 
 # -----------------------------------------------------------------------------
@@ -143,6 +153,27 @@ _setup_termux_properties() {
         grep -q "^bell-character = ignore" "$props" 2>/dev/null || \
             echo "bell-character = ignore" >> "$props"
     fi
+}
+
+# ~/.termux/boot/start-services — Termux:Boot이 부팅 직후 실행하는 스크립트.
+# termux-services(runit)가 sv-enable로 켜둔 서비스(sshd 등)를 기동한다.
+# 멱등: 이미 있으면 건드리지 않는다 (사용자 커스터마이즈 보존).
+_setup_termux_boot_script() {
+    local boot_dir="$HOME/.termux/boot"
+    local script="$boot_dir/start-services"
+
+    mkdir -p "$boot_dir" || return 0
+    [ -f "$script" ] && return 0
+
+    cat > "$script" << 'BOOTEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot — 부팅 시 termux-services(runit) 기동
+# 서비스 켜기/끄기: sv-enable <서비스> / sv-disable <서비스>
+# 상태 확인:      sv status <서비스>
+termux-wake-lock
+. "$PREFIX/etc/profile.d/start-services.sh"
+BOOTEOF
+    chmod +x "$script"
 }
 
 _setup_termux_repos() {

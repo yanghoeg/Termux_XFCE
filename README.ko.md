@@ -164,10 +164,10 @@ hud         # FPS 오버레이로 앱 실행
 
 | 분류 | 패키지 |
 |------|--------|
-| 기본 유틸 | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
+| 기본 유틸 | wget, unzip, dbus, pulseaudio, yad, termux-api, termux-services, xclip |
 | XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
-| APK | Termux:X11, Termux:API, Termux:Float |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch |
+| APK | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (선택)
 
@@ -192,6 +192,50 @@ app-installer wine     # Wine 앱만
 
 소스: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
+## Wine — 두 가지 백엔드
+
+Windows 앱 실행 백엔드를 두 가지 중에서 고를 수 있고, **둘을 동시에 설치**할 수도 있습니다.
+
+| | Wine (Box64+Staging) | Wine (Hangover) |
+|---|---|---|
+| 방식 | Wine 전체를 Box64로 x86 에뮬레이션 | Wine은 네이티브 arm64, **앱 바이너리만** FEX/ARM64EC 에뮬 |
+| 속도 | 기준 | 더 빠름 |
+| 설치 위치 | proot 내부 또는 glibc-runner | Termux native (proot 불필요) |
+| 출처 | Kron4ek/Wine-Builds tarball | Termux x11-repo `hangover` 패키지 |
+| WINEPREFIX | `$HOME/.wine` | `$HOME/.wine-hangover` |
+| 래퍼 | `$PREFIX/bin/wine-box64` | `$PREFIX/bin/wine-hangover` |
+
+PATH 상의 `wine`은 **활성 백엔드로 위임하는 디스패처**입니다. Notepad++ · 7-Zip ·
+SumatraPDF · WinMerge 같은 Wine 앱은 설치 시점의 활성 백엔드 WINEPREFIX에 배치됩니다.
+
+```bash
+wine-backend              # 활성 백엔드 + 설치 상태 확인
+wine-backend hangover     # Hangover로 전환
+wine-backend box64        # Box64 + Wine-Staging으로 전환
+wine notepad.exe          # 활성 백엔드로 실행
+wine-hangover notepad.exe # 백엔드를 직접 지정해 실행
+```
+
+> WINEPREFIX가 백엔드마다 분리되어 있습니다. 서로 다른 Wine 빌드(wow64 staging vs
+> ARM64EC)가 하나의 prefix를 공유하면 `wineboot --update`가 왕복하며 깨지기 때문입니다.
+> 백엔드를 바꾼 뒤에는 Wine 앱을 그 백엔드에서 다시 설치해야 합니다.
+
+## 부팅 시 자동 시작
+
+`termux-services`(runit) + Termux:Boot APK로 기기 부팅 직후 서비스를 올릴 수 있습니다.
+
+```bash
+sv-enable sshd      # 서비스 등록 (부팅 시 자동 기동)
+sv-disable sshd     # 해제
+sv status sshd      # 상태 확인
+sv up sshd          # 지금 바로 시작
+```
+
+설치 시 `~/.termux/boot/start-services`가 자동 생성되며, 이 스크립트가
+`termux-wake-lock` 후 runit을 기동합니다. 파일이 이미 있으면 덮어쓰지 않습니다.
+
+> Android 제약상 Termux:Boot APK는 **설치 후 최소 한 번 앱을 열어야** 활성화됩니다.
+
 ## 테스트
 
 ```bash
@@ -204,17 +248,20 @@ bash tests/run_tests.sh e2e_install
 | 스위트 | 수 | 내용 |
 |--------|---|------|
 | ports | 12 | 어댑터 계약 준수 |
-| adapters | 33 | pkg_termux, ui_terminal, script_builder_zenity |
-| domain_termux | 62 | termux_env 로직 (API APK, 클립보드 동기화 포함) |
+| adapters | 40 | pkg_termux, ui_terminal, script_builder_zenity |
+| domain_termux | 67 | termux_env 로직 (API/Boot APK, 클립보드 동기화 포함) |
 | domain_xfce | 44 | xfce_env + 마이그레이션 |
-| domain_proot | 69 | proot_env (Ubuntu/Arch) |
+| domain_proot | 65 | proot_env (Ubuntu/Arch) |
 | domain_locale_ko | 24 | 한글 로케일 |
 | input_interactive | 5 | 대화형 입력 |
 | install_matrix | 16 | 설치 조합 매트릭스 |
-| app_installer | 72 | app-installer 검증 |
+| app_installer | 84 | app-installer 검증 |
 | prun_ld_preload | 18 | prun / LD_PRELOAD 회귀 |
 | e2e_install | 26 | E2E 통합 & 회귀 |
-| **합계** | **381** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+| **합계** | **401** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+
+app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 134,
+`test_adapters.sh` 14, `test_ports.sh` 11, `test_proot_path.sh` 3 — 합계 162).
 
 ## Android 시스템 최적화
 

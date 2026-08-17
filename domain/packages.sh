@@ -20,6 +20,7 @@ PKGS_TERMUX_BASE=(
     pulseaudio
     yad            # app-installer 검색 가능 GUI (zenity 대체)
     termux-api     # Android API 브리지 (클립보드, 알림, 배터리 등)
+    termux-services # runit 서비스 관리 (sv-enable/sv — Termux:Boot 자동 기동용)
     # xclip: display 어댑터(display_get_packages)로 이동
 )
 
@@ -55,7 +56,7 @@ PKGS_TERMUX_CLI=(
     btop        # 시각적 리소스 모니터 (htop 후속, root-repo 제공)
     jq
     netcat-openbsd
-    neofetch
+    fastfetch   # 시스템 정보 (neofetch 후속 — neofetch는 2024년 upstream 아카이브됨)
     git-delta   # git diff 구문 강조 (lazygit 연동)
     zellij      # tmux 대안 — 세션 멀티플렉서
     dust        # du 시각화 — 스토리지 확인
@@ -66,7 +67,11 @@ PKGS_TERMUX_CLI=(
     glow        # 터미널 마크다운 렌더러 (README·AI 출력 읽기)
     tealdeer    # tldr — 명령어 치트시트 (man 빠른 조회)
     xh          # HTTPie 호환 HTTP 클라이언트 (curl 대체)
-    onefetch    # git 저장소 요약 (neofetch의 repo판)
+    onefetch    # git 저장소 요약 (fastfetch의 repo판)
+    uv          # Python 패키지/가상환경 관리 (pip·venv·pyenv 대체)
+    sd          # sed 대체 — 직관적 문자열 치환
+    difftastic  # 구문 인식 diff (git difftool 연동)
+    gitui       # git TUI (lazygit 대안 — Rust, 저메모리)
 )
 
 # proot-distro 설치에 필요한 Termux 패키지

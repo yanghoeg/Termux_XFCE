@@ -270,9 +270,11 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     _step_msg "Display Server 설치"
     display_setup_apk
 
-    _step_msg "Termux 컴패니언 APK 설치 (API, Float)"
+    _step_msg "Termux 컴패니언 APK 설치 (API, Float, Widget, Boot)"
     setup_termux_api_apk
     setup_termux_float_apk
+    setup_termux_widget
+    setup_termux_boot_apk
 fi
 
 # -----------------------------------------------------------------------------
