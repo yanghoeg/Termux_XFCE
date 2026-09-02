@@ -356,18 +356,57 @@ _test_wine_apps_have_desktop_logic() {
 }
 it "모든 Wine 앱 — .desktop 파일 생성 로직 있음" _test_wine_apps_have_desktop_logic
 
+# .desktop의 Exec= 라인(들)이 실제로 Wine 백엔드 디스패처(단어 경계 "wine",
+# 예: wine-box64/wine-hangover로 위임하는 $PREFIX/bin/wine)를 거쳐 실행되는지
+# 검사한다. Exec= 라인이 없거나, 있어도 "wine" 토큰을 포함하지 않으면 실패.
+# (과거 버전은 파일 전체를 grep -q "wine"으로 훑어 wine_backend_available/
+#  wine_exec_shell 호출만 있어도 항상 통과했다 — Exec 자체는 전혀 보지 않았음)
+_exec_lines_run_via_wine() {
+    local f="$1"
+    local exec_lines
+    exec_lines=$(grep -E '^Exec=' "$f" 2>/dev/null)
+    [ -n "$exec_lines" ] || return 1
+    echo "$exec_lines" | grep -Eq '\bwine\b'
+}
+
 _test_wine_apps_use_wine_in_exec() {
     local failed=0
     for id in notepadpp sevenzip sumatrapdf winmerge; do
         local f="${INSTALLERS_DIR}/${id}.sh"
         [ -f "$f" ] || continue
-        if ! command grep -q "wine" "$f"; then
-            echo "[ASSERT] ${id}.sh에 wine 명령 없음" >&2; failed=1
+        if ! _exec_lines_run_via_wine "$f"; then
+            echo "[ASSERT] ${id}.sh의 desktop Exec가 wine을 통해 실행되지 않음" >&2
+            failed=1
         fi
     done
     return "$failed"
 }
 it "모든 Wine 앱 — desktop Exec에 wine 명령 사용" _test_wine_apps_use_wine_in_exec
+
+# 음성 자가검증: Exec가 wine을 거치지 않는 가짜 installer는 반드시 걸려야
+# 위 assertion이 항상 통과하는 죽은 테스트가 아님을 보장한다.
+_test_wine_exec_check_fails_on_non_wine_exec() {
+    local sb; sb=$(make_sandbox)
+    local fake="${sb}/fake.sh"
+    cat > "$fake" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+app_install_fake() {
+    cat > "${PREFIX}/share/applications/fake.desktop" << 'DESKTOP'
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Fake
+Exec=/usr/bin/some-other-app %f
+Terminal=false
+DESKTOP
+}
+EOF
+    local rc=0
+    _exec_lines_run_via_wine "$fake" || rc=$?
+    cleanup_sandbox "$sb"
+    assert_nonzero "$rc" "wine을 거치지 않는 Exec인데 검사를 통과함"
+}
+it "wine을 거치지 않는 가짜 Exec는 검사에 걸린다 (음성 자가검증)" _test_wine_exec_check_fails_on_non_wine_exec
 
 # =============================================================================
 # 모든 installer 스크립트 문법 검사

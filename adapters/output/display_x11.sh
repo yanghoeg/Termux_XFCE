@@ -6,64 +6,10 @@
 # ports/display.sh 계약의 X11 구현
 # =============================================================================
 
+source "${BASH_SOURCE[0]%/*}/display_common.sh"
+
 display_emit_kill_session() {
-    cat << 'FRAG'
-_kill_pidfile() {
-    local file="$1" pid expected cmdline
-    [ -r "$file" ] || return 0
-    read -r pid expected < "$file" || true
-    case "$pid" in ""|*[!0-9]*) rm -f "$file"; return 0 ;; esac
-    if [ -n "$expected" ]; then
-        [ -r "/proc/$pid/cmdline" ] || { rm -f "$file"; return 0; }
-        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        case "$cmdline" in *"$expected"*) ;; *) rm -f "$file"; return 0 ;; esac
-    fi
-    kill "$pid" 2>/dev/null || true
-    local _w
-    for _w in 1 2 3; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 1
-    done
-    kill -9 "$pid" 2>/dev/null || true
-    rm -f "$file"
-}
-
-# 세션 리더가 비정상 종료돼 남은 XFCE 컴포넌트 고아를 정리한다.
-# 과거 방식의 "확실한 정리"와 현재 PID 방식의 "graceful 종료"를 결합:
-# 정확한 프로세스명(-x)만 골라 SIGTERM 후 잔존분만 SIGKILL 한다.
-# (-f 부분일치를 쓰지 않으므로 이름이 다른 무관 프로세스는 건드리지 않는다.)
-_kill_orphans() {
-    local names="Xwayland xfwm4 xfdesktop xfce4-panel xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd xfce4-screensaver nimf pulseaudio conky dbus-daemon dbus-launch $*"
-    local _n
-    for _n in $names; do pkill -TERM -x "$_n" 2>/dev/null || true; done
-    sleep 1
-    for _n in $names; do pkill -KILL -x "$_n" 2>/dev/null || true; done
-}
-
-_kill_display_session() {
-    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
-    _kill_pidfile "$SESSION_STATE_DIR/session.pid"
-    _kill_pidfile "$SESSION_STATE_DIR/display.pid"
-
-    # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.
-    pkill -x xfce4-session 2>/dev/null || true
-    pkill -f '(^|/)termux-x11( |$)' 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-
-    # 세션 리더 사망 후 남을 수 있는 컴포넌트 고아를 정리 (graceful → SIGKILL)
-    _kill_orphans
-
-    local display_num=""
-    [ -r "$SESSION_STATE_DIR/display-num" ] && read -r display_num < "$SESSION_STATE_DIR/display-num"
-    case "$display_num" in
-        ""|*[!0-9]*) ;;
-        *) rm -f "${TMPDIR}/.X11-unix/X${display_num}" \
-              "${TMPDIR}/.X${display_num}-lock" 2>/dev/null || true ;;
-    esac
-    rm -f "$SESSION_STATE_DIR/display-num"
-    termux-wake-unlock 2>/dev/null || true
-}
-FRAG
+    display_common_emit_kill_session ""
 }
 
 display_emit_session_detect() {

@@ -467,9 +467,11 @@ _install_nimf_native() {
     command -v nimf &>/dev/null && return 0
 
     local url="https://github.com/yanghoeg/Termux_XFCE/releases/download/nimf-termux-v1.4.19/nimf_1.4.19_aarch64.deb"
+    # nimf-termux-v1.4.19 태그 고정 릴리스 .deb의 sha256 (무결성 검증용)
+    local sha256="42e6f5a27ec99bc26b2492e08181d433caf26a3832867eef664bb935144c7fbe"
 
     ui_info "nimf 한글 입력기 설치 중..."
-    pkg_install_deb_url "$url" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
+    pkg_install_deb_url "$url" "$sha256" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
 
     # 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
     command -v nimf &>/dev/null || return 1
@@ -605,7 +607,9 @@ _migrate_desktop_to_prun_gui() {
         grep -q "prun-gui" "$f" 2>/dev/null && continue
         # prun을 사용하는 .desktop만 대상
         grep -q "prun " "$f" 2>/dev/null || continue
-        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-)
+        # Name= 라인이 없으면 grep이 exit 1 → pipefail 하에서 전체 마이그레이션이
+        # 중단되므로 관대 처리(다음 줄이 이미 "App" 기본값으로 처리)
+        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-) || true
         app_name="${app_name:-App}"
         # 홑따옴표 안에 리터럴 작은따옴표를 넣기 위한 셸 이스케이프: ' → '\''
         app_name="${app_name//\'/\'\\\'\'}"

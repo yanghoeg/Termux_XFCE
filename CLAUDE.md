@@ -88,10 +88,12 @@ Termux_XFCE/
 - `set -euo pipefail` 사용 중 — 오류 시 즉시 종료
 - `local` 키워드는 bash 함수 내에서만 유효 (함수 밖에서 쓰면 에러)
 - Termux 패키지: `--force-confold` 옵션으로 설정 파일 충돌 방지
-- **패키지 배치 규칙**: `PKGS_TERMUX_*`(항상 설치)에는 **termux-main 제공 패키지만** 넣는다.
-  x11-repo/tur-repo 패키지는 App Installer 선택 항목으로 — TUR은 커뮤니티 빌드라
-  base에 넣으면 저장소 장애가 설치 전체를 깨뜨린다. 선택 항목 설치기 안에서는
-  `termux_pkg_enable_repo <repo>`로 저장소를 먼저 켠다.
+- **패키지 배치 규칙**: `PKGS_TERMUX_*`(항상 설치)에는 **termux-main + x11-repo** 패키지가
+  들어갈 수 있다 — XFCE/firefox/yad 자체가 x11-repo 제공이고, `domain/termux_env.sh`의
+  `_setup_termux_repos()`가 설치 초입에 x11/tur/root repo를 전부 미리 켜기 때문이다.
+  단 **tur-repo/root-repo 패키지는 반드시 App Installer 선택 항목**으로만 넣는다 — TUR/root는
+  커뮤니티 빌드·소규모 저장소라 base에 넣으면 저장소 장애가 설치 전체를 깨뜨린다.
+  선택 항목 설치기 안에서는 `termux_pkg_enable_repo <repo>`로 저장소를 먼저 켠다.
 - **새 패키지 추가 시 오라클 대조 필수** (패키지명 추측 금지):
   `curl -s https://packages.termux.dev/apt/termux-main/dists/stable/main/binary-aarch64/Packages | grep '^Package: '`
   (x11 = `termux-x11/dists/x11/main/binary-aarch64/Packages`,

@@ -47,13 +47,29 @@ proot_pkg_autoremove() {
 }
 
 # 공식 repo에 없는 .deb를 URL로 직접 설치 (nimf 등).
+# 각 인자는 "URL" 또는 "URL|sha256sum" — sha256이 주어지면 dpkg -i 전에 무결성을
+# 검증하고, 불일치 시 해당 .deb 설치만 건너뛴다(GitHub Releases 변조/오다운로드 방지).
 # 각 .deb를 다운로드 후 dpkg -i, 마지막에 apt-get install -f로 의존성 해결.
 proot_pkg_install_deb_url() {
-    local url deb
-    for url in "$@"; do
+    local entry url sha deb
+    for entry in "$@"; do
+        url="${entry%%|*}"
+        if [ "$entry" = "$url" ]; then
+            sha=""
+        else
+            sha="${entry#*|}"
+        fi
         deb="/tmp/$(basename "$url")"
         proot_exec bash -c "
             if wget -q -O '${deb}' '${url}' && [ -s '${deb}' ]; then
+                if [ -n '${sha}' ]; then
+                    actual_sha256=\$(sha256sum '${deb}' | cut -d' ' -f1)
+                    if [ \"\${actual_sha256}\" != '${sha}' ]; then
+                        echo '[ERROR] $(basename "$url") sha256 불일치 — 설치 건너뜀' >&2
+                        rm -f '${deb}'
+                        exit 0
+                    fi
+                fi
                 sudo dpkg -i '${deb}' 2>/dev/null || true
             else
                 echo '[WARN] $(basename "$url") 다운로드 실패' >&2

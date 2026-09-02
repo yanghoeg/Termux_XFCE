@@ -310,6 +310,52 @@ _test_config_file_no_distro_when_no_proot() {
 }
 it "no-proot일 때 config의 PROOT_DISTRO는 빈 문자열" _test_config_file_no_distro_when_no_proot
 
+_test_config_preserves_proot_shell_zsh() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="x11"
+PROOT_SHELL="zsh"
+EOF
+
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "--proot-only 재실행해도 기존 PROOT_SHELL=zsh가 유지된다 (never reset)" _test_config_preserves_proot_shell_zsh
+
+_test_config_preserves_display_server_on_proot_only() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="wayland"
+PROOT_SHELL="bash"
+EOF
+
+    # --display 미지정 → 이번 실행값은 기본 x11로 계산되지만, PROOT_ONLY=true이므로
+    # 기존 wayland를 유지해야 한다.
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'DISPLAY_SERVER="wayland"'
+    rm -rf "$sandbox"
+}
+it "--proot-only 재실행은 기존 DISPLAY_SERVER를 유지한다" _test_config_preserves_display_server_on_proot_only
+
 # =============================================================================
 # 정리
 # =============================================================================

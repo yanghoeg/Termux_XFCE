@@ -394,6 +394,24 @@ EOF
 }
 it "Name= 필드를 prun-gui 앱 이름으로 사용한다" _test_migrate_uses_name_field
 
+_test_migrate_no_name_field_does_not_abort() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # Name= 필드가 없는 .desktop — grep -m1 '^Name=' 이 매치 없어 exit 1 반환 →
+    # pipefail 하에서 전체 마이그레이션이 중단되면 안 됨 (기본값 "App"으로 처리)
+    cat > "${PREFIX}/share/applications/noname.desktop" << 'EOF'
+[Desktop Entry]
+Exec=bash -c "prun noname </dev/null >/dev/null 2>&1 &"
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    assert_file_contains "${PREFIX}/share/applications/noname.desktop" "prun-gui 'App' --"
+    cleanup_sandbox "$sb"
+}
+it "Name= 없는 .desktop도 중단 없이 'App' 기본값으로 마이그레이션된다" _test_migrate_no_name_field_does_not_abort
+
 # =============================================================================
 # _append_to_rc — RC 파일 멱등 추가 유틸
 # =============================================================================

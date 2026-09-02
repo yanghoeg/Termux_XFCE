@@ -53,7 +53,6 @@ PKGS_TERMUX_CLI=(
     starship
     atuin
     htop
-    btop        # 시각적 리소스 모니터 (htop 후속, root-repo 제공)
     jq
     netcat-openbsd
     fastfetch   # 시스템 정보 (neofetch 후속 — neofetch는 2024년 upstream 아카이브됨)
@@ -120,10 +119,19 @@ PKGS_PROOT_UBUNTU_KOREAN=(
 )
 
 # nimf GitHub Releases ARM64 .deb (Ubuntu 24.04 빌드 — 25.10에서도 호환)
+# 태그(v1.4.17)에 고정 — releases/latest 사용 금지(무결성 검증 불가능해짐).
 NIMF_DEB_BASE_URL="https://github.com/hamonikr/nimf/releases/download/v1.4.17"
 NIMF_DEBS=(
     "nimf_1.4.17_arm64-ubuntu.2404.arm64.deb"
     "nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"
+)
+
+# 각 .deb의 sha256 (dpkg -i 전 무결성 검증용 — proot_pkg_install_deb_url이 소비)
+# -g 필수: 이 파일이 함수(_load_domain 등) 안에서 source될 수 있어 -g 없으면
+# declare가 그 함수 로컬 스코프로 묶여 함수 반환 시 배열이 통째로 사라진다.
+declare -gA NIMF_DEB_SHA256=(
+    ["nimf_1.4.17_arm64-ubuntu.2404.arm64.deb"]="0530909cf696828bdcd54c122ad465af8bbdf83b1e7eb2fe7a6d6da388334c58"
+    ["nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"]="7a1f9c3b3893439fa14a4d369e6eac722f40128a595bd98e032e14857e0201b4"
 )
 
 PKGS_PROOT_UBUNTU_DEV=(

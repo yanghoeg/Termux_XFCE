@@ -114,7 +114,10 @@ setup_proot_base_packages() {
                     ui_info "  (${_i}/${_total}) ${p} — 이미 설치됨"
                 else
                     ui_info "  (${_i}/${_total}) ${p} 설치 중..."
-                    proot_pkg_install "$p"
+                    # 개별 패키지의 apt 설치 실패로 나머지 base 패키지 설치가
+                    # 전부 중단되지 않도록 경고 후 계속 진행 (archlinux 분기와 동일 패턴)
+                    proot_pkg_install "$p" || \
+                        echo "[WARN] $p: apt 설치 오류 (계속 진행)" >&2
                 fi
             done
             ;;
@@ -148,7 +151,8 @@ setup_proot_korean() {
                     ui_info "  (${_i}/${_total}) ${p} — 이미 설치됨"
                 else
                     ui_info "  (${_i}/${_total}) ${p} 설치 중..."
-                    proot_pkg_install "$p"
+                    proot_pkg_install "$p" || \
+                        echo "[WARN] $p: apt 설치 오류 (계속 진행)" >&2
                 fi
             done
             _install_ubuntu_nimf_deb
@@ -471,7 +475,7 @@ _install_ubuntu_nimf_deb() {
     local deb
     local -a urls=()
     for deb in "${NIMF_DEBS[@]}"; do
-        urls+=("${NIMF_DEB_BASE_URL}/${deb}")
+        urls+=("${NIMF_DEB_BASE_URL}/${deb}|${NIMF_DEB_SHA256[$deb]:-}")
     done
     proot_pkg_install_deb_url "${urls[@]}"
 

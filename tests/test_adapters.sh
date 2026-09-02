@@ -505,4 +505,34 @@ _test_display_x11_emit_clipboard_valid() {
 }
 it "display_emit_clipboard_sync이 유효한 bash를 출력한다" _test_display_x11_emit_clipboard_valid
 
+# =============================================================================
+# display_common.sh — x11/wayland 공유 세션 킬 로직
+# =============================================================================
+
+describe "display_common.sh — x11/wayland 공유"
+
+_test_display_common_sourced_by_both_adapters() {
+    grep -q 'source .*display_common\.sh' "${ADAPTER_DIR}/display_x11.sh" \
+        && grep -q 'source .*display_common\.sh' "${ADAPTER_DIR}/display_wayland.sh"
+}
+it "display_x11.sh와 display_wayland.sh가 display_common.sh를 source한다" _test_display_common_sourced_by_both_adapters
+
+_test_display_common_x11_emits_bare_kill_orphans() {
+    ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) \
+        | grep -qx '    _kill_orphans'
+}
+it "display_x11.sh가 방출하는 텍스트는 인자 없는 _kill_orphans를 호출한다" _test_display_common_x11_emits_bare_kill_orphans
+
+_test_display_common_wayland_emits_kill_orphans_labwc() {
+    ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) \
+        | grep -qx '    _kill_orphans labwc'
+}
+it "display_wayland.sh가 방출하는 텍스트는 _kill_orphans labwc를 호출한다" _test_display_common_wayland_emits_kill_orphans_labwc
+
+_test_display_common_emit_has_no_placeholder() {
+    ! ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON' \
+    && ! ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON'
+}
+it "방출된 텍스트에 __DISPLAY_COMMON 플레이스홀더가 남지 않는다" _test_display_common_emit_has_no_placeholder
+
 print_results

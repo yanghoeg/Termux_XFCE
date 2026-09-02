@@ -256,6 +256,39 @@ _test_arch_base_uses_arch_pkgs() {
 }
 it "Arch: proot 패키지 설치를 호출한다" _test_arch_base_uses_arch_pkgs
 
+_test_ubuntu_base_pkg_failure_continues() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS=""
+
+    # 첫 패키지의 apt 설치가 실패해도(archlinux 분기와 동일하게) 경고 후
+    # 나머지 base+desktop 패키지 전부가 계속 시도되어야 한다.
+    local fail_pkg="${PKGS_PROOT_UBUNTU_BASE[0]}"
+    proot_pkg_install() {
+        _record_call "proot_pkg_install $*"
+        [ "$1" = "$fail_pkg" ] && return 1
+        return 0
+    }
+
+    # 서브셸(command substitution)로 감싸면 MOCK_CALLS 갱신이 부모로 전파되지
+    # 않으므로, stderr만 파일로 리다이렉트해 현재 셸에서 직접 호출한다.
+    local warnlog; warnlog=$(mktemp)
+    setup_proot_base_packages 2>"$warnlog"
+
+    local install_count=0
+    for call in "${MOCK_CALLS[@]:-}"; do
+        [[ "$call" == "proot_pkg_install "* ]] && install_count=$((install_count + 1))
+    done
+    local expected=$(( ${#PKGS_PROOT_UBUNTU_BASE[@]} + ${#PKGS_PROOT_UBUNTU_DESKTOP[@]} ))
+    assert_eq "$expected" "$install_count" "실패한 패키지가 있어도 나머지 base+desktop 전부 시도되어야 함"
+    assert_file_contains "$warnlog" "WARN"
+    rm -f "$warnlog"
+    cleanup_sandbox "$sb"
+}
+it "Ubuntu: base 패키지 하나가 실패해도 경고 후 나머지를 계속 설치한다" _test_ubuntu_base_pkg_failure_continues
+
 # =============================================================================
 # setup_proot_cursor_theme
 # =============================================================================
@@ -437,6 +470,34 @@ _test_korean_arch_installs_pkgs() {
     cleanup_sandbox "$sb"
 }
 it "Arch: proot 한글 패키지 설치를 호출한다" _test_korean_arch_installs_pkgs
+
+_test_korean_ubuntu_pkg_failure_continues() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS=""
+
+    local fail_pkg="${PKGS_PROOT_UBUNTU_KOREAN[0]}"
+    proot_pkg_install() {
+        _record_call "proot_pkg_install $*"
+        [ "$1" = "$fail_pkg" ] && return 1
+        return 0
+    }
+
+    local warnlog; warnlog=$(mktemp)
+    setup_proot_korean 2>"$warnlog"
+
+    local install_count=0
+    for call in "${MOCK_CALLS[@]:-}"; do
+        [[ "$call" == "proot_pkg_install "* ]] && install_count=$((install_count + 1))
+    done
+    assert_eq "${#PKGS_PROOT_UBUNTU_KOREAN[@]}" "$install_count" "실패한 패키지가 있어도 나머지 한글 패키지 전부 시도되어야 함"
+    assert_file_contains "$warnlog" "WARN"
+    rm -f "$warnlog"
+    cleanup_sandbox "$sb"
+}
+it "Ubuntu 한글: 패키지 하나가 실패해도 경고 후 나머지를 계속 설치한다" _test_korean_ubuntu_pkg_failure_continues
 
 # =============================================================================
 # _setup_ubuntu_korean_locale — PROOT_DISTRO 변수 사용 (하드코딩 수정 검증)

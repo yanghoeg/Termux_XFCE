@@ -19,6 +19,7 @@ _NC='\033[0m'
 declare -A SUITES=(
     [ports]="${SCRIPT_DIR}/test_ports.sh"
     [adapters]="${SCRIPT_DIR}/test_adapters.sh"
+    [adapters_deb]="${SCRIPT_DIR}/test_adapters_deb.sh"
     [input_interactive]="${SCRIPT_DIR}/test_input_interactive.sh"
     [domain_termux]="${SCRIPT_DIR}/test_domain_termux.sh"
     [domain_xfce]="${SCRIPT_DIR}/test_domain_xfce.sh"
@@ -32,7 +33,7 @@ declare -A SUITES=(
 
 # 실행할 스위트 결정
 if [ $# -eq 0 ]; then
-    selected_suites=("ports" "adapters" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install")
+    selected_suites=("ports" "adapters" "adapters_deb" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install")
 else
     selected_suites=("$@")
 fi
