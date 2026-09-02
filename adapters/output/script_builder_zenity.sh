@@ -128,6 +128,23 @@ if [ -n "$GPU_MODEL" ]; then
     export TU_DEBUG=noconform
     export ZINK_DESCRIPTORS=lazy
     export MESA_VK_WSI_PRESENT_MODE=fifo
+
+    # Zink present(WSI) 검증 — 일부 mesa/Turnip 버전은 Termux:X11 창에 Vulkan
+    # 스왑체인을 만들지 못해(CreateSwapchainKHR 실패) 화면이 검게 나온다. glxinfo로
+    # 실제 present 경로를 검사해 실패하면 소프트웨어(llvmpipe)로 폴백한다.
+    # 판정은 grep 대신 bash 내장 case로 — 세션 전역 LD_PRELOAD/PATH 오염에도 견고.
+    if command -v glxinfo >/dev/null 2>&1; then
+        _zink_err=$(DISPLAY="$XDISPLAY" timeout 15 glxinfo -B 2>&1 >/dev/null)
+        case "$_zink_err" in
+            *"could not create swapchain"*|*"CreateSwapchainKHR failed"*)
+                echo "WARN: Zink 스왑체인 생성 실패 감지 — 소프트웨어 렌더링으로 폴백합니다." >&2
+                unset MESA_VK_WSI_PRESENT_MODE TU_DEBUG ZINK_DESCRIPTORS
+                export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe
+                export LIBGL_ALWAYS_SOFTWARE=1
+                ;;
+        esac
+        unset _zink_err
+    fi
 else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
     export LIBGL_ALWAYS_SOFTWARE=1

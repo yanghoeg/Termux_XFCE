@@ -140,7 +140,9 @@ FRAG
 }
 
 display_get_packages() {
-    echo "termux-x11-nightly xdotool xclip wmctrl"
+    # mesa-demos: glxinfo 제공 — 런처가 Zink present 가능 여부를 검사해
+    # 실패 시 소프트웨어 렌더링으로 폴백하는 데 사용 (x11-repo, termux-x11과 동일 저장소)
+    echo "termux-x11-nightly xdotool xclip wmctrl mesa-demos"
 }
 
 display_setup_apk() {
