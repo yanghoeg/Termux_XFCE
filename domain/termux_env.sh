@@ -170,7 +170,16 @@ _setup_termux_boot_script() {
 # Termux:Boot — 부팅 시 termux-services(runit) 기동
 # 서비스 켜기/끄기: sv-enable <서비스> / sv-disable <서비스>
 # 상태 확인:      sv status <서비스>
-termux-wake-lock
+
+# 활성화된(down 파일이 없는) runit 서비스가 하나라도 있을 때만 wake-lock을 잡는다.
+# 활성 서비스가 없으면 락을 잡지 않아 기기가 deep sleep에 들어갈 수 있다(배터리 절약).
+for _svc in "$PREFIX/var/service/"*; do
+    [ -d "$_svc" ] || continue
+    [ -e "$_svc/down" ] && continue
+    termux-wake-lock
+    break
+done
+
 . "$PREFIX/etc/profile.d/start-services.sh"
 BOOTEOF
     chmod +x "$script"
