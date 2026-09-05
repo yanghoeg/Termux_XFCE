@@ -8,7 +8,7 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경 + proot-distro(Ubuntu/Arch
 ## 실행 환경
 
 - **타겟 환경**: Android 기기의 Termux (`/data/data/com.termux/...` 경로)
-- **개발/편집 환경**: Linux PC (`/home/lideok/code/work/linux/Termux_XFCE/`) 및 기기 Termux 내 Claude Code
+- **개발/편집 환경**: Linux PC (`/home/yanghoeg/code/work/linux/Termux_XFCE/`) 및 기기 Termux 내 Claude Code
 - 스크립트 shebang: `#!/data/data/com.termux/files/usr/bin/bash` (일반 Linux에서 직접 실행 불가)
 - 테스트: PC 수정 → `git push` → 기기에서 `git pull` → `tests/` 단위 테스트 또는 `source domain/*.sh && <func>`
 
@@ -74,19 +74,27 @@ Termux_XFCE/
 
 ## App-Installer 연동
 
-- 별도 Git repo 유지 + Git Submodule로 연결 (독립 업데이트 가능)
-- `PROOT_DISTRO` env var로 distro-aware 동작
-- 동일 헥사고날 아키텍처 적용 예정 (아래 TODO 참조)
+- 별도 Git repo 유지 + Git Submodule로 연결 (독립 업데이트 가능) — 변경은 서브모듈에서 커밋한 뒤
+  부모에서 포인터 커밋
+- 동일 헥사고날 구조(ports/adapters/domain/installers) 적용 완료. distro별 패키지명 차이는
+  `adapters/output/pkg_{termux,ubuntu,arch}.sh` 어댑터가 흡수하고, `PROOT_DISTRO` env var로 선택
+- 앱은 Termux native 우선 — 레지스트리(`domain/apps.sh`) 설명에 설치 위치(native/proot) 표기
+- **다운로드 무결성**: 외부 파일(.deb/tarball/zip/exe)은 버전 핀 + sha256 상수, `lib/fetch.sh`의
+  `fetch_verified` 경유. `releases/latest`·GitHub API "최신" 조회 금지 (예외: `llama_cpp.sh`
+  사용자 선택 모델). 버전 올릴 때 `sha256sum`으로 상수 함께 갱신
+- proot 내부 한글 IME(로케일 + nimf/fcitx5)는 app-installer `korean_proot` 항목
+  (2026-09-05 부모 `domain/`에서 이관)
+- 테스트: `app-installer/tests/test_{domain_apps,adapters,ports,fetch,proot_path}.sh` 개별 실행
+  (run_tests.sh 없음). `test_nimf_*_real.sh`는 실기기 전용
+- Claude Code 핀 상향/롤백 이력: `app-installer/docs/claude-code-login-regression.md`
 
-## 남은 TODO
+## 남은 TODO (실기기 검증 — PC에서는 mock/정적 검사만 가능)
 
-1. **App-Installer Termux native 우선 리팩토링**
-   - 각 앱마다 `pkg search <앱>` 결과 있으면 `pkg install`로 전환, 없으면 proot fallback
-   - 예: Thunderbird는 native, VLC·LibreOffice는 proot 유지
-   - `install.sh` GUI에 설치 위치(native/proot) 표시 추가
-2. **App-Installer distro 추상화 마무리**: 헥사고날 구조(ports/adapters/domain)는 이미
-   적용됨 — 남은 것은 `PKG_MAP` 형태의 distro별 패키지명 추상화뿐
-3. **README.md / README.ko.md 최신성 확인**: 구조 설명, 설치 방법, zsh 기본 쉘 반영 여부
+1. `prun` GPU env(`/etc/profile.d/termux-xfce-env.sh`) 전파
+2. zsh + Powerlevel10k 설정 순서
+3. Termux native nimf `pgrep` 가드
+4. Claude Code 2.1.261 `/login` (회귀 시 `app-installer/docs/claude-code-login-regression.md` 롤백 절차)
+5. `korean_proot` 설치(Ubuntu nimf .deb / Arch AUR→fcitx5) + `.profile` `export` 로케일이 GUI 앱에 전파되는지
 
 ## 주의사항
 
