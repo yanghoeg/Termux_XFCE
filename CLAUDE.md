@@ -90,11 +90,17 @@ Termux_XFCE/
 
 ## 남은 TODO (실기기 검증 — PC에서는 mock/정적 검사만 가능)
 
-1. `prun` GPU env(`/etc/profile.d/termux-xfce-env.sh`) 전파
-2. zsh + Powerlevel10k 설정 순서
-3. Termux native nimf `pgrep` 가드
-4. Claude Code 2.1.261 `/login` (회귀 시 `app-installer/docs/claude-code-login-regression.md` 롤백 절차)
-5. `korean_proot` 설치(Ubuntu nimf .deb / Arch AUR→fcitx5) + `.profile` `export` 로케일이 GUI 앱에 전파되는지
+1. Claude Code 2.1.261 `/login` (회귀 시 `app-installer/docs/claude-code-login-regression.md` 롤백 절차)
+   — 재설치가 실행 중인 CLI 세션을 교체하므로 세션 종료 후 진행
+
+### 완료 (2026-09-05 실기기 검증)
+
+- `prun` GPU env(`/etc/profile.d/termux-xfce-env.sh`) 전파 확인
+- zsh + Powerlevel10k 설정 순서 검증(`_setup_zsh_p10k` → `_setup_aliases`, 코드 수정 불필요)
+- Termux native nimf `pgrep -x` 가드(`nimf.desktop` Exec)
+- `korean_proot` 로케일: Arch `~/.bash_profile→~/.bashrc` 체인이 `~/.profile`을 무시하는 버그를
+  근본 수정 — `/etc/profile.d/termux-xfce-locale.sh`(모든 로그인 셸 경유)에 `export`로 이전.
+  실기기에서 `LANG=ko_KR.UTF-8`·IM env 자식 프로세스 전파 확인
 
 ## 주의사항
 
