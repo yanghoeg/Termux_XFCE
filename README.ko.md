@@ -251,21 +251,21 @@ bash tests/run_tests.sh e2e_install
 | 스위트 | 수 | 내용 |
 |--------|---|------|
 | ports | 12 | 어댑터 계약 준수 |
-| adapters | 45 | pkg_termux, ui_terminal, script_builder_zenity, display |
+| adapters | 38 | pkg_termux, ui_terminal, script_builder_zenity, display |
 | adapters_deb | 3 | pkg_install_deb_url sha256 검증 |
 | input_interactive | 6 | 대화형 입력 |
 | domain_termux | 76 | termux_env 로직 (API/Boot APK, 클립보드 동기화, dbus 원샷 리셋 포함) |
 | domain_xfce | 47 | xfce_env + 마이그레이션 |
-| domain_proot | 72 | proot_env (Ubuntu/Arch) |
+| domain_proot | 51 | proot_env (Ubuntu/Arch) |
 | domain_locale_ko | 27 | 한글 로케일 |
-| app_installer | 85 | app-installer 검증 |
+| app_installer | 86 | app-installer 검증 |
 | prun_ld_preload | 19 | prun / LD_PRELOAD 회귀 |
 | install_matrix | 22 | 설치 조합 매트릭스 |
 | e2e_install | 26 | E2E 통합 & 회귀 |
-| **합계** | **440** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+| **합계** | **413** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
 
-app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 154,
-`test_adapters.sh` 17, `test_ports.sh` 11, `test_proot_path.sh` 6 — 합계 188).
+app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 173,
+`test_adapters.sh` 26, `test_ports.sh` 11, `test_fetch.sh` 7, `test_proot_path.sh` 6 — 합계 223).
 
 ## Android 시스템 최적화
 

@@ -251,11 +251,11 @@ bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
 
-Main installer suite: **440** tests across 12 suites (ports 12, adapters 45, adapters_deb 3,
-input_interactive 6, domain_termux 76, domain_xfce 47, domain_proot 72, domain_locale_ko 27,
-app_installer 85, prun_ld_preload 19, install_matrix 22, e2e_install 26).
-The app-installer submodule has its own suites (`test_domain_apps.sh` 154,
-`test_adapters.sh` 17, `test_ports.sh` 11, `test_proot_path.sh` 6 — **188** total).
+Main installer suite: **413** tests across 12 suites (ports 12, adapters 38, adapters_deb 3,
+input_interactive 6, domain_termux 76, domain_xfce 47, domain_proot 51, domain_locale_ko 27,
+app_installer 86, prun_ld_preload 19, install_matrix 22, e2e_install 26).
+The app-installer submodule has its own suites (`test_domain_apps.sh` 173,
+`test_adapters.sh` 26, `test_ports.sh` 11, `test_fetch.sh` 7, `test_proot_path.sh` 6 — **223** total).
 
 > On Arch these are mock / static checks only — final verification needs a real Termux device.
 
