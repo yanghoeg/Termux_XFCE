@@ -169,9 +169,9 @@ it "config 없을 때 PROOT_DISTRO=ubuntu로 fallback한다" _test_config_fallba
 # install.sh — _detect_proot_user (P1-3 회귀: glob 미매치 시 literal "*" 폭탄)
 # =============================================================================
 
-describe "app-installer/install.sh — _detect_proot_user"
+describe "app-installer/lib/common.sh — _detect_proot_user"
 
-# install.sh의 _detect_proot_user만 추출해서 source (다른 부분 부작용 회피)
+# lib/common.sh의 _detect_proot_user만 추출해서 source (다른 부분 부작용 회피)
 _load_detect_only() {
     # _detect_proot_user는 _proot_rootfs에 의존 → 리졸버 먼저 로드
     source "${APP_DIR}/lib/proot_path.sh"
@@ -181,7 +181,7 @@ _load_detect_only() {
         /^_detect_proot_user\(\) \{/{ in_fn=1 }
         in_fn{ print }
         in_fn && /^\}/{ exit }
-    ' "${APP_DIR}/install.sh" > "$tmp"
+    ' "${APP_DIR}/lib/common.sh" > "$tmp"
     source "$tmp"
     rm -f "$tmp"
 }
