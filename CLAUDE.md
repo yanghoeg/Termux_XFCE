@@ -67,7 +67,6 @@ Termux_XFCE/
 │   ├── test_{ports,adapters,adapters_deb,app_installer}.sh
 │   ├── test_{e2e_install,input_interactive,install_matrix}.sh
 │   ├── test_prun_ld_preload.sh
-│   ├── test_nimf_{arch,ubuntu}_real.sh
 │   ├── batch_test_appinstaller.sh
 │   └── INSTALL_MATRIX.md
 └── app-installer/                ← submodule

@@ -34,9 +34,6 @@ _test_pkg_termux_contract() {
     assert_cmd_exists proot_pkg_autoremove
     assert_cmd_exists proot_pkg_is_installed
     assert_cmd_exists pkg_install_deb_url
-    assert_cmd_exists proot_pkg_install_deb_url
-    assert_cmd_exists proot_aur_install
-    assert_cmd_exists proot_ensure_aur_helper
 }
 it "모든 계약 함수가 선언되어 있다" _test_pkg_termux_contract
 
@@ -171,101 +168,6 @@ _test_proot_pkg_autoremove_error() {
     assert_output_contains "$out" "ERROR"
 }
 it "proot_pkg_autoremove는 에러 메시지를 출력한다" _test_proot_pkg_autoremove_error
-
-_test_proot_deb_url_stub_error() {
-    source "${ADAPTER_DIR}/pkg_termux.sh"
-    local out
-    out=$(proot_pkg_install_deb_url "http://x/y.deb" 2>&1) || true
-    assert_output_contains "$out" "ERROR"
-}
-it "proot_pkg_install_deb_url는 native에서 에러를 출력한다" _test_proot_deb_url_stub_error
-
-_test_proot_aur_stub_error() {
-    source "${ADAPTER_DIR}/pkg_termux.sh"
-    local out
-    out=$(proot_aur_install nimf 2>&1) || true
-    assert_output_contains "$out" "ERROR"
-}
-it "proot_aur_install는 native에서 에러를 출력한다" _test_proot_aur_stub_error
-
-# =============================================================================
-# pkg_ubuntu.sh — proot_pkg_install_deb_url (HOW: apt/dpkg 은닉 검증)
-# proot_exec를 스파이로 교체해 도메인에서 사라진 raw 명령이 어댑터에 있는지 확인
-# =============================================================================
-
-describe "pkg_ubuntu.sh — proot_pkg_install_deb_url"
-
-_test_ubuntu_deb_url_uses_dpkg_and_apt_fix() {
-    source "${ADAPTER_DIR}/pkg_ubuntu.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_pkg_install_deb_url "https://example.com/nimf_1.4.17.deb"
-
-    assert_file_contains "$log" "wget"
-    assert_file_contains "$log" "sudo dpkg -i"
-    assert_file_contains "$log" "nimf_1.4.17.deb"
-    assert_file_contains "$log" "sudo apt-get install -f -y"
-    rm -f "$log"
-}
-it "URL .deb를 dpkg로 설치하고 apt-get -f로 의존성을 해결한다" _test_ubuntu_deb_url_uses_dpkg_and_apt_fix
-
-_test_ubuntu_deb_url_installs_each_url() {
-    source "${ADAPTER_DIR}/pkg_ubuntu.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_pkg_install_deb_url "https://x/a.deb" "https://x/b.deb"
-
-    assert_file_contains "$log" "a.deb"
-    assert_file_contains "$log" "b.deb"
-    rm -f "$log"
-}
-it "여러 URL을 각각 설치한다" _test_ubuntu_deb_url_installs_each_url
-
-# =============================================================================
-# pkg_arch.sh — proot_ensure_aur_helper / proot_aur_install (HOW: pacman/yay 은닉)
-# =============================================================================
-
-describe "pkg_arch.sh — AUR 헬퍼"
-
-_test_arch_ensure_aur_helper_builds_yay() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_ensure_aur_helper
-
-    assert_file_contains "$log" "yay-bin"
-    assert_file_contains "$log" "makepkg -si --noconfirm"
-    assert_file_contains "$log" "git base-devel"
-    assert_file_contains "$log" "command -v yay"
-    rm -f "$log"
-}
-it "yay가 없으면 yay-bin을 AUR에서 빌드한다" _test_arch_ensure_aur_helper_builds_yay
-
-_test_arch_ensure_aur_helper_uses_bash_c() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local first=""
-    proot_exec() { [ -z "$first" ] && first="$1"; return 0; }
-
-    proot_ensure_aur_helper
-
-    assert_eq "bash" "$first" "proot_exec bash -c 형태로 호출돼야 한다"
-}
-it "proot_exec bash -c 형태로 호출된다" _test_arch_ensure_aur_helper_uses_bash_c
-
-_test_arch_aur_install_uses_yay() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_aur_install nimf
-
-    assert_file_contains "$log" "yay -S --noconfirm --needed nimf"
-    rm -f "$log"
-}
-it "proot_aur_install은 yay -S로 설치한다" _test_arch_aur_install_uses_yay
 
 # =============================================================================
 # script_builder_zenity.sh — 스크립트 빌더 직접 테스트

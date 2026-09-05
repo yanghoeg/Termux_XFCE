@@ -135,6 +135,7 @@ Displays the XFCE menu/settings/app UI in Korean. Since Termux's bionic libc doe
 > This approach is implemented based on a method shared by 미코 (Minigi Korea) community member 흡혈귀왕. 🙏
 
 Korean input (fcitx5) and the Korean locale can be installed via `app-installer`.
+Korean IME *inside* the proot distro (locale + nimf/fcitx5) is a separate `app-installer` item: `korean_proot`.
 
 | File | Role |
 |------|------|
@@ -306,7 +307,7 @@ Termux_XFCE/
 ├── tests/                        ← main installer automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
     ├── install.sh                ← yad notebook tabbed GUI
-    └── domain/installers/        ← per-app install scripts (58 apps)
+    └── domain/installers/        ← per-app install scripts (59 apps)
 ```
 
 ## Branch Strategy

@@ -33,24 +33,14 @@ PKG_MANAGER_CONTRACTS=(
 # pkg_manager 포트가 문서화하지만 distro별 구현이 갈리는 함수들
 # (ports/pkg_manager.sh 주석 기준 — 일반 계약이 아니므로 PKG_MANAGER_CONTRACTS에는 넣지 않음)
 # - pkg_install_deb_url: "Termux native에 다운로드 후 설치" — Termux 전용
-# - proot_aur_install / proot_ensure_aur_helper: "(Arch 전용)" 명시
-# - proot_pkg_install_deb_url: distro 마킹 없이 일반으로 문서화되어 있으나
-#   pkg_arch.sh에는 (스텁조차) 구현이 없음 — 스텁 추가하지 않고 리포트만 함 (M12)
+#   (proot .deb/AUR 설치 포트는 app-installer 서브모듈로 이관됨)
 PKG_TERMUX_EXTRA_CONTRACTS=(
     pkg_install_deb_url
-    proot_pkg_install_deb_url
-    proot_aur_install
-    proot_ensure_aur_helper
 )
 
-PKG_UBUNTU_EXTRA_CONTRACTS=(
-    proot_pkg_install_deb_url
-)
-
-PKG_ARCH_EXTRA_CONTRACTS=(
-    proot_aur_install
-    proot_ensure_aur_helper
-)
+# ubuntu/arch 어댑터에는 추가 계약 없음 (proot .deb/AUR 설치는 app-installer로 이관)
+PKG_UBUNTU_EXTRA_CONTRACTS=()
+PKG_ARCH_EXTRA_CONTRACTS=()
 
 # ui 포트가 요구하는 함수 목록
 UI_CONTRACTS=(

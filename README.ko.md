@@ -135,6 +135,7 @@ XFCE 메뉴/설정/앱 UI를 한글로 표시합니다. Termux의 bionic libc가
 > 이 접근법은 **미코(미니기기 코리아) — 흡혈귀왕님**이 공유해 주신 방법을 바탕으로 구현되었습니다. 🙏
 
 한글 입력기(fcitx5), 한글 로케일은 `app-installer`에서 설치할 수 있습니다.
+proot 내부 한글 IME(로케일 + nimf/fcitx5)는 `app-installer`의 별도 항목 `korean_proot`입니다.
 
 | 파일 | 역할 |
 |------|------|
@@ -316,7 +317,7 @@ Termux_XFCE/
 ├── tests/                        ← 메인 설치기 자동화 테스트
 └── app-installer/                ← 앱 설치 GUI (Git Submodule)
     ├── install.sh                ← yad notebook 탭 GUI
-    └── domain/installers/        ← 앱별 설치 스크립트 (58개)
+    └── domain/installers/        ← 앱별 설치 스크립트 (59개)
 ```
 
 ## 브랜치 전략
