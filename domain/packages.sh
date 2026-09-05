@@ -134,15 +134,6 @@ declare -gA NIMF_DEB_SHA256=(
     ["nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"]="7a1f9c3b3893439fa14a4d369e6eac722f40128a595bd98e032e14857e0201b4"
 )
 
-PKGS_PROOT_UBUNTU_DEV=(
-    python3
-    python3-pip
-    gh
-    meson
-    ninja-build
-    build-essential
-)
-
 # -----------------------------------------------------------------------------
 # proot Arch Linux 패키지 (Arch 선택 시)
 # -----------------------------------------------------------------------------
@@ -183,12 +174,4 @@ PKGS_PROOT_ARCH_KOREAN_NIMF=(
 PKGS_PROOT_ARCH_KOREAN_FCITX5=(
     fcitx5-hangul
     fcitx5-configtool
-)
-
-PKGS_PROOT_ARCH_DEV=(
-    python
-    python-pip
-    github-cli
-    meson
-    ninja
 )

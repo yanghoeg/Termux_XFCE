@@ -589,7 +589,7 @@ if [ $# -eq 0 ]; then
         -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
 else
     exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" bash --login -c 'exec "$@"' prun "$@"
 fi
 EOF
 

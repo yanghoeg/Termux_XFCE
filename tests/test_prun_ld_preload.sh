@@ -68,6 +68,32 @@ _test_prun_noarg_uses_login_shell() {
 }
 it "인자 없이 prun 호출 시 PROOT_SHELL --login으로 인터랙티브 셸 실행" _test_prun_noarg_uses_login_shell
 
+_test_prun_args_use_login_shell() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_prun
+
+    # 인자 있는 분기가 로그인 셸로 감싸져야 /etc/profile.d/*.sh가 적용된다
+    assert_file_contains "${PREFIX}/bin/prun" \
+        "bash --login -c 'exec \"\$@\"' prun \"\$@\""
+
+    # env -u LD_PRELOAD가 같은 논리 명령에서 bash --login보다 앞서야 함
+    local line
+    line=$(grep -n 'bash --login -c' "${PREFIX}/bin/prun" | head -1 | cut -d: -f1)
+    if [ -z "$line" ]; then
+        echo "[ASSERT] prun에 bash --login -c 분기가 없다" >&2
+        cleanup_sandbox "$sb"; return 1
+    fi
+    if ! sed -n "${line}p" "${PREFIX}/bin/prun" | grep -qF -- 'env -u LD_PRELOAD'; then
+        echo "[ASSERT] bash --login 라인에 env -u LD_PRELOAD가 선행하지 않는다" >&2
+        echo "[ASSERT] actual: $(sed -n "${line}p" "${PREFIX}/bin/prun")" >&2
+        cleanup_sandbox "$sb"; return 1
+    fi
+    cleanup_sandbox "$sb"
+}
+it "인자 있는 prun은 bash --login으로 /etc/profile.d env를 적용한다" _test_prun_args_use_login_shell
+
 _test_prun_ld_preload_before_proot() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"

@@ -202,13 +202,17 @@ _test_proot_env_written() {
 
     setup_proot_env 2>/dev/null || true
 
+    # export는 /etc/profile.d로 이동 — .bashrc는 마커 + source 라인만 갖는다
+    local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    assert_file_contains "$envfile" 'DISPLAY=${DISPLAY:-:0.0}'
+    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     assert_file_contains "$bashrc" "termux-xfce-proot-env"
-    assert_file_contains "$bashrc" 'DISPLAY=${DISPLAY:-:0.0}'
-    assert_file_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh'
     cleanup_sandbox "$sb"
 }
-it ".bashrc에 DISPLAY, MESA 등 환경변수를 추가한다" _test_proot_env_written
+it "profile.d에 DISPLAY/MESA를 쓰고 .bashrc는 마커+source 라인을 갖는다" _test_proot_env_written
 
 _test_proot_env_idempotent() {
     local sb; sb=$(make_sandbox)
@@ -220,11 +224,96 @@ _test_proot_env_idempotent() {
 
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     local count
-    count=$(grep -c "termux-xfce-proot-env" "$bashrc")
+    count=$(grep -c "^# termux-xfce-proot-env$" "$bashrc")
     assert_eq "1" "$count" "멱등성: env 블록이 1번만 있어야 한다"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh' 
     cleanup_sandbox "$sb"
 }
 it "멱등성 — proot env 블록이 중복 추가되지 않는다" _test_proot_env_idempotent
+
+_test_proot_env_profile_d_written() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    assert_file_exists "$envfile"
+    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+    assert_file_contains "$envfile" "VK_ICD_FILENAMES="
+    assert_file_contains "$envfile" 'XDG_RUNTIME_DIR=/run/user/$(id -u)'
+    assert_file_not_contains "$envfile" "alias"
+    cleanup_sandbox "$sb"
+}
+it "환경변수는 /etc/profile.d/termux-xfce-env.sh에 기록된다 (alias 없음)" _test_proot_env_profile_d_written
+
+_test_proot_env_bashrc_sources_profile_d() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    assert_file_contains "$bashrc" "termux-xfce-proot-env"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh'
+    assert_file_not_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE"
+    cleanup_sandbox "$sb"
+}
+it ".bashrc는 profile.d env 파일을 source하고 export는 갖지 않는다" _test_proot_env_bashrc_sources_profile_d
+
+_test_proot_env_eza_bat_guarded() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    assert_file_contains "$bashrc" "command -v eza"
+    assert_file_contains "$bashrc" "command -v bat"
+    assert_file_not_contains "$bashrc" "alias python"
+    assert_file_not_contains "$bashrc" "alias pip"
+    cleanup_sandbox "$sb"
+}
+it "eza/bat alias는 command -v 가드로 감싸고 python/pip alias는 없다" _test_proot_env_eza_bat_guarded
+
+_test_proot_env_migrates_old_block() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    cat > "$bashrc" << 'OLDBASHRC'
+# 기존 사용자 설정 (보존되어야 함)
+
+# termux-xfce-proot-env
+export DISPLAY=${DISPLAY:-:0.0}
+export MESA_NO_ERROR=1
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+
+# aliases
+alias hud='GALLIUM_HUD=fps '
+alias ls='eza -lF --icons'
+alias cat='bat'
+alias python='/usr/bin/python3'
+code() { nohup dbus-run-session /usr/bin/code --no-sandbox "$@" >/dev/null 2>&1 & disown; }
+# user custom
+OLDBASHRC
+
+    setup_proot_env 2>/dev/null || true
+
+    local count
+    count=$(grep -c "^# termux-xfce-proot-env$" "$bashrc")
+    assert_eq "1" "$count" "마이그레이션 후 마커가 정확히 1개여야 한다"
+    assert_file_not_contains "$bashrc" "^alias ls='eza"
+    assert_file_not_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE"
+    assert_file_contains "$bashrc" "# user custom"
+    assert_file_exists "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    cleanup_sandbox "$sb"
+}
+it "구버전 .bashrc 블록을 마이그레이션하고 사용자 라인은 보존한다" _test_proot_env_migrates_old_block
 
 # =============================================================================
 # setup_proot_base_packages — distro 분기
