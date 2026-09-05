@@ -352,43 +352,37 @@ GPU
 _setup_zsh_p10k() {
     command -v zsh &>/dev/null || return 0
 
-    # zsh를 기본 쉘로 설정 — Termux의 chsh는 ~/.termux/shell 심볼릭 링크로 관리됨
-    # (일반 Linux의 /etc/passwd 기반 getent는 Termux에선 빈값 반환 → 기존 getent 분기는 사실상 항상 실패)
-    local zsh_path
-    zsh_path=$(command -v zsh)
-    local current_shell
-    current_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
-    if [ "$current_shell" != "$zsh_path" ]; then
-        chsh -s zsh 2>/dev/null || true
-    fi
-
-    # Powerlevel10k 설치
+    # Powerlevel10k 설치 — 실패하면 zsh 전환 자체를 건너뜀(chsh/zshrc 변경 없음).
+    # set -euo pipefail 하에서 네트워크 실패로 clone이 죽으면 이후 로그인 셸이 이미
+    # zsh로 바뀐 채 ~/.zshrc가 없는 상태로 install 전체가 중단되는 걸 방지.
     local p10k_dir="$HOME/powerlevel10k"
     if [ ! -d "$p10k_dir" ]; then
         ui_info "Powerlevel10k 설치 중..."
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
+        if ! git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"; then
+            ui_warn "Powerlevel10k 설치 실패 — zsh 전환을 건너뜁니다"
+            return 0
+        fi
     fi
 
-    # zsh 플러그인 설치
+    # zsh 플러그인 설치 — 실패해도 계속 진행(zshrc가 [[ -f ... ]] && source 로 방어)
     local plugin_dir="$HOME/.zsh/plugins"
     mkdir -p "$plugin_dir"
     if [ ! -d "$plugin_dir/zsh-autosuggestions" ]; then
         ui_info "zsh-autosuggestions 설치 중..."
         git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions \
-            "$plugin_dir/zsh-autosuggestions"
+            "$plugin_dir/zsh-autosuggestions" || ui_warn "zsh-autosuggestions 설치 실패 — 건너뜁니다"
     fi
     if [ ! -d "$plugin_dir/zsh-syntax-highlighting" ]; then
         ui_info "zsh-syntax-highlighting 설치 중..."
         git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting \
-            "$plugin_dir/zsh-syntax-highlighting"
+            "$plugin_dir/zsh-syntax-highlighting" || ui_warn "zsh-syntax-highlighting 설치 실패 — 건너뜁니다"
     fi
 
-    # ~/.zshrc 생성 (없는 경우에만)
+    # ~/.zshrc: 없으면 신규 생성, 있으면 p10k 블록만 멱등 추가(사용자 커스터마이즈 보존)
     local zshrc="$HOME/.zshrc"
-    [ -f "$zshrc" ] && return 0
-
-    ui_info "$HOME/.zshrc 생성"
-    cat > "$zshrc" << 'ZSHRC'
+    if [ ! -f "$zshrc" ]; then
+        ui_info "$HOME/.zshrc 생성"
+        cat > "$zshrc" << 'ZSHRC'
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
@@ -438,6 +432,32 @@ export EDITOR=nano
 export VISUAL=nano
 export PATH="$HOME/.local/bin:$PREFIX/bin:$PATH"
 ZSHRC
+    else
+        local block
+        block=$(cat << 'P10KBLOCK'
+
+# termux-xfce-p10k
+[[ -f ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && \
+    source ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -f ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+    source ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source ~/powerlevel10k/powerlevel10k.zsh-theme
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+P10KBLOCK
+)
+        _append_to_rc "# termux-xfce-p10k" "$block" "$zshrc"
+    fi
+
+    # zsh를 기본 쉘로 설정 — Termux의 chsh는 ~/.termux/shell 심볼릭 링크로 관리됨
+    # (일반 Linux의 /etc/passwd 기반 getent는 Termux에선 빈값 반환 → 기존 getent 분기는 사실상 항상 실패)
+    # p10k + ~/.zshrc가 준비된 뒤 마지막에 실행 — 실패해도 위 단계는 이미 완료된 상태.
+    local zsh_path
+    zsh_path=$(command -v zsh)
+    local current_shell
+    current_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
+    if [ "$current_shell" != "$zsh_path" ]; then
+        chsh -s zsh 2>/dev/null || true
+    fi
 }
 
 _setup_korean_env() {

@@ -574,6 +574,132 @@ _test_gpu_env_idempotent() {
 it "멱등성 — GPU 블록이 중복 추가되지 않는다" _test_gpu_env_idempotent
 
 # =============================================================================
+# _setup_zsh_p10k — zsh/p10k/plugins 설치 + ~/.zshrc 관리
+# =============================================================================
+
+describe "termux_env — _setup_zsh_p10k"
+
+_test_zsh_p10k_clone_failure_skips_chsh() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    _GIT_FAIL=1
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+
+    local rc=0
+    _setup_zsh_p10k || rc=$?
+    assert_eq "0" "$rc"
+    [ ! -s "$chsh_log" ]
+    [ ! -f "$HOME/.zshrc" ]
+    cleanup_sandbox "$sb"
+}
+it "p10k clone 실패 시 chsh를 건너뛰고 rc 0" _test_zsh_p10k_clone_failure_skips_chsh
+
+_test_zsh_p10k_fresh_creates_zshrc_then_chsh() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    rm -f "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    assert_file_contains "$HOME/.zshrc" "powerlevel10k.zsh-theme"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "신규: .zshrc 생성 후 chsh" _test_zsh_p10k_fresh_creates_zshrc_then_chsh
+
+_test_zsh_p10k_existing_zshrc_gets_p10k_block() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    echo "# my zshrc" > "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    assert_file_contains "$HOME/.zshrc" "# my zshrc"
+    assert_file_contains "$HOME/.zshrc" "# termux-xfce-p10k"
+    assert_file_contains "$HOME/.zshrc" "powerlevel10k.zsh-theme"
+    assert_file_not_contains "$HOME/.zshrc" "HISTFILE"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "기존 .zshrc 보존 + p10k 블록 추가" _test_zsh_p10k_existing_zshrc_gets_p10k_block
+
+_test_zsh_p10k_idempotent_on_existing_zshrc() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    chsh() { :; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    echo "# my zshrc" > "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    _setup_zsh_p10k
+
+    local count
+    count=$(grep -c "# termux-xfce-p10k" "$HOME/.zshrc")
+    assert_eq "1" "$count"
+    cleanup_sandbox "$sb"
+}
+it "기존 .zshrc에 재실행해도 p10k 블록은 1회" _test_zsh_p10k_idempotent_on_existing_zshrc
+
+_test_zsh_p10k_plugin_failure_continues() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        local last="${@: -1}"
+        if [[ "$last" == *"plugins/"* ]]; then return 1; fi
+        mkdir -p "$last"
+    }
+    rm -f "$HOME/.zshrc"
+
+    local rc=0
+    _setup_zsh_p10k || rc=$?
+    assert_eq "0" "$rc"
+    assert_file_exists "$HOME/.zshrc"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "플러그인 clone 실패는 경고 후 계속" _test_zsh_p10k_plugin_failure_continues
+
+# =============================================================================
 # _setup_prun_gui — prun-gui 스크립트 생성
 # =============================================================================
 
