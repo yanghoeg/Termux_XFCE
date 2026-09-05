@@ -84,4 +84,4 @@ else
 fi
 echo "╚══════════════════════════════════════╝"
 
-[ "$total_fail" -eq 0 ]
+[ "$total_fail" -eq 0 ] && [ "${#failed_suites[@]}" -eq 0 ]

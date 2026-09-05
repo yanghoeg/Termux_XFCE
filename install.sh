@@ -183,14 +183,14 @@ _existing_display_server=""
 _existing_proot_distro=""
 _existing_proot_user=""
 if [ -f "$_cfg_file" ]; then
-    _existing_proot_shell=$(grep -m1 '^PROOT_SHELL=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"')
-    _existing_display_server=$(grep -m1 '^DISPLAY_SERVER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"')
-    _existing_proot_distro=$(grep -m1 '^PROOT_DISTRO=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"')
-    _existing_proot_user=$(grep -m1 '^PROOT_USER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"')
+    _existing_proot_shell=$(grep -m1 '^PROOT_SHELL=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_display_server=$(grep -m1 '^DISPLAY_SERVER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_proot_distro=$(grep -m1 '^PROOT_DISTRO=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_proot_user=$(grep -m1 '^PROOT_USER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
 fi
 
-# PROOT_SHELL: 기존 값이 있으면 항상 유지(never reset), 없으면 bash 기본
-_cfg_proot_shell="${_existing_proot_shell:-bash}"
+# PROOT_SHELL: 이번 실행에 명시된 값 > 기존 config 값 > bash
+_cfg_proot_shell="${PROOT_SHELL:-${_existing_proot_shell:-bash}}"
 
 # DISPLAY_SERVER: --proot-only 재실행이면서 기존 값이 있으면 유지, 아니면 이번 실행 값
 if [ "${PROOT_ONLY:-false}" = "true" ] && [ -n "$_existing_display_server" ]; then

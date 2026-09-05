@@ -332,6 +332,68 @@ EOF
 }
 it "--proot-only 재실행해도 기존 PROOT_SHELL=zsh가 유지된다 (never reset)" _test_config_preserves_proot_shell_zsh
 
+_test_config_merge_tolerates_missing_keys() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+DISPLAY_SERVER="x11"
+EOF
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "구버전 config(키 누락) 병합은 크래시 없이 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="bash"'
+    rm -rf "$sandbox"
+}
+it "구버전 config(키 누락)로 재실행해도 크래시 없이 병합된다" _test_config_merge_tolerates_missing_keys
+
+_test_config_records_explicit_proot_shell() {
+    local sandbox; sandbox=$(mktemp -d)
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+    PROOT_SHELL=zsh \
+        bash "$REPO_ROOT/install.sh" --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "PROOT_SHELL=zsh 신규 설치는 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "PROOT_SHELL=zsh 신규 설치는 config에 zsh를 기록한다" _test_config_records_explicit_proot_shell
+
+_test_config_explicit_shell_overrides_existing() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="x11"
+PROOT_SHELL="bash"
+EOF
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+    PROOT_SHELL=zsh \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "PROOT_SHELL=zsh로 기존 config 덮어쓰기는 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "PROOT_SHELL=zsh는 기존 config의 값을 덮어쓴다" _test_config_explicit_shell_overrides_existing
+
 _test_config_preserves_display_server_on_proot_only() {
     local sandbox; sandbox=$(mktemp -d)
     mkdir -p "$sandbox/home/.config/termux-xfce"
