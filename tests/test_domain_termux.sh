@@ -135,6 +135,17 @@ _test_locale_idempotent() {
 }
 it "멱등성 — locale 블록이 중복 추가되지 않는다" _test_locale_idempotent
 
+_test_locale_nimf_env_guarded() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_locale
+    assert_file_contains "${PREFIX}/etc/bash.bashrc" "command -v nimf"
+    assert_file_not_contains "${PREFIX}/etc/bash.bashrc" "^export GTK_IM_MODULE=nimf"
+    cleanup_sandbox "$sb"
+}
+it "locale 블록의 nimf IM env는 nimf 존재 시에만 export된다" _test_locale_nimf_env_guarded
+
 # =============================================================================
 # _setup_start_xfce
 # =============================================================================
@@ -825,6 +836,37 @@ _test_base_pkgs_dbus_preserved_when_xfce_installed() {
     cleanup_sandbox "$sb"
 }
 it "XFCE 설치된 idempotent 재실행에서는 dbus를 보존한다 (cascade 제거 차단)" _test_base_pkgs_dbus_preserved_when_xfce_installed
+
+_test_base_pkgs_dbus_reset_marker_created() {
+    # 클린 설치로 dbus를 리셋하면 원샷 마커 파일이 생겨야 한다
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # dbus만 잔존 (xfce4-session 없음)
+
+    _install_base_packages 2>/dev/null || true
+    assert_file_exists "${HOME}/.config/termux-xfce/.dbus-reset-done"
+    cleanup_sandbox "$sb"
+}
+it "클린 설치로 dbus 리셋 시 원샷 마커 파일을 생성한다" _test_base_pkgs_dbus_reset_marker_created
+
+_test_base_pkgs_dbus_reset_one_shot() {
+    # 첫 실행에서 dbus를 리셋한 뒤, 같은 샌드박스에서 재실행(여전히 XFCE 없음)해도
+    # 마커가 있으면 두 번째 pkg_remove dbus 호출은 없어야 한다 (재크래시 후 재실행 시나리오)
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # dbus만 잔존 (xfce4-session 없음)
+
+    _install_base_packages 2>/dev/null || true   # 1차 실행 — 마커 생성
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # 여전히 xfce4-session 없음
+
+    _install_base_packages 2>/dev/null || true   # 2차 실행 — 마커 존재 시 리셋 생략
+    assert_not_called "pkg_remove dbus"
+    cleanup_sandbox "$sb"
+}
+it "dbus 리셋은 원샷 — 마커 존재 시 재실행에서 다시 제거하지 않는다" _test_base_pkgs_dbus_reset_one_shot
 
 # =============================================================================
 # setup_termux_shortcuts — composition 함수 검증

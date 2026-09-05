@@ -297,6 +297,22 @@ _test_sb_start_xfce_has_display_detection() {
 }
 it "DISPLAY 자동 감지 로직이 있다" _test_sb_start_xfce_has_display_detection
 
+_test_sb_start_xfce_no_socket_rescan() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    # display_emit_session_detect의 _EXISTING_SOCK=... 재스캔(다른 목적: 기존 세션 감지)은
+    # 유지되므로, display_emit_server_start가 재스캔으로 DISPLAY_NUM을 다시 뽑아내던
+    # `DISPLAY_NUM=$(basename ...)` 패턴만 특정해서 검사
+    assert_file_not_contains "$out" 'DISPLAY_NUM=\$(basename'
+    assert_file_contains "$out" 'DISPLAY_NUM=$_DTRY'
+    bash -n "$out"
+    cleanup_sandbox "$sb"
+}
+it "X11 startXFCE는 띄운 디스플레이 번호를 그대로 쓴다 (ls|head 재스캔 없음)" _test_sb_start_xfce_no_socket_rescan
+
 _test_sb_start_xfce_pulse_no_idle_exit() {
     source "${ADAPTER_DIR}/display_x11.sh"
     source "${ADAPTER_DIR}/script_builder_zenity.sh"

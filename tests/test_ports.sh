@@ -30,6 +30,28 @@ PKG_MANAGER_CONTRACTS=(
     proot_pkg_autoremove
 )
 
+# pkg_manager 포트가 문서화하지만 distro별 구현이 갈리는 함수들
+# (ports/pkg_manager.sh 주석 기준 — 일반 계약이 아니므로 PKG_MANAGER_CONTRACTS에는 넣지 않음)
+# - pkg_install_deb_url: "Termux native에 다운로드 후 설치" — Termux 전용
+# - proot_aur_install / proot_ensure_aur_helper: "(Arch 전용)" 명시
+# - proot_pkg_install_deb_url: distro 마킹 없이 일반으로 문서화되어 있으나
+#   pkg_arch.sh에는 (스텁조차) 구현이 없음 — 스텁 추가하지 않고 리포트만 함 (M12)
+PKG_TERMUX_EXTRA_CONTRACTS=(
+    pkg_install_deb_url
+    proot_pkg_install_deb_url
+    proot_aur_install
+    proot_ensure_aur_helper
+)
+
+PKG_UBUNTU_EXTRA_CONTRACTS=(
+    proot_pkg_install_deb_url
+)
+
+PKG_ARCH_EXTRA_CONTRACTS=(
+    proot_aur_install
+    proot_ensure_aur_helper
+)
+
 # ui 포트가 요구하는 함수 목록
 UI_CONTRACTS=(
     ui_info
@@ -79,7 +101,7 @@ _check_adapter_contracts() {
 describe "포트 계약 — pkg_termux.sh"
 
 _test_pkg_termux_contracts() {
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_termux.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_termux.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_TERMUX_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_termux.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_termux_contracts
 
@@ -89,7 +111,7 @@ _test_pkg_ubuntu_contracts() {
     if [ ! -f "${ADAPTER_DIR}/pkg_ubuntu.sh" ]; then
         return 0  # 파일 없으면 skip
     fi
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_ubuntu.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_ubuntu.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_UBUNTU_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_ubuntu.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_ubuntu_contracts
 
@@ -99,7 +121,7 @@ _test_pkg_arch_contracts() {
     if [ ! -f "${ADAPTER_DIR}/pkg_arch.sh" ]; then
         return 0
     fi
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_arch.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_arch.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_ARCH_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_arch.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_arch_contracts
 

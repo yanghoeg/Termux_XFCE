@@ -6,8 +6,8 @@
 # domain setup_* 함수의 호출 여부를 트레이스로 검증.
 #
 # - 실제 설치는 하지 않음 (모든 setup_* 함수는 _INSTALL_HOOK으로 스텁 교체)
-# - distro × proot-only × no-proot × gpu × gpu-dev × korean × korean-locale
-#   = 의미 있는 조합 14개 커버
+# - distro × proot-only × no-proot × config 보존(PROOT_SHELL/DISPLAY_SERVER) 조합 커버
+#   (케이스 수 = `bash tests/test_install_matrix.sh`가 출력하는 it 항목 수)
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

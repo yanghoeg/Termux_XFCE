@@ -206,8 +206,12 @@ _install_base_packages() {
     # 단, XFCE가 이미 설치된 idempotent 재실행에서는 cascade 제거를 피함
     # — `pkg uninstall dbus` 는 dbus를 require하는 64개 (xfce4, fcitx5 전체) 까지 함께 제거.
     # XFCE가 깔려 있다는 건 이전 설치가 성공했다는 뜻 → dbus 리셋 불필요.
-    if pkg_is_installed "dbus" && ! pkg_is_installed "xfce4-session"; then
+    # 마커 파일로 원샷 처리: 설치가 xfce4-session 이전에 크래시한 뒤 재실행되는 경우,
+    # 매번 dbus를 재제거하면 그 사이 사용자가 설치한 dbus 의존 패키지(예: fcitx5)까지 cascade 제거됨.
+    local dbus_reset_marker="$HOME/.config/termux-xfce/.dbus-reset-done"
+    if pkg_is_installed "dbus" && ! pkg_is_installed "xfce4-session" && [ ! -f "$dbus_reset_marker" ]; then
         pkg_remove dbus
+        mkdir -p "$(dirname "$dbus_reset_marker")" && : > "$dbus_reset_marker"
     fi
 
     local total=${#all_pkgs[@]} i=0
@@ -256,9 +260,11 @@ export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
 # XDG_RUNTIME_DIR은 _setup_xdg_runtime 블록에서 관리 (mode 700 user-private)
-export XMODIFIERS="@im=nimf"
-export GTK_IM_MODULE=nimf
-export QT_IM_MODULE=nimf
+if command -v nimf >/dev/null 2>&1; then
+    export XMODIFIERS="@im=nimf"
+    export GTK_IM_MODULE=nimf
+    export QT_IM_MODULE=nimf
+fi
 LOCALE
 )
 
