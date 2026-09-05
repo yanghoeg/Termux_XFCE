@@ -272,7 +272,7 @@ _test_korean_nimf_desktop_created() {
 
     _setup_korean_env
     assert_file_exists "${HOME}/.config/autostart/nimf.desktop"
-    assert_file_contains "${HOME}/.config/autostart/nimf.desktop" "Exec=nimf"
+    assert_file_contains "${HOME}/.config/autostart/nimf.desktop" "pgrep -x nimf"
     cleanup_sandbox "$sb"
 }
 it "nimf.desktop 자동시작 파일을 생성한다" _test_korean_nimf_desktop_created
