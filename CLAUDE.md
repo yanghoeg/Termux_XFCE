@@ -59,12 +59,17 @@ Termux_XFCE/
 │   ├── packages.sh               ← 패키지 정의 목록
 │   ├── termux_env.sh             ← Termux 환경 (zsh+p10k 포함)
 │   ├── xfce_env.sh               ← XFCE 환경
-│   └── proot_env.sh              ← proot 환경
+│   ├── proot_env.sh              ← proot 환경
+│   └── locale_ko.sh              ← 한글 로케일 — LD_PRELOAD gettext 훅
 ├── tests/
 │   ├── framework.sh, mocks.sh, run_tests.sh, autopilot.sh
-│   ├── test_domain_{termux,xfce,proot}.sh
-│   ├── test_{ports,adapters,app_installer}.sh
-│   └── test_prun_ld_preload.sh
+│   ├── test_domain_{termux,xfce,proot,locale_ko}.sh
+│   ├── test_{ports,adapters,adapters_deb,app_installer}.sh
+│   ├── test_{e2e_install,input_interactive,install_matrix}.sh
+│   ├── test_prun_ld_preload.sh
+│   ├── test_nimf_{arch,ubuntu}_real.sh
+│   ├── batch_test_appinstaller.sh
+│   └── INSTALL_MATRIX.md
 └── app-installer/                ← submodule
 ```
 
@@ -80,7 +85,8 @@ Termux_XFCE/
    - 각 앱마다 `pkg search <앱>` 결과 있으면 `pkg install`로 전환, 없으면 proot fallback
    - 예: Thunderbird는 native, VLC·LibreOffice는 proot 유지
    - `install.sh` GUI에 설치 위치(native/proot) 표시 추가
-2. **App-Installer 헥사고날 리팩토링**: `PKG_MAP`, distro 추상화
+2. **App-Installer distro 추상화 마무리**: 헥사고날 구조(ports/adapters/domain)는 이미
+   적용됨 — 남은 것은 `PKG_MAP` 형태의 distro별 패키지명 추상화뿐
 3. **README.md / README.ko.md 최신성 확인**: 구조 설명, 설치 방법, zsh 기본 쉘 반영 여부
 
 ## 주의사항
@@ -89,8 +95,9 @@ Termux_XFCE/
 - `local` 키워드는 bash 함수 내에서만 유효 (함수 밖에서 쓰면 에러)
 - Termux 패키지: `--force-confold` 옵션으로 설정 파일 충돌 방지
 - **패키지 배치 규칙**: `PKGS_TERMUX_*`(항상 설치)에는 **termux-main + x11-repo** 패키지가
-  들어갈 수 있다 — XFCE/firefox/yad 자체가 x11-repo 제공이고, `domain/termux_env.sh`의
-  `_setup_termux_repos()`가 설치 초입에 x11/tur/root repo를 전부 미리 켜기 때문이다.
+  들어갈 수 있다 — XFCE/firefox/yad 자체가 x11-repo 제공이기 때문이다. `domain/termux_env.sh`의
+  `_setup_termux_repos()`는 설치 초입에 **x11-repo만** 켠다 — tur-repo/root-repo는 여기서
+  켜지 않는다.
   단 **tur-repo/root-repo 패키지는 반드시 App Installer 선택 항목**으로만 넣는다 — TUR/root는
   커뮤니티 빌드·소규모 저장소라 base에 넣으면 저장소 장애가 설치 전체를 깨뜨린다.
   선택 항목 설치기 안에서는 `termux_pkg_enable_repo <repo>`로 저장소를 먼저 켠다.

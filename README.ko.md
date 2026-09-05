@@ -185,6 +185,8 @@ app-installer          # 전체 (탭: 앱 | 시스템 | Termux API | Wine)
 app-installer wine     # Wine 앱만
 ```
 
+헤드리스 CLI(GUI 없음): `bash app-installer/app-install.sh list|install <id>|remove <id>|status <id>`.
+
 - **탭 기반 UI** — 앱 / 시스템 / Termux API / Wine 탭으로 분류
 - **검색** — 이름/설명 타이핑으로 즉시 필터링 (yad notebook, zenity 폴백)
 - **Termux native 우선** — GIMP, Inkscape, Thunderbird 등은 네이티브 설치
@@ -248,20 +250,21 @@ bash tests/run_tests.sh e2e_install
 | 스위트 | 수 | 내용 |
 |--------|---|------|
 | ports | 12 | 어댑터 계약 준수 |
-| adapters | 40 | pkg_termux, ui_terminal, script_builder_zenity |
-| domain_termux | 67 | termux_env 로직 (API/Boot APK, 클립보드 동기화 포함) |
-| domain_xfce | 44 | xfce_env + 마이그레이션 |
-| domain_proot | 65 | proot_env (Ubuntu/Arch) |
-| domain_locale_ko | 24 | 한글 로케일 |
-| input_interactive | 5 | 대화형 입력 |
-| install_matrix | 16 | 설치 조합 매트릭스 |
-| app_installer | 84 | app-installer 검증 |
-| prun_ld_preload | 18 | prun / LD_PRELOAD 회귀 |
+| adapters | 45 | pkg_termux, ui_terminal, script_builder_zenity, display |
+| adapters_deb | 3 | pkg_install_deb_url sha256 검증 |
+| input_interactive | 6 | 대화형 입력 |
+| domain_termux | 76 | termux_env 로직 (API/Boot APK, 클립보드 동기화, dbus 원샷 리셋 포함) |
+| domain_xfce | 47 | xfce_env + 마이그레이션 |
+| domain_proot | 72 | proot_env (Ubuntu/Arch) |
+| domain_locale_ko | 27 | 한글 로케일 |
+| app_installer | 85 | app-installer 검증 |
+| prun_ld_preload | 19 | prun / LD_PRELOAD 회귀 |
+| install_matrix | 22 | 설치 조합 매트릭스 |
 | e2e_install | 26 | E2E 통합 & 회귀 |
-| **합계** | **401** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+| **합계** | **440** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
 
-app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 134,
-`test_adapters.sh` 14, `test_ports.sh` 11, `test_proot_path.sh` 3 — 합계 162).
+app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 154,
+`test_adapters.sh` 17, `test_ports.sh` 11, `test_proot_path.sh` 6 — 합계 188).
 
 ## Android 시스템 최적화
 
@@ -313,7 +316,7 @@ Termux_XFCE/
 ├── tests/                        ← 메인 설치기 자동화 테스트
 └── app-installer/                ← 앱 설치 GUI (Git Submodule)
     ├── install.sh                ← yad notebook 탭 GUI
-    └── domain/installers/        ← 앱별 설치 스크립트 (46개)
+    └── domain/installers/        ← 앱별 설치 스크립트 (58개)
 ```
 
 ## 브랜치 전략

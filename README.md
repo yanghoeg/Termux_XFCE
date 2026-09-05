@@ -81,6 +81,13 @@ app-installer      # GUI for installing/removing extra apps
 Hardware acceleration via **Zink (OpenGL→Vulkan) + Turnip driver** on Adreno GPUs (Snapdragon 6xx/7xx/8xx).  
 Applied automatically to every bash/zsh session after installation.
 
+> **Why glamor alone isn't enough**  
+> X11's OpenGL acceleration (`glamor_egl`) requires DRI3 support, but Termux:X11's Xwayland doesn't expose Adreno DRI3.  
+> Zink routes OpenGL calls through Vulkan (Turnip) instead, reaching the GPU via `/dev/kgsl-3d0`.
+
+> **If GTK4 apps (zenity, etc.) crash**  
+> Fixed by `GSK_RENDERER=cairo` (forces the GTK4 Cairo renderer). Set automatically during install.
+
 ```bash
 echo $MESA_LOADER_DRIVER_OVERRIDE   # → zink
 gpu-info                             # Show GPU model
@@ -95,6 +102,7 @@ hud glxgears                         # FPS overlay
 | `MESA_NO_ERROR` | `1` | Disable GL error checks |
 | `MESA_GL_VERSION_OVERRIDE` | `4.6COMPAT` | Advertise OpenGL 4.6 compat |
 | `MESA_GLES_VERSION_OVERRIDE` | `3.2` | Advertise GLES 3.2 |
+| `MESA_VK_WSI_PRESENT_MODE` | `fifo` | Vulkan present mode (VSync, prevents tearing) |
 | `GSK_RENDERER` | `cairo` | GTK4 Cairo renderer (prevents GLX crash) |
 
 > **Note**: If the XFCE4 compositor (xfwm4) causes a black screen,  
@@ -120,6 +128,20 @@ hud glxgears                         # FPS overlay
 | Speech Recognition | Speech-to-text via Android STT engine |
 | Wallpaper Sync | Apply XFCE wallpaper to Android home screen |
 
+## Korean Locale (optional)
+
+Displays the XFCE menu/settings/app UI in Korean. Since Termux's bionic libc doesn't support `setlocale(LC_MESSAGES)`, this is worked around via **LD_PRELOAD-based gettext hooking**.
+
+> This approach is implemented based on a method shared by 미코 (Minigi Korea) community member 흡혈귀왕. 🙏
+
+Korean input (fcitx5) and the Korean locale can be installed via `app-installer`.
+
+| File | Role |
+|------|------|
+| `assets/force_gettext.c` | gettext hook C source (built with `clang -shared`) |
+| `domain/locale_ko.sh` | Places `.mo` catalogs + builds the `.so` |
+| `$PREFIX/lib/force_gettext.so` | Runtime-injected shared object |
+
 ## App Installer
 
 Install/remove extra apps, system tools, and Termux API tools via a tabbed GUI:
@@ -128,6 +150,8 @@ Install/remove extra apps, system tools, and Termux API tools via a tabbed GUI:
 app-installer          # Full UI (tabs: Apps | System | Termux API | Wine)
 app-installer wine     # Wine apps only
 ```
+
+Headless CLI (no GUI): `bash app-installer/app-install.sh list|install <id>|remove <id>|status <id>`.
 
 - **Tabbed UI** — Apps / System / Termux API / Wine tabs
 - **Search** — type to filter by name/description (yad notebook, zenity fallback)
@@ -226,9 +250,11 @@ bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
 
-Main installer suite: **401** tests. The app-installer submodule has its own suites
-(`test_domain_apps.sh` 134, `test_adapters.sh` 14, `test_ports.sh` 11,
-`test_proot_path.sh` 3 — **162** total).
+Main installer suite: **440** tests across 12 suites (ports 12, adapters 45, adapters_deb 3,
+input_interactive 6, domain_termux 76, domain_xfce 47, domain_proot 72, domain_locale_ko 27,
+app_installer 85, prun_ld_preload 19, install_matrix 22, e2e_install 26).
+The app-installer submodule has its own suites (`test_domain_apps.sh` 154,
+`test_adapters.sh` 17, `test_ports.sh` 11, `test_proot_path.sh` 6 — **188** total).
 
 > On Arch these are mock / static checks only — final verification needs a real Termux device.
 
@@ -243,6 +269,10 @@ adb shell "/system/bin/device_config put activity_manager max_phantom_processes 
 ### Disable Battery Optimization
 
 **Android Settings → Apps → Termux** (and Termux:X11) → Battery → **Unrestricted**.
+
+### Wakelock
+
+`termux-wake-lock` is invoked automatically when `startXFCE` runs.
 
 ---
 
@@ -276,8 +306,15 @@ Termux_XFCE/
 ├── tests/                        ← main installer automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
     ├── install.sh                ← yad notebook tabbed GUI
-    └── domain/installers/        ← per-app install scripts (31 apps)
+    └── domain/installers/        ← per-app install scripts (58 apps)
 ```
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable — real-device tested, for end users |
+| `dev` | In development — merged to main after tests pass |
 
 ## Contributing
 
