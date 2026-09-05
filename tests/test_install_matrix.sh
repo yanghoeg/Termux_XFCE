@@ -131,6 +131,54 @@ _test_minimal_native() {
 }
 it "최소 native (no-proot) — companion APK 포함, proot 없음" _test_minimal_native
 
+_test_fancybash_failure_does_not_abort_install() {
+    # setup_xfce_fancybash가 실패해도 install.sh 전체가 rc 0으로 끝나야 함
+    # (fancybash 호출은 readlink "$HOME/.termux/shell"이 */zsh로 안 끝날 때만 발생하므로
+    #  샌드박스 HOME에는 해당 심볼릭 링크가 없다 — _run_install의 sandbox HOME이 그 조건 충족)
+    cat > "$HOOK_FILE" << 'HOOK_EOF'
+_trace() { printf '%s\n' "$*" >> "${_TRACE_FILE}"; }
+setup_termux_base()       { _trace "setup_termux_base"; }
+setup_xfce_packages()     { _trace "setup_xfce_packages"; }
+setup_xfce_theme()        { _trace "setup_xfce_theme"; }
+setup_xfce_fonts()        { _trace "setup_xfce_fonts"; }
+setup_xfce_wallpaper()    { _trace "setup_xfce_wallpaper"; }
+setup_xfce_fancybash()    { _trace "setup_xfce_fancybash $*"; return 1; }
+setup_xfce_autostart()    { _trace "setup_xfce_autostart"; }
+setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
+display_setup_apk()       { _trace "display_setup_apk"; }
+setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
+setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
+setup_termux_widget()     { _trace "setup_termux_widget"; }
+setup_termux_boot_apk()   { _trace "setup_termux_boot_apk"; }
+setup_proot_install()         { _trace "setup_proot_install"; }
+setup_proot_update()          { _trace "setup_proot_update"; }
+setup_proot_user()            { _trace "setup_proot_user"; }
+setup_proot_base_packages()   { _trace "setup_proot_base_packages"; }
+setup_proot_env()             { _trace "setup_proot_env"; }
+setup_proot_timezone()        { _trace "setup_proot_timezone"; }
+setup_proot_fancybash()       { _trace "setup_proot_fancybash"; }
+setup_proot_hardware_accel()  { _trace "setup_proot_hardware_accel"; }
+setup_proot_cursor_theme()    { _trace "setup_proot_cursor_theme"; }
+setup_proot_conky()           { _trace "setup_proot_conky"; }
+setup_proot_alias()           { _trace "setup_proot_alias"; }
+termux-setup-storage()    { _trace "termux-setup-storage"; }
+termux-reload-settings()  { _trace "termux-reload-settings"; return 0; }
+sleep()                   { :; }
+ui_info()  { :; }
+ui_warn()  { :; }
+ui_error() { echo "ERROR: $*" >&2; }
+HOOK_EOF
+
+    local rc=0
+    _run_install --no-proot || rc=$?
+
+    # 훅 파일을 원래 상태로 복원 — 이후 테스트에 영향 없게
+    _write_hook_file
+
+    assert_zero "$rc" "setup_xfce_fancybash 실패해도 install.sh는 rc 0으로 끝나야 함"
+}
+it "setup_xfce_fancybash 실패해도 install.sh 전체는 중단되지 않는다" _test_fancybash_failure_does_not_abort_install
+
 # =============================================================================
 # 매트릭스 2: --proot-only (proot만, native 생략)
 # =============================================================================

@@ -1308,7 +1308,7 @@ it "Wayland 세션에서 X11 백엔드를 강제한다" _test_screenshot_forces_
 
 describe "termux_env — _setup_termux_repos"
 
-_test_termux_repos_installs_three_when_absent() {
+_test_termux_repos_installs_x11_when_absent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     MOCK_INSTALLED_PKGS=""
@@ -1317,12 +1317,12 @@ _test_termux_repos_installs_three_when_absent() {
     _setup_termux_repos
 
     assert_was_called "pkg_install x11-repo"
-    assert_was_called "pkg_install tur-repo"
-    assert_was_called "pkg_install root-repo"
+    assert_not_called "pkg_install tur-repo"
+    assert_not_called "pkg_install root-repo"
     assert_was_called "pkg_update"
     cleanup_sandbox "$sb"
 }
-it "x11/tur/root-repo 미설치 시 모두 설치 + pkg_update 호출" _test_termux_repos_installs_three_when_absent
+it "x11-repo 미설치 시 설치 + pkg_update 호출 (tur/root는 app-installer가 온디맨드로 켬)" _test_termux_repos_installs_x11_when_absent
 
 _test_termux_repos_skips_already_installed() {
     local sb; sb=$(make_sandbox)

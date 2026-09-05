@@ -76,8 +76,6 @@ PKGS_TERMUX_CLI=(
 # proot-distro 설치에 필요한 Termux 패키지
 PKGS_TERMUX_PROOT=(
     proot-distro
-    x11-repo
-    tur-repo
 )
 
 # -----------------------------------------------------------------------------

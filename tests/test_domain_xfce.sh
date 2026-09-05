@@ -648,6 +648,41 @@ EOF
 }
 it "멱등성 — actions가 없으면 변경하지 않는다" _test_remove_actions_plugin_idempotent
 
+_test_remove_actions_plugin_awk_failure_preserves_xml() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml"
+    local xml="${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+    cat > "$xml" << 'EOF'
+<channel name="xfce4-panel">
+  <property name="plugin-ids" type="array">
+    <value type="int" value="1"/>
+    <value type="int" value="20"/>
+  </property>
+  <property name="plugin-20" type="string" value="actions">
+    <property name="items" type="array"/>
+  </property>
+</channel>
+EOF
+
+    # awk 실패를 시뮬레이션 (앞선 sed -i plugin-id 정리는 awk와 무관 — 별도 단계이므로 그대로 실행됨)
+    awk() { _record_call "awk $*"; return 1; }
+    reset_ui_output
+
+    local rc=0
+    _migrate_remove_actions_plugin 2>/dev/null || rc=$?
+
+    assert_zero "$rc" "awk 실패해도 set -e 트립 없이 rc 0"
+    # awk가 실패해 mv가 일어나지 않았으므로 actions 블록은 (반쯤 잘리지 않고) 그대로 남아있어야 함
+    assert_file_contains "$xml" 'value="actions"'
+    assert_file_contains "$xml" '<property name="items" type="array"/>'
+    assert_file_contains "$xml" '</channel>'
+    assert_ui_contains "WARN"
+    ! [ -f "${xml}.tmp" ]
+    cleanup_sandbox "$sb"
+}
+it "awk 실패 시 actions 블록이 손상되지 않고 경고 후 반환 (set -e 트립 방지)" _test_remove_actions_plugin_awk_failure_preserves_xml
+
 # =============================================================================
 # _migrate_screenshot_keybindings — xfce4-screenshooter → screenshot 래퍼 전환
 # =============================================================================

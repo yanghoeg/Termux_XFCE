@@ -63,13 +63,28 @@ _deploy_locale_catalogs() {
         return 0
     fi
 
+    # 압축 해제를 임시 디렉토리에서 먼저 시도 — 실패 시 기존 locale을 건드리지 않는다
+    local tmp; tmp=$(mktemp -d "${TMPDIR:-/tmp}/locale_ko.XXXXXX")
+    if ! unzip -q "$zip" -d "$tmp"; then
+        rm -rf "$tmp"
+        ui_warn "한글 로케일 카탈로그 압축 해제 실패 — 건너뜁니다."
+        return 0
+    fi
+
     # 기존 locale 백업 (Termux 기본 locale은 비어있는 경우가 많지만 안전하게)
     if [ -d "$dest" ] && ! compgen -G "${dest}.bak."* > /dev/null 2>&1; then
         mv "$dest" "${dest}.bak.$(date +%s)"
     fi
 
+    # 병합 복사 (dest가 남아있는 재실행 — .bak이 이미 있어 백업을 건너뛴 경우 — 에서
+    # mv는 tmp를 dest 하위로 중첩시키므로 사용하지 않는다)
     mkdir -p "$dest"
-    unzip -q "$zip" -d "$dest"
+    if ! cp -a "$tmp"/. "$dest"/; then
+        rm -rf "$tmp"
+        ui_warn "한글 로케일 카탈로그 배치 실패 — 건너뜁니다."
+        return 0
+    fi
+    rm -rf "$tmp"
 }
 
 _build_force_gettext() {
@@ -86,7 +101,10 @@ _build_force_gettext() {
         pkg_install clang
     fi
 
-    clang -shared -fPIC -O2 -o "$dst" "$src" -ldl
+    clang -shared -fPIC -O2 -o "$dst" "$src" -ldl || {
+        ui_warn "force_gettext.so 빌드 실패 — 한글 로케일 강제 적용을 건너뜁니다."
+        return 0
+    }
 }
 
 _install_startxfce4_ko_wrapper() {

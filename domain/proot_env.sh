@@ -297,6 +297,7 @@ setup_proot_cursor_theme() {
         return 0
     }
 
+    mkdir -p "$(dirname "$dst")"
     cp -r "$src" "$dst"
 
     local xresources="$(_proot_rootfs)/home/${PROOT_USER}/.Xresources"

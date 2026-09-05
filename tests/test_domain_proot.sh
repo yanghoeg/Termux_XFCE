@@ -93,9 +93,10 @@ _test_proot_install_installs_termux_proot_pkgs_when_missing() {
     setup_proot_install 2>/dev/null || true
 
     # PKGS_TERMUX_PROOT 의 각 패키지가 pkg_install로 호출돼야 함
+    # (x11-repo/tur-repo는 더 이상 PKGS_TERMUX_PROOT에 없음 — app-installer가 온디맨드로 켬)
     assert_was_called "pkg_install proot-distro"
-    assert_was_called "pkg_install x11-repo"
-    assert_was_called "pkg_install tur-repo"
+    assert_not_called "pkg_install x11-repo"
+    assert_not_called "pkg_install tur-repo"
     assert_was_called "pkg_update"
     # 의존성 설치 후 최종 proot_install도 호출
     assert_was_called "proot-distro install"
@@ -425,6 +426,25 @@ _test_cursor_theme_copied() {
     cleanup_sandbox "$sb"
 }
 it "dist-dark 커서 테마를 proot로 복사한다" _test_cursor_theme_copied
+
+_test_cursor_theme_copied_missing_parent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    # src 생성
+    mkdir -p "${PREFIX}/share/icons/dist-dark"
+    touch "${PREFIX}/share/icons/dist-dark/cursor.theme"
+
+    # dst의 부모(usr/share/icons)를 통째로 제거 — cp -r이 부모 없이 실패하지 않는지 검증
+    rm -rf "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/usr/share/icons"
+
+    setup_proot_cursor_theme 2>/dev/null || true
+
+    assert_dir_exists "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/usr/share/icons/dist-dark"
+    cleanup_sandbox "$sb"
+}
+it "dst 부모 디렉토리가 없어도 커서 테마를 복사한다" _test_cursor_theme_copied_missing_parent
 
 # --proot-only 회귀: src 미존재여도 return 0(set -e 안전), 그리고
 # _install_fluent_cursor 헬퍼가 로드돼 있으면 자동 호출

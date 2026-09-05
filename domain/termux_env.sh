@@ -41,7 +41,7 @@ setup_termux_shortcuts() {
     _setup_screenshot
 }
 
-_download_and_open_apk() {
+termux_download_and_open_apk() {
     local apk_url="$1" apk_filename="$2"
     local dl_dir="$HOME/storage/downloads"
     local apk_path="${dl_dir}/${apk_filename}"
@@ -82,13 +82,13 @@ _download_and_open_apk() {
 # setup_termux_x11_apk: display_x11.sh:display_setup_apk()로 이동됨
 
 setup_termux_api_apk() {
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         'https://github.com/termux/termux-api/releases/download/v0.53.0/termux-api-app_v0.53.0+github.debug.apk' \
         'termux-api.apk'
 }
 
 setup_termux_float_apk() {
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         'https://github.com/termux/termux-float/releases/download/v0.17.0/termux-float-app_v0.17.0+github.debug.apk' \
         'termux-float.apk'
 }
@@ -103,14 +103,14 @@ setup_termux_widget() {
         ui_warn "startXFCE 단축키가 없습니다. setup_termux_shortcuts 를 먼저 실행하세요."
     fi
 
-    _download_and_open_apk "$apk_url" 'termux-widget.apk'
+    termux_download_and_open_apk "$apk_url" 'termux-widget.apk'
 }
 
 # Termux:Boot — 기기 부팅 시 ~/.termux/boot/ 안의 스크립트를 실행하는 애드온.
 # APK 설치 후 최소 한 번 앱을 열어야 활성화된다(Android 제약).
 setup_termux_boot_apk() {
     ui_info "Termux:Boot 설치 (부팅 시 서비스 자동 기동)"
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         'https://github.com/termux/termux-boot/releases/download/v0.8.1/termux-boot-app_v0.8.1+github.debug.apk' \
         'termux-boot.apk'
     _setup_termux_boot_script
@@ -185,10 +185,12 @@ BOOTEOF
     chmod +x "$script"
 }
 
+# x11-repo만 base에서 미리 켠다 (XFCE/firefox/yad 등 termux-main+x11-repo 패키지에 필요).
+# tur-repo/root-repo는 켜지 않는다 — 커뮤니티/소규모 저장소라 여기서 미리 켜면 그 저장소
+# 장애가 pkg_update를 통해 설치 전체를 깨뜨린다. app-installer가 필요한 앱을 설치할 때
+# termux_pkg_enable_repo tur-repo|root-repo로 온디맨드로 켠다.
 _setup_termux_repos() {
     pkg_is_installed "x11-repo"  || pkg_install x11-repo
-    pkg_is_installed "tur-repo"  || pkg_install tur-repo
-    pkg_is_installed "root-repo" || pkg_install root-repo
     pkg_update
 }
 

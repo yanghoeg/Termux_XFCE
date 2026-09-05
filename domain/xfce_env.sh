@@ -347,7 +347,11 @@ _migrate_remove_actions_plugin() {
             next
         }
         { print }
-    ' "$xml" > "$tmp" && mv "$tmp" "$xml"
+    ' "$xml" > "$tmp" && mv "$tmp" "$xml" || {
+        rm -f "$tmp"
+        ui_warn "xfce4-panel actions 플러그인 제거 마이그레이션 실패 — 건너뜁니다."
+        return 0
+    }
 }
 
 # 기존 설치본의 dbus-propagate autostart에서 /usr/bin/env → bash 직접 호출로 전환

@@ -225,7 +225,7 @@ display_setup_apk() {
             ;;
     esac
 
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         "https://github.com/termux/termux-x11/releases/download/nightly/${apk_name}" \
         "$apk_name"
 }

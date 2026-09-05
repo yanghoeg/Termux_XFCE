@@ -253,7 +253,7 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     _login_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
     if [[ "$_login_shell" != */zsh ]]; then
         _termux_user=$(id -un 2>/dev/null || printf 'termux')
-        setup_xfce_fancybash "$_termux_user"
+        setup_xfce_fancybash "$_termux_user" || ui_warn "fancybash 설정 실패 — 건너뜁니다"
         unset _termux_user
     fi
     unset _login_shell

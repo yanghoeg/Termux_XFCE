@@ -117,6 +117,60 @@ _test_deploy_catalogs_idempotent() {
 }
 it "멱등성 — ko LC_MESSAGES에 100개 이상 .mo 있으면 건너뛴다" _test_deploy_catalogs_idempotent
 
+_test_deploy_catalogs_unzip_failure_preserves_original() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # unzip 실패하도록 오버라이드 (기존 mock은 성공)
+    unzip() { _record_call "unzip $*"; return 1; }
+
+    # 기존 locale 디렉토리에 마커 파일 배치
+    local dest="${PREFIX}/share/locale"
+    mkdir -p "$dest"
+    touch "${dest}/marker.txt"
+
+    local zip_path="${sb}/locale.zip"
+    touch "$zip_path"
+    reset_ui_output
+
+    local rc=0
+    _deploy_locale_catalogs "$zip_path" 2>/dev/null || rc=$?
+
+    assert_zero "$rc" "unzip 실패해도 set -e 트립 없이 rc 0"
+    assert_file_exists "${dest}/marker.txt"
+    ! compgen -G "${dest}.bak."* > /dev/null 2>&1
+    cleanup_sandbox "$sb"
+}
+it "unzip 실패 시 기존 locale 보존 + .bak 생성 안 함" _test_deploy_catalogs_unzip_failure_preserves_original
+
+_test_deploy_catalogs_merges_when_bak_exists() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # unzip 성공 스텁: -d 대상 안에 ko 카탈로그 1개 생성
+    unzip() {
+        local d=""
+        while [ $# -gt 0 ]; do [ "$1" = "-d" ] && d="$2"; shift; done
+        mkdir -p "${d}/ko/LC_MESSAGES" && touch "${d}/ko/LC_MESSAGES/x.mo"
+    }
+
+    # 재실행 상황: dest 존재 + .bak 이미 존재 (백업 mv 건너뜀)
+    local dest="${PREFIX}/share/locale"
+    mkdir -p "$dest" "${dest}.bak.1"
+    touch "${dest}/old.txt"
+
+    local zip_path="${sb}/locale.zip"
+    touch "$zip_path"
+
+    _deploy_locale_catalogs "$zip_path" 2>/dev/null
+
+    assert_file_exists "${dest}/ko/LC_MESSAGES/x.mo"
+    assert_file_exists "${dest}/old.txt"
+    ! compgen -G "${dest}/locale_ko.*" > /dev/null 2>&1
+    cleanup_sandbox "$sb"
+}
+it ".bak 존재 재실행 시 tmp가 dest 하위로 중첩되지 않고 병합된다" _test_deploy_catalogs_merges_when_bak_exists
+
 # =============================================================================
 # _build_force_gettext — clang 빌드
 # =============================================================================
@@ -169,6 +223,37 @@ _test_force_gettext_warns_if_src_missing() {
     cleanup_sandbox "$sb"
 }
 it "force_gettext.c 누락 시 경고를 출력한다" _test_force_gettext_warns_if_src_missing
+
+_test_force_gettext_warns_if_clang_fails() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_ui_output
+
+    export SCRIPT_DIR="${sb}/repo"
+    local src_dir="${SCRIPT_DIR}/assets"
+    mkdir -p "$src_dir"
+    touch "${src_dir}/force_gettext.c"
+    rm -f "${PREFIX}/lib/force_gettext.so"
+
+    # clang이 컴파일 실패를 시뮬레이션
+    clang() { _record_call "clang $*"; return 1; }
+    command() {
+        if [ "${1:-}" = "-v" ] && [ "${2:-}" = "clang" ]; then
+            return 0
+        fi
+        builtin command "$@"
+    }
+
+    local rc=0
+    _build_force_gettext 2>/dev/null || rc=$?
+
+    assert_zero "$rc" "clang 실패해도 set -e 트립 없이 rc 0"
+    assert_ui_contains "WARN"
+
+    unset -f command
+    cleanup_sandbox "$sb"
+}
+it "clang 빌드 실패 시 경고 후 건너뛴다 (set -e 트립 방지)" _test_force_gettext_warns_if_clang_fails
 
 # =============================================================================
 # _install_startxfce4_ko_wrapper — 래퍼 스크립트 생성

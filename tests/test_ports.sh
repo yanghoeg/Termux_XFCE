@@ -168,9 +168,9 @@ describe "포트 계약 — display_x11.sh"
 
 _test_display_x11_contracts() {
     (
-        # display_x11.sh의 display_setup_apk가 ui_warn, _download_and_open_apk 호출
+        # display_x11.sh의 display_setup_apk가 ui_warn, termux_download_and_open_apk 호출
         ui_warn() { :; }
-        _download_and_open_apk() { :; }
+        termux_download_and_open_apk() { :; }
         _check_adapter_contracts "${ADAPTER_DIR}/display_x11.sh" "${DISPLAY_CONTRACTS[@]}"
     )
 }
