@@ -172,17 +172,47 @@ fi
 # -----------------------------------------------------------------------------
 # 10. 설치 설정 저장 (prun, cp2menu가 읽음)
 # -----------------------------------------------------------------------------
+# 기존 설정 병합: 재실행(예: --proot-only)이 사용자가 이미 바꿔둔 값
+# (PROOT_SHELL=zsh 등)을 조용히 되돌리지 않도록, 기존 파일을 메인 셸에
+# source하지 않고 grep/cut으로만 읽어 병합한다.
+_cfg_file="$HOME/.config/termux-xfce/config"
 mkdir -p "$HOME/.config/termux-xfce"
-cat > "$HOME/.config/termux-xfce/config" << EOF
+
+_existing_proot_shell=""
+_existing_display_server=""
+_existing_proot_distro=""
+_existing_proot_user=""
+if [ -f "$_cfg_file" ]; then
+    _existing_proot_shell=$(grep -m1 '^PROOT_SHELL=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_display_server=$(grep -m1 '^DISPLAY_SERVER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_proot_distro=$(grep -m1 '^PROOT_DISTRO=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_proot_user=$(grep -m1 '^PROOT_USER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+fi
+
+# PROOT_SHELL: 이번 실행에 명시된 값 > 기존 config 값 > bash
+_cfg_proot_shell="${PROOT_SHELL:-${_existing_proot_shell:-bash}}"
+
+# DISPLAY_SERVER: --proot-only 재실행이면서 기존 값이 있으면 유지, 아니면 이번 실행 값
+if [ "${PROOT_ONLY:-false}" = "true" ] && [ -n "$_existing_display_server" ]; then
+    _cfg_display_server="$_existing_display_server"
+else
+    _cfg_display_server="${DISPLAY_SERVER}"
+fi
+
+# PROOT_DISTRO/PROOT_USER: 이번 실행 값이 있으면 사용, 없으면 기존 값 유지
+_cfg_proot_distro="${PROOT_DISTRO:-$_existing_proot_distro}"
+_cfg_proot_user="${PROOT_USER:-$_existing_proot_user}"
+
+cat > "$_cfg_file" << EOF
 # Termux XFCE 설치 설정 — 자동 생성 ($(date '+%Y-%m-%d'))
-PROOT_DISTRO="${PROOT_DISTRO:-}"
-PROOT_USER="${PROOT_USER:-}"
+PROOT_DISTRO="${_cfg_proot_distro}"
+PROOT_USER="${_cfg_proot_user}"
 INSTALL_ARCH="$ARCH"
-DISPLAY_SERVER="${DISPLAY_SERVER}"
+DISPLAY_SERVER="${_cfg_display_server}"
 # proot 인터랙티브 셸: bash(기본) 또는 zsh (proot에 zsh 설치 후 변경 가능)
-PROOT_SHELL="${PROOT_SHELL:-bash}"
+PROOT_SHELL="${_cfg_proot_shell}"
 EOF
-chmod 600 "$HOME/.config/termux-xfce/config"
+chmod 600 "$_cfg_file"
 
 # -----------------------------------------------------------------------------
 # 11. Storage 권한
@@ -223,7 +253,7 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     _login_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
     if [[ "$_login_shell" != */zsh ]]; then
         _termux_user=$(id -un 2>/dev/null || printf 'termux')
-        setup_xfce_fancybash "$_termux_user"
+        setup_xfce_fancybash "$_termux_user" || ui_warn "fancybash 설정 실패 — 건너뜁니다"
         unset _termux_user
     fi
     unset _login_shell
@@ -270,9 +300,11 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
     _step_msg "Display Server 설치"
     display_setup_apk
 
-    _step_msg "Termux 컴패니언 APK 설치 (API, Float)"
+    _step_msg "Termux 컴패니언 APK 설치 (API, Float, Widget, Boot)"
     setup_termux_api_apk
     setup_termux_float_apk
+    setup_termux_widget
+    setup_termux_boot_apk
 fi
 
 # -----------------------------------------------------------------------------

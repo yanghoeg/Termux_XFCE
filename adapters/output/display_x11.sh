@@ -6,64 +6,10 @@
 # ports/display.sh 계약의 X11 구현
 # =============================================================================
 
+source "${BASH_SOURCE[0]%/*}/display_common.sh"
+
 display_emit_kill_session() {
-    cat << 'FRAG'
-_kill_pidfile() {
-    local file="$1" pid expected cmdline
-    [ -r "$file" ] || return 0
-    read -r pid expected < "$file" || true
-    case "$pid" in ""|*[!0-9]*) rm -f "$file"; return 0 ;; esac
-    if [ -n "$expected" ]; then
-        [ -r "/proc/$pid/cmdline" ] || { rm -f "$file"; return 0; }
-        cmdline=$(tr '\0' ' ' < "/proc/$pid/cmdline" 2>/dev/null || true)
-        case "$cmdline" in *"$expected"*) ;; *) rm -f "$file"; return 0 ;; esac
-    fi
-    kill "$pid" 2>/dev/null || true
-    local _w
-    for _w in 1 2 3; do
-        kill -0 "$pid" 2>/dev/null || break
-        sleep 1
-    done
-    kill -9 "$pid" 2>/dev/null || true
-    rm -f "$file"
-}
-
-# 세션 리더가 비정상 종료돼 남은 XFCE 컴포넌트 고아를 정리한다.
-# 과거 방식의 "확실한 정리"와 현재 PID 방식의 "graceful 종료"를 결합:
-# 정확한 프로세스명(-x)만 골라 SIGTERM 후 잔존분만 SIGKILL 한다.
-# (-f 부분일치를 쓰지 않으므로 이름이 다른 무관 프로세스는 건드리지 않는다.)
-_kill_orphans() {
-    local names="Xwayland xfwm4 xfdesktop xfce4-panel xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd xfce4-screensaver nimf pulseaudio conky dbus-daemon dbus-launch $*"
-    local _n
-    for _n in $names; do pkill -TERM -x "$_n" 2>/dev/null || true; done
-    sleep 1
-    for _n in $names; do pkill -KILL -x "$_n" 2>/dev/null || true; done
-}
-
-_kill_display_session() {
-    _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
-    _kill_pidfile "$SESSION_STATE_DIR/session.pid"
-    _kill_pidfile "$SESSION_STATE_DIR/display.pid"
-
-    # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.
-    pkill -x xfce4-session 2>/dev/null || true
-    pkill -f '(^|/)termux-x11( |$)' 2>/dev/null || true
-    am force-stop com.termux.x11 2>/dev/null || true
-
-    # 세션 리더 사망 후 남을 수 있는 컴포넌트 고아를 정리 (graceful → SIGKILL)
-    _kill_orphans
-
-    local display_num=""
-    [ -r "$SESSION_STATE_DIR/display-num" ] && read -r display_num < "$SESSION_STATE_DIR/display-num"
-    case "$display_num" in
-        ""|*[!0-9]*) ;;
-        *) rm -f "${TMPDIR}/.X11-unix/X${display_num}" \
-              "${TMPDIR}/.X${display_num}-lock" 2>/dev/null || true ;;
-    esac
-    rm -f "$SESSION_STATE_DIR/display-num"
-    termux-wake-unlock 2>/dev/null || true
-}
-FRAG
+    display_common_emit_kill_session ""
 }
 
 display_emit_session_detect() {
@@ -132,12 +78,18 @@ _kill_display_session
 termux-wake-lock || { echo "ERROR: wake lock을 획득할 수 없습니다." >&2; exit 1; }
 
 # X 서버 실행 — 사용 가능한 디스플레이 번호 자동 탐색 (:0~:3)
+# 띄운 번호를 그대로 확정한다(ls|head 재스캔 금지 — 남의/죽은 소켓 선택 방지)
 TX11_PID=""
+DISPLAY_NUM=""
 for _DTRY in 0 1 2 3; do
     termux-x11 :${_DTRY} 2>/dev/null &
     TX11_PID=$!
-    sleep 2
+    for _w in 1 2 3 4 5; do
+        [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ] && break
+        sleep 1
+    done
     if [ -e "${TMPDIR}/.X11-unix/X${_DTRY}" ]; then
+        DISPLAY_NUM=$_DTRY
         printf '%s\t%s\n' "$TX11_PID" "termux-x11" > "$SESSION_STATE_DIR/display.pid"
         printf '%s\n' "$_DTRY" > "$SESSION_STATE_DIR/display-num"
         break
@@ -148,17 +100,6 @@ done
 
 # Termux:X11 APK 열기
 am start --user 0 -n com.termux.x11/com.termux.x11.MainActivity
-
-# X 소켓이 생길 때까지 최대 10초 추가 대기
-DISPLAY_NUM=""
-for i in $(seq 1 10); do
-    SOCK=$(ls "${TMPDIR}/.X11-unix/X"* 2>/dev/null | head -1)
-    if [ -n "$SOCK" ]; then
-        DISPLAY_NUM=$(basename "$SOCK" | sed 's/^X//')
-        break
-    fi
-    sleep 1
-done
 
 if [ -z "$DISPLAY_NUM" ]; then
     echo "ERROR: Termux:X11 X 소켓을 찾을 수 없습니다. Termux:X11 앱을 먼저 열어주세요." >&2
@@ -194,7 +135,9 @@ FRAG
 }
 
 display_get_packages() {
-    echo "termux-x11-nightly xdotool xclip wmctrl"
+    # mesa-demos: glxinfo 제공 — 런처가 Zink present 가능 여부를 검사해
+    # 실패 시 소프트웨어 렌더링으로 폴백하는 데 사용 (x11-repo, termux-x11과 동일 저장소)
+    echo "termux-x11-nightly xdotool xclip wmctrl mesa-demos"
 }
 
 display_setup_apk() {
@@ -211,7 +154,7 @@ display_setup_apk() {
             ;;
     esac
 
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         "https://github.com/termux/termux-x11/releases/download/nightly/${apk_name}" \
         "$apk_name"
 }

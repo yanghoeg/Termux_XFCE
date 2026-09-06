@@ -135,6 +135,17 @@ _test_locale_idempotent() {
 }
 it "멱등성 — locale 블록이 중복 추가되지 않는다" _test_locale_idempotent
 
+_test_locale_nimf_env_guarded() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    _setup_locale
+    assert_file_contains "${PREFIX}/etc/bash.bashrc" "command -v nimf"
+    assert_file_not_contains "${PREFIX}/etc/bash.bashrc" "^export GTK_IM_MODULE=nimf"
+    cleanup_sandbox "$sb"
+}
+it "locale 블록의 nimf IM env는 nimf 존재 시에만 export된다" _test_locale_nimf_env_guarded
+
 # =============================================================================
 # _setup_start_xfce
 # =============================================================================
@@ -261,7 +272,7 @@ _test_korean_nimf_desktop_created() {
 
     _setup_korean_env
     assert_file_exists "${HOME}/.config/autostart/nimf.desktop"
-    assert_file_contains "${HOME}/.config/autostart/nimf.desktop" "Exec=nimf"
+    assert_file_contains "${HOME}/.config/autostart/nimf.desktop" "pgrep -x nimf"
     cleanup_sandbox "$sb"
 }
 it "nimf.desktop 자동시작 파일을 생성한다" _test_korean_nimf_desktop_created
@@ -393,6 +404,24 @@ EOF
     cleanup_sandbox "$sb"
 }
 it "Name= 필드를 prun-gui 앱 이름으로 사용한다" _test_migrate_uses_name_field
+
+_test_migrate_no_name_field_does_not_abort() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+
+    # Name= 필드가 없는 .desktop — grep -m1 '^Name=' 이 매치 없어 exit 1 반환 →
+    # pipefail 하에서 전체 마이그레이션이 중단되면 안 됨 (기본값 "App"으로 처리)
+    cat > "${PREFIX}/share/applications/noname.desktop" << 'EOF'
+[Desktop Entry]
+Exec=bash -c "prun noname </dev/null >/dev/null 2>&1 &"
+EOF
+
+    _migrate_desktop_to_prun_gui
+
+    assert_file_contains "${PREFIX}/share/applications/noname.desktop" "prun-gui 'App' --"
+    cleanup_sandbox "$sb"
+}
+it "Name= 없는 .desktop도 중단 없이 'App' 기본값으로 마이그레이션된다" _test_migrate_no_name_field_does_not_abort
 
 # =============================================================================
 # _append_to_rc — RC 파일 멱등 추가 유틸
@@ -556,6 +585,132 @@ _test_gpu_env_idempotent() {
 it "멱등성 — GPU 블록이 중복 추가되지 않는다" _test_gpu_env_idempotent
 
 # =============================================================================
+# _setup_zsh_p10k — zsh/p10k/plugins 설치 + ~/.zshrc 관리
+# =============================================================================
+
+describe "termux_env — _setup_zsh_p10k"
+
+_test_zsh_p10k_clone_failure_skips_chsh() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    _GIT_FAIL=1
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+
+    local rc=0
+    _setup_zsh_p10k || rc=$?
+    assert_eq "0" "$rc"
+    [ ! -s "$chsh_log" ]
+    [ ! -f "$HOME/.zshrc" ]
+    cleanup_sandbox "$sb"
+}
+it "p10k clone 실패 시 chsh를 건너뛰고 rc 0" _test_zsh_p10k_clone_failure_skips_chsh
+
+_test_zsh_p10k_fresh_creates_zshrc_then_chsh() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    rm -f "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    assert_file_contains "$HOME/.zshrc" "powerlevel10k.zsh-theme"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "신규: .zshrc 생성 후 chsh" _test_zsh_p10k_fresh_creates_zshrc_then_chsh
+
+_test_zsh_p10k_existing_zshrc_gets_p10k_block() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    echo "# my zshrc" > "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    assert_file_contains "$HOME/.zshrc" "# my zshrc"
+    assert_file_contains "$HOME/.zshrc" "# termux-xfce-p10k"
+    assert_file_contains "$HOME/.zshrc" "powerlevel10k.zsh-theme"
+    assert_file_not_contains "$HOME/.zshrc" "HISTFILE"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "기존 .zshrc 보존 + p10k 블록 추가" _test_zsh_p10k_existing_zshrc_gets_p10k_block
+
+_test_zsh_p10k_idempotent_on_existing_zshrc() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    chsh() { :; }
+    git() {
+        [ "${_GIT_FAIL:-0}" = "1" ] && return 1
+        mkdir -p "${@: -1}"
+    }
+    echo "# my zshrc" > "$HOME/.zshrc"
+
+    _setup_zsh_p10k
+    _setup_zsh_p10k
+
+    local count
+    count=$(grep -c "# termux-xfce-p10k" "$HOME/.zshrc")
+    assert_eq "1" "$count"
+    cleanup_sandbox "$sb"
+}
+it "기존 .zshrc에 재실행해도 p10k 블록은 1회" _test_zsh_p10k_idempotent_on_existing_zshrc
+
+_test_zsh_p10k_plugin_failure_continues() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    command() {
+        if [ "$1" = "-v" ] && [ "$2" = "zsh" ]; then echo "/usr/bin/zsh"; return 0; fi
+        builtin command "$@"
+    }
+    local chsh_log="${sb}/chsh.log"
+    chsh() { echo "chsh $*" >> "$chsh_log"; }
+    git() {
+        local last="${@: -1}"
+        if [[ "$last" == *"plugins/"* ]]; then return 1; fi
+        mkdir -p "$last"
+    }
+    rm -f "$HOME/.zshrc"
+
+    local rc=0
+    _setup_zsh_p10k || rc=$?
+    assert_eq "0" "$rc"
+    assert_file_exists "$HOME/.zshrc"
+    [ -s "$chsh_log" ]
+    cleanup_sandbox "$sb"
+}
+it "플러그인 clone 실패는 경고 후 계속" _test_zsh_p10k_plugin_failure_continues
+
+# =============================================================================
 # _setup_prun_gui — prun-gui 스크립트 생성
 # =============================================================================
 
@@ -681,6 +836,37 @@ _test_base_pkgs_dbus_preserved_when_xfce_installed() {
     cleanup_sandbox "$sb"
 }
 it "XFCE 설치된 idempotent 재실행에서는 dbus를 보존한다 (cascade 제거 차단)" _test_base_pkgs_dbus_preserved_when_xfce_installed
+
+_test_base_pkgs_dbus_reset_marker_created() {
+    # 클린 설치로 dbus를 리셋하면 원샷 마커 파일이 생겨야 한다
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # dbus만 잔존 (xfce4-session 없음)
+
+    _install_base_packages 2>/dev/null || true
+    assert_file_exists "${HOME}/.config/termux-xfce/.dbus-reset-done"
+    cleanup_sandbox "$sb"
+}
+it "클린 설치로 dbus 리셋 시 원샷 마커 파일을 생성한다" _test_base_pkgs_dbus_reset_marker_created
+
+_test_base_pkgs_dbus_reset_one_shot() {
+    # 첫 실행에서 dbus를 리셋한 뒤, 같은 샌드박스에서 재실행(여전히 XFCE 없음)해도
+    # 마커가 있으면 두 번째 pkg_remove dbus 호출은 없어야 한다 (재크래시 후 재실행 시나리오)
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # dbus만 잔존 (xfce4-session 없음)
+
+    _install_base_packages 2>/dev/null || true   # 1차 실행 — 마커 생성
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS="dbus"   # 여전히 xfce4-session 없음
+
+    _install_base_packages 2>/dev/null || true   # 2차 실행 — 마커 존재 시 리셋 생략
+    assert_not_called "pkg_remove dbus"
+    cleanup_sandbox "$sb"
+}
+it "dbus 리셋은 원샷 — 마커 존재 시 재실행에서 다시 제거하지 않는다" _test_base_pkgs_dbus_reset_one_shot
 
 # =============================================================================
 # setup_termux_shortcuts — composition 함수 검증
@@ -904,6 +1090,80 @@ _test_widget_no_warn_when_startxfce_present() {
 it "startXFCE 단축키 존재 시 경고 안나옴" _test_widget_no_warn_when_startxfce_present
 
 # =============================================================================
+# setup_termux_boot_apk — Termux:Boot APK + 부팅 스크립트
+# =============================================================================
+
+describe "termux_env — setup_termux_boot_apk"
+
+_test_boot_creates_boot_script() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    assert_dir_exists "$HOME/.termux/boot"
+    assert_file_exists "$HOME/.termux/boot/start-services"
+    assert_file_contains "$HOME/.termux/boot/start-services" "start-services.sh"
+    cleanup_sandbox "$sb"
+}
+it "부팅 스크립트 ~/.termux/boot/start-services 를 생성한다" _test_boot_creates_boot_script
+
+_test_boot_script_is_executable() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    [ -x "$HOME/.termux/boot/start-services" ] || {
+        echo "[ASSERT] 부팅 스크립트에 실행 권한 없음" >&2; return 1
+    }
+    cleanup_sandbox "$sb"
+}
+it "부팅 스크립트에 실행 권한이 있다" _test_boot_script_is_executable
+
+_test_boot_script_preserves_user_edits() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads" "$HOME/.termux/boot"
+    printf '%s\n' '# user customised' > "$HOME/.termux/boot/start-services"
+    termux-open() { :; }
+
+    setup_termux_boot_apk
+
+    assert_file_contains "$HOME/.termux/boot/start-services" "user customised"
+    cleanup_sandbox "$sb"
+}
+it "기존 부팅 스크립트를 덮어쓰지 않는다 (멱등)" _test_boot_script_preserves_user_edits
+
+_test_boot_downloads_apk() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "$HOME/storage/downloads"
+    termux-open() { :; }
+    reset_mock_calls
+
+    setup_termux_boot_apk
+
+    assert_was_called "termux-boot.apk"
+    cleanup_sandbox "$sb"
+}
+it "Termux:Boot APK를 내려받는다" _test_boot_downloads_apk
+
+_test_termux_services_in_base_packages() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    printf '%s\n' "${PKGS_TERMUX_BASE[@]}" | grep -qx "termux-services" || {
+        echo "[ASSERT] termux-services가 PKGS_TERMUX_BASE에 없음" >&2; return 1
+    }
+    cleanup_sandbox "$sb"
+}
+it "termux-services가 기본 패키지에 포함된다" _test_termux_services_in_base_packages
+
+# =============================================================================
 # setup_termux_api_apk — APK 다운로드 + 멱등성
 # =============================================================================
 
@@ -1048,7 +1308,7 @@ it "Wayland 세션에서 X11 백엔드를 강제한다" _test_screenshot_forces_
 
 describe "termux_env — _setup_termux_repos"
 
-_test_termux_repos_installs_three_when_absent() {
+_test_termux_repos_installs_x11_when_absent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     MOCK_INSTALLED_PKGS=""
@@ -1057,12 +1317,12 @@ _test_termux_repos_installs_three_when_absent() {
     _setup_termux_repos
 
     assert_was_called "pkg_install x11-repo"
-    assert_was_called "pkg_install tur-repo"
-    assert_was_called "pkg_install root-repo"
+    assert_not_called "pkg_install tur-repo"
+    assert_not_called "pkg_install root-repo"
     assert_was_called "pkg_update"
     cleanup_sandbox "$sb"
 }
-it "x11/tur/root-repo 미설치 시 모두 설치 + pkg_update 호출" _test_termux_repos_installs_three_when_absent
+it "x11-repo 미설치 시 설치 + pkg_update 호출 (tur/root는 app-installer가 온디맨드로 켬)" _test_termux_repos_installs_x11_when_absent
 
 _test_termux_repos_skips_already_installed() {
     local sb; sb=$(make_sandbox)

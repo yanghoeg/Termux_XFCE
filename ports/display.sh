@@ -69,4 +69,6 @@ _display_check() {
 #   설명: 컴패니언 APK 다운로드 및 설치 (런타임 함수, emit 아님)
 #   인자: 없음
 #   반환: 0=성공
+#   구현체는 termux_download_and_open_apk <url> <filename> (domain/termux_env.sh의
+#   공개 헬퍼, display_setup_apk 호출 전에 로드됨)을 호출할 수 있다.
 # display_setup_apk() { ... }

@@ -62,11 +62,24 @@ pkg_autoremove() {
 
 # URL의 .deb를 native에 설치. dpkg가 의존성 부족으로 non-zero를 반환하면
 # apt로 복구하되, 복구 실패 시 설치 성공으로 보고하지 않는다.
+# $2(expected_sha256, 선택)가 주어지면 dpkg -i 전에 무결성을 검증하고,
+# 불일치 시 dpkg를 실행하지 않고 return 1 (GitHub Releases .deb 위변조 방지).
 pkg_install_deb_url() {
     local url="$1"
+    local expected_sha256="${2:-}"
     local deb="${TMPDIR:-/tmp}/$(basename "$url")"
 
     wget -q "$url" -O "$deb" || { rm -f "$deb"; return 1; }
+
+    if [ -n "$expected_sha256" ]; then
+        local actual_sha256
+        actual_sha256=$(sha256sum "$deb" | cut -d' ' -f1)
+        if [ "$actual_sha256" != "$expected_sha256" ]; then
+            echo "[ERROR] $(basename "$deb") sha256 불일치 (기대: ${expected_sha256}, 실제: ${actual_sha256}) — 설치 중단" >&2
+            rm -f "$deb"
+            return 1
+        fi
+    fi
 
     if ! dpkg -i --force-overwrite "$deb" 2>/dev/null; then
         if ! apt --fix-broken install -y 2>/dev/null; then

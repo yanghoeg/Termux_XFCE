@@ -22,7 +22,7 @@ parse_cli_args() {
     export SKIP_PROOT="${SKIP_PROOT:-false}"
     export PROOT_ONLY="${PROOT_ONLY:-false}"
     export DISPLAY_SERVER="${DISPLAY_SERVER:-}"
-    export PROOT_SHELL="${PROOT_SHELL:-bash}"
+    export PROOT_SHELL="${PROOT_SHELL:-}"
 
     # CLI 인자나 설치용 환경변수를 사용한 경우 디스플레이 선택도 묻지 않고
     # 기본값(x11)을 사용한다. distro/user처럼 설치에 필수인 값은 여전히

@@ -326,7 +326,7 @@ EOF
     _setup_korean_env
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "Exec=nimf"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "pgrep -x nimf"
     assert_file_contains "$HOME/.config/autostart/org.fcitx.Fcitx5.desktop" "Hidden=true"
 
     cleanup_sandbox "$sb"
@@ -340,7 +340,7 @@ _test_nimf_autostart_without_fcitx5_system() {
     _setup_korean_env
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "Exec=nimf"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "pgrep -x nimf"
 
     cleanup_sandbox "$sb"
 }

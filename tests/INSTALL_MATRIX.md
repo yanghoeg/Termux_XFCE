@@ -25,29 +25,35 @@ bash tests/test_install_matrix.sh
 
 ---
 
-## 2. 테스트 케이스 (17건)
+## 2. 테스트 케이스
+
+케이스 수는 `tests/test_install_matrix.sh`의 `it` 항목 수 그대로다 —
+정확한 통과/실패 건수는 `bash tests/test_install_matrix.sh` 실행 결과를 참고할 것
+(이 표의 건수는 스냅샷이며 테스트 추가/삭제 시 갱신 필요).
 
 | # | 카테고리 | CLI / 환경변수 | 검증 |
 |---|----------|----------------|------|
-| 1 | native | `--no-proot --no-gpu --no-korean` | gpu/korean/proot 호출 없음 |
-| 2 | native | `--no-proot --gpu --no-gpu-dev --no-korean` | gpu만, gpu_dev 없음 |
-| 3 | native | `--no-proot --gpu --gpu-dev --no-korean` | gpu + gpu_dev 둘 다 |
-| 4 | native | `--no-proot --no-gpu --korean` | setup_termux_korean 호출 |
-| 5 | native | `--no-proot --no-gpu --no-korean --korean-locale` | setup_korean_locale_native 호출 |
-| 6 | proot-only | `--proot-only --distro ubuntu --user testuser ...` | termux_base/x11_apk 생략 |
-| 7 | proot-only | `--proot-only --distro archlinux --user testuser ...` | termux_base 생략 |
-| 8 | full | `--distro ubuntu --user testuser --gpu --no-gpu-dev --no-korean` | proot_korean 생략 |
-| 9 | full | `--distro archlinux --user testuser --no-gpu --korean` | native+proot 양쪽 한글 |
-| 10 | full | `--distro ubuntu --user testuser --gpu --gpu-dev --korean --korean-locale` | 모든 setup_* 호출 |
-| 11 | env vars | `SKIP_PROOT=true SKIP_KOREAN=true INSTALL_GPU=false` | proot/gpu/korean 없음 |
-| 12 | env vars | `DISTRO=ubuntu USERNAME=testuser INSTALL_GPU=true INSTALL_GPU_DEV=false SKIP_KOREAN=true` | full 동등 |
-| 13 | CLI 검증 | `--help` | exit 0 |
-| 14 | CLI 검증 | `--not-a-real-flag` | non-zero exit |
-| 15 | CLI 검증 | `--distro freebsd ...` | non-zero exit |
-| 16 | config | `--distro ubuntu --user lideok --no-gpu --no-korean` | config 파일에 distro/user 기록 |
-| 17 | config | `--no-proot --no-gpu --no-korean` | config의 PROOT_DISTRO="" |
-
-전체 17/17 통과 (베이스라인 274/274 동시 통과).
+| 1 | native | `--no-proot` | termux_base/xfce_packages/xfce_autostart/termux_shortcuts/display_setup_apk/termux_api_apk/termux_float_apk 호출, proot_install 없음 |
+| 2 | proot-only | `--proot-only --distro ubuntu --user testuser` | termux_base/xfce_packages/display_setup_apk/termux_api_apk/termux_float_apk 없음, proot_install/proot_user/proot_alias 호출 |
+| 3 | proot-only | `--proot-only --distro archlinux --user testuser` | termux_base 없음, proot_install/proot_alias 호출 |
+| 4 | full | `--distro ubuntu --user testuser` | termux_base/proot_install/proot_base_packages/proot_alias/display_setup_apk 모두 호출 |
+| 5 | full | `--distro archlinux --user testuser` | termux_base/proot_install/proot_alias 모두 호출 |
+| 6 | env vars | `SKIP_PROOT=true` | termux_base 호출, proot_install 없음 |
+| 7 | env vars | `DISTRO=ubuntu USERNAME=testuser` | termux_base/proot_install 모두 호출 |
+| 8 | CLI 검증 | `--help` | exit 0 |
+| 9 | CLI 검증 | `--not-a-real-flag` | non-zero exit |
+| 10 | CLI 검증 | `--distro freebsd --user testuser` | non-zero exit |
+| 11 | CLI 검증 | `--distro ubuntu --user 'bad;name'` | non-zero exit (위험 문자 사용자명 거부) |
+| 12 | CLI 검증 | `--no-proot --proot-only` | non-zero exit (모드 충돌) |
+| 13 | CLI 검증 | `--no-proot --distro ubuntu` | non-zero exit (no-proot에 distro 지정 불가) |
+| 14 | CLI 검증 | `PROOT_SHELL=fish --distro ubuntu --user testuser` | non-zero exit (지원하지 않는 shell) |
+| 15 | config | `--distro ubuntu --user lideok` | config에 `PROOT_DISTRO="ubuntu"`/`PROOT_USER="lideok"` 기록, 권한 600 |
+| 16 | config | `--no-proot` | config의 `PROOT_DISTRO=""` |
+| 17 | config | 기존 config `PROOT_SHELL="zsh"` + `--proot-only --distro ubuntu --user lideok` | 재실행해도 기존 `PROOT_SHELL="zsh"` 유지 (never reset) |
+| 18 | config | 구버전 config(키 누락, `DISPLAY_SERVER="x11"`만 존재) + `--proot-only --distro ubuntu --user testuser` | rc 0, 병합된 config에 `PROOT_SHELL="bash"`(기본값) 기록 |
+| 19 | config | `PROOT_SHELL=zsh` + `--distro ubuntu --user testuser` (신규 설치) | rc 0, config에 `PROOT_SHELL="zsh"` 기록 |
+| 20 | config | 기존 config `PROOT_SHELL="bash"` + `PROOT_SHELL=zsh` + `--proot-only --distro ubuntu --user testuser` | rc 0, config가 `PROOT_SHELL="zsh"`로 덮어써짐 |
+| 21 | config | 기존 config `DISPLAY_SERVER="wayland"` + `--proot-only --distro ubuntu --user lideok` (`--display` 미지정) | 재실행해도 기존 `DISPLAY_SERVER="wayland"` 유지 |
 
 ---
 
@@ -79,28 +85,12 @@ bash tests/test_install_matrix.sh
 
 ---
 
-## 4. 해결된 실패 (커밋 4dea946 → 후속)
+## 4. 변경 이력
 
-초기 매트릭스에서 5건 실패 → 모두 해결:
-
-1. **#2/#8/#12 (interactive ui_confirm 누락)**: `INSTALL_GPU_DEV` 미지정 시 interactive.sh가 `/dev/tty`로 ui_confirm을 호출. 테스트는 tty 없음 → `read` 실패 → `set -e` 트립 → install.sh 비정상 종료.
-   **수정**: `cli.sh`에 `--no-gpu-dev` 플래그 추가, 테스트에서 명시. 환경변수 테스트는 `INSTALL_GPU_DEV=false` 추가.
-
-2. **#14/#15 (exit code 검증 실패)**: `set -euo pipefail` 하의 서브셸에서 `bash install.sh ...` 가 non-zero로 종료하면 set -e가 즉시 트립 → `local rc=$?` 라인 도달 못 함 → 테스트는 단순 fail로 보고됨.
-   **수정**: `cmd ... || rc=$?` 패턴으로 exit code 캡처 (set -e 면제됨).
-
----
-
-## 5. 변경 이력
-
-**커밋 4dea946** (초기 작업):
-- `tests/test_install_matrix.sh` (신규) — 17건 매트릭스 테스트
-- `tests/INSTALL_MATRIX.md` (신규) — 이 문서
-- `install.sh` (수정) — `_INSTALL_HOOK` 훅 추가 (step 7 직후)
-- `domain/proot_env.sh` (수정) — `setup_proot_alias` zsh 게이트 제거
-
-**후속 (실패 5건 해결)**:
-- `adapters/input/cli.sh` (수정) — `--no-gpu-dev` 플래그 추가
-- `tests/test_install_matrix.sh` (수정) — `--no-gpu-dev` 명시 + `|| rc=$?` 패턴
-
-베이스라인 274/274 + 매트릭스 17/17 통과.
+- **exit code 검증 실패 교훈**: `set -euo pipefail` 하의 서브셸에서 `bash install.sh ...`가
+  non-zero로 종료하면 `set -e`가 즉시 트립해 `local rc=$?` 라인에 도달하지 못하고 테스트가
+  단순 실패로 보고된다. 해결: `cmd ... || rc=$?` 패턴으로 exit code를 캡처 (`set -e` 면제됨).
+- **GPU 가속·한글 입력기 선택용 CLI 플래그 4종(및 대응 환경변수) 제거**: 이전 버전에서
+  선택적 구성요소 설치에 쓰이던 플래그들은 모두 사라졌다 — 해당 구성요소는 이제 설치 후
+  App Installer에서 선택한다. 매트릭스는 그 대신 `PROOT_SHELL`/`DISPLAY_SERVER`
+  config 보존 여부(§2의 17~21번)를 커버한다.

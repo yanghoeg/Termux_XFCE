@@ -30,6 +30,18 @@ PKG_MANAGER_CONTRACTS=(
     proot_pkg_autoremove
 )
 
+# pkg_manager 포트가 문서화하지만 distro별 구현이 갈리는 함수들
+# (ports/pkg_manager.sh 주석 기준 — 일반 계약이 아니므로 PKG_MANAGER_CONTRACTS에는 넣지 않음)
+# - pkg_install_deb_url: "Termux native에 다운로드 후 설치" — Termux 전용
+#   (proot .deb/AUR 설치 포트는 app-installer 서브모듈로 이관됨)
+PKG_TERMUX_EXTRA_CONTRACTS=(
+    pkg_install_deb_url
+)
+
+# ubuntu/arch 어댑터에는 추가 계약 없음 (proot .deb/AUR 설치는 app-installer로 이관)
+PKG_UBUNTU_EXTRA_CONTRACTS=()
+PKG_ARCH_EXTRA_CONTRACTS=()
+
 # ui 포트가 요구하는 함수 목록
 UI_CONTRACTS=(
     ui_info
@@ -79,7 +91,7 @@ _check_adapter_contracts() {
 describe "포트 계약 — pkg_termux.sh"
 
 _test_pkg_termux_contracts() {
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_termux.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_termux.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_TERMUX_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_termux.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_termux_contracts
 
@@ -89,7 +101,7 @@ _test_pkg_ubuntu_contracts() {
     if [ ! -f "${ADAPTER_DIR}/pkg_ubuntu.sh" ]; then
         return 0  # 파일 없으면 skip
     fi
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_ubuntu.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_ubuntu.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_UBUNTU_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_ubuntu.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_ubuntu_contracts
 
@@ -99,7 +111,7 @@ _test_pkg_arch_contracts() {
     if [ ! -f "${ADAPTER_DIR}/pkg_arch.sh" ]; then
         return 0
     fi
-    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_arch.sh" "${PKG_MANAGER_CONTRACTS[@]}" )
+    ( _check_adapter_contracts "${ADAPTER_DIR}/pkg_arch.sh" "${PKG_MANAGER_CONTRACTS[@]}" "${PKG_ARCH_EXTRA_CONTRACTS[@]}" )
 }
 it "pkg_arch.sh가 모든 pkg_manager 계약을 구현한다" _test_pkg_arch_contracts
 
@@ -146,9 +158,9 @@ describe "포트 계약 — display_x11.sh"
 
 _test_display_x11_contracts() {
     (
-        # display_x11.sh의 display_setup_apk가 ui_warn, _download_and_open_apk 호출
+        # display_x11.sh의 display_setup_apk가 ui_warn, termux_download_and_open_apk 호출
         ui_warn() { :; }
-        _download_and_open_apk() { :; }
+        termux_download_and_open_apk() { :; }
         _check_adapter_contracts "${ADAPTER_DIR}/display_x11.sh" "${DISPLAY_CONTRACTS[@]}"
     )
 }

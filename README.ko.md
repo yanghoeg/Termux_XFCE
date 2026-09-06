@@ -74,6 +74,8 @@ archlinux          # Arch Linux proot 진입
 prun libreoffice   # proot 앱을 Termux에서 직접 실행
 cp2menu            # proot .desktop 파일을 XFCE 메뉴에 복사
 app-installer      # 앱 추가 설치/제거 GUI
+screenshot [full|region|window]   # 세션 인식 스크린샷
+kill_display_session              # XFCE 세션·디스플레이 서버 종료
 ```
 
 ## GPU 가속
@@ -135,6 +137,9 @@ XFCE 메뉴/설정/앱 UI를 한글로 표시합니다. Termux의 bionic libc가
 > 이 접근법은 **미코(미니기기 코리아) — 흡혈귀왕님**이 공유해 주신 방법을 바탕으로 구현되었습니다. 🙏
 
 한글 입력기(fcitx5), 한글 로케일은 `app-installer`에서 설치할 수 있습니다.
+proot 내부 한글 IME(로케일 + nimf/fcitx5)는 `app-installer`의 별도 항목 `korean_proot`이며,
+로케일·IM 환경변수를 `/etc/profile.d/termux-xfce-locale.sh`에 기록해 모든 로그인 셸에 반영합니다
+(Arch의 `~/.bash_profile` → `~/.bashrc` 체인은 `~/.profile`을 읽지 않기 때문입니다).
 
 | 파일 | 역할 |
 |------|------|
@@ -156,6 +161,7 @@ cat         # bat
 gpu-info    # Adreno GPU 모델 확인
 zink        # Zink 강제 지정으로 앱 실행
 hud         # FPS 오버레이로 앱 실행
+zrunhud     # proot 앱을 Zink + FPS 오버레이로 실행
 ```
 
 ## 설치 구성
@@ -164,10 +170,11 @@ hud         # FPS 오버레이로 앱 실행
 
 | 분류 | 패키지 |
 |------|--------|
-| 기본 유틸 | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
-| XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
-| APK | Termux:X11, Termux:API, Termux:Float |
+| 기본 유틸 | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
+| XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
+| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
+| APK | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (선택)
 
@@ -175,6 +182,10 @@ hud         # FPS 오버레이로 앱 실행
 |--------|------|-----------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+> `btop`·GPU 가속·한글 입력기·Wine 등은 기본 설치에 **포함되지 않고** `app-installer` 항목입니다.
+> TUR·root 커뮤니티 저장소 패키지는 저장소 장애가 설치 전체를 깨뜨리지 않도록 기본 세트에서
+> 의도적으로 제외했습니다.
 
 ## App Installer
 
@@ -185,12 +196,60 @@ app-installer          # 전체 (탭: 앱 | 시스템 | Termux API | Wine)
 app-installer wine     # Wine 앱만
 ```
 
+헤드리스 CLI(GUI 없음): `bash app-installer/app-install.sh list|install <id>|remove <id>|status <id>`.
+
 - **탭 기반 UI** — 앱 / 시스템 / Termux API / Wine 탭으로 분류
 - **검색** — 이름/설명 타이핑으로 즉시 필터링 (yad notebook, zenity 폴백)
 - **Termux native 우선** — GIMP, Inkscape, Thunderbird 등은 네이티브 설치
-- **proot 자동 라우팅** — LibreOffice, DBeaver 등은 proot 내부 설치
+- **proot 자동 라우팅** — LibreOffice, VS Code, DBeaver 등은 proot 내부 설치
+- **업그레이드 / 롤백** — 이미 설치된 앱이 업그레이드를 지원하면 *제거* 옆에 *업그레이드*가
+  함께 표시됩니다 (현재 Claude Code — 백업 → 스모크 테스트 → 실패 시 자동 롤백)
 
 소스: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
+
+## Wine — 두 가지 백엔드
+
+Windows 앱 실행 백엔드를 두 가지 중에서 고를 수 있고, **둘을 동시에 설치**할 수도 있습니다.
+
+| | Wine (Box64+Staging) | Wine (Hangover) |
+|---|---|---|
+| 방식 | Wine 전체를 Box64로 x86 에뮬레이션 | Wine은 네이티브 arm64, **앱 바이너리만** FEX/ARM64EC 에뮬 |
+| 속도 | 기준 | 더 빠름 |
+| 설치 위치 | proot 내부 또는 glibc-runner | Termux native (proot 불필요) |
+| 출처 | Kron4ek/Wine-Builds tarball | Termux x11-repo `hangover` 패키지 |
+| WINEPREFIX | `$HOME/.wine` | `$HOME/.wine-hangover` |
+| 래퍼 | `$PREFIX/bin/wine-box64` | `$PREFIX/bin/wine-hangover` |
+
+PATH 상의 `wine`은 **활성 백엔드로 위임하는 디스패처**입니다. Notepad++ · 7-Zip ·
+SumatraPDF · WinMerge 같은 Wine 앱은 설치 시점의 활성 백엔드 WINEPREFIX에 배치됩니다.
+
+```bash
+wine-backend              # 활성 백엔드 + 설치 상태 확인
+wine-backend hangover     # Hangover로 전환
+wine-backend box64        # Box64 + Wine-Staging으로 전환
+wine notepad.exe          # 활성 백엔드로 실행
+wine-hangover notepad.exe # 백엔드를 직접 지정해 실행
+```
+
+> WINEPREFIX가 백엔드마다 분리되어 있습니다. 서로 다른 Wine 빌드(wow64 staging vs
+> ARM64EC)가 하나의 prefix를 공유하면 `wineboot --update`가 왕복하며 깨지기 때문입니다.
+> 백엔드를 바꾼 뒤에는 Wine 앱을 그 백엔드에서 다시 설치해야 합니다.
+
+## 부팅 시 자동 시작
+
+`termux-services`(runit) + Termux:Boot APK로 기기 부팅 직후 서비스를 올릴 수 있습니다.
+
+```bash
+sv-enable sshd      # 서비스 등록 (부팅 시 자동 기동)
+sv-disable sshd     # 해제
+sv status sshd      # 상태 확인
+sv up sshd          # 지금 바로 시작
+```
+
+설치 시 `~/.termux/boot/start-services`가 자동 생성되며, 이 스크립트가
+`termux-wake-lock` 후 runit을 기동합니다. 파일이 이미 있으면 덮어쓰지 않습니다.
+
+> Android 제약상 Termux:Boot APK는 **설치 후 최소 한 번 앱을 열어야** 활성화됩니다.
 
 ## 테스트
 
@@ -204,17 +263,21 @@ bash tests/run_tests.sh e2e_install
 | 스위트 | 수 | 내용 |
 |--------|---|------|
 | ports | 12 | 어댑터 계약 준수 |
-| adapters | 33 | pkg_termux, ui_terminal, script_builder_zenity |
-| domain_termux | 62 | termux_env 로직 (API APK, 클립보드 동기화 포함) |
-| domain_xfce | 44 | xfce_env + 마이그레이션 |
-| domain_proot | 69 | proot_env (Ubuntu/Arch) |
-| domain_locale_ko | 24 | 한글 로케일 |
-| input_interactive | 5 | 대화형 입력 |
-| install_matrix | 16 | 설치 조합 매트릭스 |
-| app_installer | 72 | app-installer 검증 |
-| prun_ld_preload | 18 | prun / LD_PRELOAD 회귀 |
+| adapters | 38 | pkg_termux, ui_terminal, script_builder_zenity, display |
+| adapters_deb | 3 | pkg_install_deb_url sha256 검증 |
+| input_interactive | 6 | 대화형 입력 |
+| domain_termux | 76 | termux_env 로직 (API/Boot APK, 클립보드 동기화, dbus 원샷 리셋 포함) |
+| domain_xfce | 47 | xfce_env + 마이그레이션 |
+| domain_proot | 51 | proot_env (Ubuntu/Arch) |
+| domain_locale_ko | 27 | 한글 로케일 |
+| app_installer | 86 | app-installer 검증 |
+| prun_ld_preload | 19 | prun / LD_PRELOAD 회귀 |
+| install_matrix | 22 | 설치 조합 매트릭스 |
 | e2e_install | 26 | E2E 통합 & 회귀 |
-| **합계** | **381** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+| **합계** | **413** | **Arch에서는 mock·정적 검증, 최종 확인은 Termux 실기기 필요** |
+
+app-installer 서브모듈 자체 스위트는 별도입니다 (`test_domain_apps.sh` 173,
+`test_adapters.sh` 26, `test_ports.sh` 11, `test_fetch.sh` 7, `test_proot_path.sh` 6 — 합계 223).
 
 ## Android 시스템 최적화
 
@@ -266,7 +329,7 @@ Termux_XFCE/
 ├── tests/                        ← 메인 설치기 자동화 테스트
 └── app-installer/                ← 앱 설치 GUI (Git Submodule)
     ├── install.sh                ← yad notebook 탭 GUI
-    └── domain/installers/        ← 앱별 설치 스크립트 (46개)
+    └── domain/installers/        ← 앱별 설치 스크립트 (59개)
 ```
 
 ## 브랜치 전략

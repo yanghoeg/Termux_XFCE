@@ -126,4 +126,26 @@ _test_distro_skipped_when_skip_proot_true() {
 }
 it "SKIP_PROOT=true 면 distro 질문 건너뜀" _test_distro_skipped_when_skip_proot_true
 
+# =============================================================================
+describe "interactive — 다이얼로그 취소(cancel)"
+
+_test_distro_select_cancel_shows_message_and_stops() {
+    _unset_inputs
+    _setup_controllable_ui
+    # zenity/yad ui_select는 취소(Cancel/ESC) 시 return 1 — 그 상황을 재현
+    ui_select() { echo "select:$1" >> "$UI_LOG_FILE"; return 1; }
+    ui_info()   { echo "info:$1" >> "$UI_LOG_FILE"; }
+    source "$ADAPTER"
+
+    local rc=0
+    ( resolve_interactive_inputs ) || rc=$?
+
+    # install.sh EXIT 트랩은 130을 예외 처리하므로 "설치 실패"가 뜨지 않는다
+    assert_eq "130" "$rc" "취소는 130(트랩이 예외 처리하는 코드)으로 종료해야 함"
+    _assert_ui_called "info:설치를 취소했습니다"
+    # distro 선택 취소 이후 단계(사용자 이름 입력)는 실행되면 안 됨
+    _assert_ui_not_called "input:사용자 이름"
+}
+it "ui_select 취소 시 취소 메시지를 보여주고 이후 입력 단계를 진행하지 않는다" _test_distro_select_cancel_shows_message_and_stops
+
 print_results

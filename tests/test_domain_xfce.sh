@@ -648,6 +648,80 @@ EOF
 }
 it "멱등성 — actions가 없으면 변경하지 않는다" _test_remove_actions_plugin_idempotent
 
+_test_remove_actions_plugin_awk_failure_preserves_xml() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    mkdir -p "${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml"
+    local xml="${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+    cat > "$xml" << 'EOF'
+<channel name="xfce4-panel">
+  <property name="plugin-ids" type="array">
+    <value type="int" value="1"/>
+    <value type="int" value="20"/>
+  </property>
+  <property name="plugin-20" type="string" value="actions">
+    <property name="items" type="array"/>
+  </property>
+</channel>
+EOF
+
+    # awk 실패를 시뮬레이션 (앞선 sed -i plugin-id 정리는 awk와 무관 — 별도 단계이므로 그대로 실행됨)
+    awk() { _record_call "awk $*"; return 1; }
+    reset_ui_output
+
+    local rc=0
+    _migrate_remove_actions_plugin 2>/dev/null || rc=$?
+
+    assert_zero "$rc" "awk 실패해도 set -e 트립 없이 rc 0"
+    # awk가 실패해 mv가 일어나지 않았으므로 actions 블록은 (반쯤 잘리지 않고) 그대로 남아있어야 함
+    assert_file_contains "$xml" 'value="actions"'
+    assert_file_contains "$xml" '<property name="items" type="array"/>'
+    assert_file_contains "$xml" '</channel>'
+    assert_ui_contains "WARN"
+    ! [ -f "${xml}.tmp" ]
+    cleanup_sandbox "$sb"
+}
+it "awk 실패 시 actions 블록이 손상되지 않고 경고 후 반환 (set -e 트립 방지)" _test_remove_actions_plugin_awk_failure_preserves_xml
+
+# =============================================================================
+# _migrate_screenshot_keybindings — xfce4-screenshooter → screenshot 래퍼 전환
+# =============================================================================
+
+describe "xfce_env — _migrate_screenshot_keybindings"
+
+_test_migrate_screenshot_keybindings_rewrites() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    local xml="${HOME}/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
+    mkdir -p "$(dirname "$xml")"
+    cat > "$xml" << 'EOF'
+<channel name="xfce4-keyboard-shortcuts">
+  <property name="Print" type="string" value="xfce4-screenshooter"/>
+  <property name="<Alt>Print" type="string" value="xfce4-screenshooter -w"/>
+  <property name="<Shift>Print" type="string" value="xfce4-screenshooter -r"/>
+</channel>
+EOF
+
+    _migrate_screenshot_keybindings
+
+    assert_file_contains "$xml" 'value="screenshot window"'
+    assert_file_contains "$xml" 'value="screenshot region"'
+    assert_file_contains "$xml" 'value="screenshot full"'
+    assert_file_not_contains "$xml" "xfce4-screenshooter"
+    cleanup_sandbox "$sb"
+}
+it "Print 계열 키의 xfce4-screenshooter를 screenshot 래퍼로 전환한다" _test_migrate_screenshot_keybindings_rewrites
+
+_test_migrate_screenshot_keybindings_no_xml() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    local rc=0
+    _migrate_screenshot_keybindings || rc=$?
+    assert_eq "0" "$rc" "xml 없으면 0을 반환해야 한다"
+    cleanup_sandbox "$sb"
+}
+it "xml 파일이 없으면 아무 것도 하지 않고 0을 반환한다" _test_migrate_screenshot_keybindings_no_xml
+
 # =============================================================================
 # 회귀: set -e + ((i++)) 폭탄 — || true 없이 끝까지 실행 검증
 # =============================================================================
@@ -746,6 +820,8 @@ _test_xfce_autostart_calls_in_order() {
     _migrate_remove_actions_plugin() { echo "actions"  >> "$AUTOSTART_LOG"; }
     _migrate_dbus_propagate_path()   { echo "dbus"     >> "$AUTOSTART_LOG"; }
     _migrate_conky_exec_ampersand()  { echo "conky"    >> "$AUTOSTART_LOG"; }
+    _migrate_screenshot_keybindings()  { echo "shot"      >> "$AUTOSTART_LOG"; }
+    _migrate_terminal_disable_server() { echo "termserver" >> "$AUTOSTART_LOG"; }
 
     setup_xfce_autostart
 
@@ -757,14 +833,16 @@ border
 comp
 actions
 dbus
-conky"
+conky
+shot
+termserver"
     local actual; actual=$(cat "$AUTOSTART_LOG")
     rm -f "$AUTOSTART_LOG"
 
     assert_eq "$expected" "$actual" "마이그레이션 호출 순서가 소스 코드와 일치해야 함"
     cleanup_sandbox "$sb"
 }
-it "_setup_autostart_config → 마이그레이션 8건 순서대로 호출" _test_xfce_autostart_calls_in_order
+it "_setup_autostart_config → 마이그레이션 10건 순서대로 호출" _test_xfce_autostart_calls_in_order
 
 # =============================================================================
 # _migrate_terminal_disable_server — 패널/단축키/Thunar 터미널 실행에 --disable-server

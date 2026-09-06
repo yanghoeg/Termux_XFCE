@@ -20,6 +20,7 @@ PKGS_TERMUX_BASE=(
     pulseaudio
     yad            # app-installer 검색 가능 GUI (zenity 대체)
     termux-api     # Android API 브리지 (클립보드, 알림, 배터리 등)
+    termux-services # runit 서비스 관리 (sv-enable/sv — Termux:Boot 자동 기동용)
     # xclip: display 어댑터(display_get_packages)로 이동
 )
 
@@ -52,10 +53,9 @@ PKGS_TERMUX_CLI=(
     starship
     atuin
     htop
-    btop        # 시각적 리소스 모니터 (htop 후속, root-repo 제공)
     jq
     netcat-openbsd
-    neofetch
+    fastfetch   # 시스템 정보 (neofetch 후속 — neofetch는 2024년 upstream 아카이브됨)
     git-delta   # git diff 구문 강조 (lazygit 연동)
     zellij      # tmux 대안 — 세션 멀티플렉서
     dust        # du 시각화 — 스토리지 확인
@@ -66,14 +66,16 @@ PKGS_TERMUX_CLI=(
     glow        # 터미널 마크다운 렌더러 (README·AI 출력 읽기)
     tealdeer    # tldr — 명령어 치트시트 (man 빠른 조회)
     xh          # HTTPie 호환 HTTP 클라이언트 (curl 대체)
-    onefetch    # git 저장소 요약 (neofetch의 repo판)
+    onefetch    # git 저장소 요약 (fastfetch의 repo판)
+    uv          # Python 패키지/가상환경 관리 (pip·venv·pyenv 대체)
+    sd          # sed 대체 — 직관적 문자열 치환
+    difftastic  # 구문 인식 diff (git difftool 연동)
+    gitui       # git TUI (lazygit 대안 — Rust, 저메모리)
 )
 
 # proot-distro 설치에 필요한 Termux 패키지
 PKGS_TERMUX_PROOT=(
     proot-distro
-    x11-repo
-    tur-repo
 )
 
 # -----------------------------------------------------------------------------
@@ -103,33 +105,6 @@ PKGS_PROOT_UBUNTU_DESKTOP=(
     glmark2
 )
 
-PKGS_PROOT_UBUNTU_KOREAN=(
-    language-pack-ko
-    language-pack-gnome-ko-base
-    locales
-    fonts-nanum-extra
-    fonts-noto-cjk
-    fonts-roboto
-    im-config
-    # nimf: Ubuntu 공식 repo 미제공 → _install_ubuntu_nimf_deb()으로 직접 설치
-)
-
-# nimf GitHub Releases ARM64 .deb (Ubuntu 24.04 빌드 — 25.10에서도 호환)
-NIMF_DEB_BASE_URL="https://github.com/hamonikr/nimf/releases/download/v1.4.17"
-NIMF_DEBS=(
-    "nimf_1.4.17_arm64-ubuntu.2404.arm64.deb"
-    "nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"
-)
-
-PKGS_PROOT_UBUNTU_DEV=(
-    python3
-    python3-pip
-    gh
-    meson
-    ninja-build
-    build-essential
-)
-
 # -----------------------------------------------------------------------------
 # proot Arch Linux 패키지 (Arch 선택 시)
 # -----------------------------------------------------------------------------
@@ -155,27 +130,3 @@ PKGS_PROOT_ARCH_DESKTOP=(
     vulkan-tools # vulkaninfo — Vulkan 가속 확인
 )
 
-PKGS_PROOT_ARCH_KOREAN=(
-    noto-fonts-cjk   # 한국어 폰트 (공식 repo)
-    # ttf-nanum: AUR 전용 → noto-fonts-cjk로 대체
-    libhangul
-)
-
-# Arch nimf: AUR 빌드 (yay) → 실패 시 fcitx5 폴백
-PKGS_PROOT_ARCH_KOREAN_NIMF=(
-    nimf
-    nimf-libhangul
-)
-
-PKGS_PROOT_ARCH_KOREAN_FCITX5=(
-    fcitx5-hangul
-    fcitx5-configtool
-)
-
-PKGS_PROOT_ARCH_DEV=(
-    python
-    python-pip
-    github-cli
-    meson
-    ninja
-)

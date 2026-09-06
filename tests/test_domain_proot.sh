@@ -93,9 +93,10 @@ _test_proot_install_installs_termux_proot_pkgs_when_missing() {
     setup_proot_install 2>/dev/null || true
 
     # PKGS_TERMUX_PROOT 의 각 패키지가 pkg_install로 호출돼야 함
+    # (x11-repo/tur-repo는 더 이상 PKGS_TERMUX_PROOT에 없음 — app-installer가 온디맨드로 켬)
     assert_was_called "pkg_install proot-distro"
-    assert_was_called "pkg_install x11-repo"
-    assert_was_called "pkg_install tur-repo"
+    assert_not_called "pkg_install x11-repo"
+    assert_not_called "pkg_install tur-repo"
     assert_was_called "pkg_update"
     # 의존성 설치 후 최종 proot_install도 호출
     assert_was_called "proot-distro install"
@@ -202,13 +203,17 @@ _test_proot_env_written() {
 
     setup_proot_env 2>/dev/null || true
 
+    # export는 /etc/profile.d로 이동 — .bashrc는 마커 + source 라인만 갖는다
+    local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    assert_file_contains "$envfile" 'DISPLAY=${DISPLAY:-:0.0}'
+    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     assert_file_contains "$bashrc" "termux-xfce-proot-env"
-    assert_file_contains "$bashrc" 'DISPLAY=${DISPLAY:-:0.0}'
-    assert_file_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh'
     cleanup_sandbox "$sb"
 }
-it ".bashrc에 DISPLAY, MESA 등 환경변수를 추가한다" _test_proot_env_written
+it "profile.d에 DISPLAY/MESA를 쓰고 .bashrc는 마커+source 라인을 갖는다" _test_proot_env_written
 
 _test_proot_env_idempotent() {
     local sb; sb=$(make_sandbox)
@@ -220,11 +225,96 @@ _test_proot_env_idempotent() {
 
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     local count
-    count=$(grep -c "termux-xfce-proot-env" "$bashrc")
+    count=$(grep -c "^# termux-xfce-proot-env$" "$bashrc")
     assert_eq "1" "$count" "멱등성: env 블록이 1번만 있어야 한다"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh' 
     cleanup_sandbox "$sb"
 }
 it "멱등성 — proot env 블록이 중복 추가되지 않는다" _test_proot_env_idempotent
+
+_test_proot_env_profile_d_written() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    assert_file_exists "$envfile"
+    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+    assert_file_contains "$envfile" "VK_ICD_FILENAMES="
+    assert_file_contains "$envfile" 'XDG_RUNTIME_DIR=/run/user/$(id -u)'
+    assert_file_not_contains "$envfile" "alias"
+    cleanup_sandbox "$sb"
+}
+it "환경변수는 /etc/profile.d/termux-xfce-env.sh에 기록된다 (alias 없음)" _test_proot_env_profile_d_written
+
+_test_proot_env_bashrc_sources_profile_d() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    assert_file_contains "$bashrc" "termux-xfce-proot-env"
+    assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh'
+    assert_file_not_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE"
+    cleanup_sandbox "$sb"
+}
+it ".bashrc는 profile.d env 파일을 source하고 export는 갖지 않는다" _test_proot_env_bashrc_sources_profile_d
+
+_test_proot_env_eza_bat_guarded() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    setup_proot_env 2>/dev/null || true
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    assert_file_contains "$bashrc" "command -v eza"
+    assert_file_contains "$bashrc" "command -v bat"
+    assert_file_not_contains "$bashrc" "alias python"
+    assert_file_not_contains "$bashrc" "alias pip"
+    cleanup_sandbox "$sb"
+}
+it "eza/bat alias는 command -v 가드로 감싸고 python/pip alias는 없다" _test_proot_env_eza_bat_guarded
+
+_test_proot_env_migrates_old_block() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
+    cat > "$bashrc" << 'OLDBASHRC'
+# 기존 사용자 설정 (보존되어야 함)
+
+# termux-xfce-proot-env
+export DISPLAY=${DISPLAY:-:0.0}
+export MESA_NO_ERROR=1
+export MESA_LOADER_DRIVER_OVERRIDE=zink
+
+# aliases
+alias hud='GALLIUM_HUD=fps '
+alias ls='eza -lF --icons'
+alias cat='bat'
+alias python='/usr/bin/python3'
+code() { nohup dbus-run-session /usr/bin/code --no-sandbox "$@" >/dev/null 2>&1 & disown; }
+# user custom
+OLDBASHRC
+
+    setup_proot_env 2>/dev/null || true
+
+    local count
+    count=$(grep -c "^# termux-xfce-proot-env$" "$bashrc")
+    assert_eq "1" "$count" "마이그레이션 후 마커가 정확히 1개여야 한다"
+    assert_file_not_contains "$bashrc" "^alias ls='eza"
+    assert_file_not_contains "$bashrc" "MESA_LOADER_DRIVER_OVERRIDE"
+    assert_file_contains "$bashrc" "# user custom"
+    assert_file_exists "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
+    cleanup_sandbox "$sb"
+}
+it "구버전 .bashrc 블록을 마이그레이션하고 사용자 라인은 보존한다" _test_proot_env_migrates_old_block
 
 # =============================================================================
 # setup_proot_base_packages — distro 분기
@@ -255,6 +345,39 @@ _test_arch_base_uses_arch_pkgs() {
     cleanup_sandbox "$sb"
 }
 it "Arch: proot 패키지 설치를 호출한다" _test_arch_base_uses_arch_pkgs
+
+_test_ubuntu_base_pkg_failure_continues() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+    reset_mock_calls
+    MOCK_INSTALLED_PKGS=""
+
+    # 첫 패키지의 apt 설치가 실패해도(archlinux 분기와 동일하게) 경고 후
+    # 나머지 base+desktop 패키지 전부가 계속 시도되어야 한다.
+    local fail_pkg="${PKGS_PROOT_UBUNTU_BASE[0]}"
+    proot_pkg_install() {
+        _record_call "proot_pkg_install $*"
+        [ "$1" = "$fail_pkg" ] && return 1
+        return 0
+    }
+
+    # 서브셸(command substitution)로 감싸면 MOCK_CALLS 갱신이 부모로 전파되지
+    # 않으므로, stderr만 파일로 리다이렉트해 현재 셸에서 직접 호출한다.
+    local warnlog; warnlog=$(mktemp)
+    setup_proot_base_packages 2>"$warnlog"
+
+    local install_count=0
+    for call in "${MOCK_CALLS[@]:-}"; do
+        [[ "$call" == "proot_pkg_install "* ]] && install_count=$((install_count + 1))
+    done
+    local expected=$(( ${#PKGS_PROOT_UBUNTU_BASE[@]} + ${#PKGS_PROOT_UBUNTU_DESKTOP[@]} ))
+    assert_eq "$expected" "$install_count" "실패한 패키지가 있어도 나머지 base+desktop 전부 시도되어야 함"
+    assert_file_contains "$warnlog" "WARN"
+    rm -f "$warnlog"
+    cleanup_sandbox "$sb"
+}
+it "Ubuntu: base 패키지 하나가 실패해도 경고 후 나머지를 계속 설치한다" _test_ubuntu_base_pkg_failure_continues
 
 # =============================================================================
 # setup_proot_cursor_theme
@@ -303,6 +426,25 @@ _test_cursor_theme_copied() {
     cleanup_sandbox "$sb"
 }
 it "dist-dark 커서 테마를 proot로 복사한다" _test_cursor_theme_copied
+
+_test_cursor_theme_copied_missing_parent() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb" "ubuntu" "testuser"
+    _make_proot_rootfs "$sb" "ubuntu" "testuser"
+
+    # src 생성
+    mkdir -p "${PREFIX}/share/icons/dist-dark"
+    touch "${PREFIX}/share/icons/dist-dark/cursor.theme"
+
+    # dst의 부모(usr/share/icons)를 통째로 제거 — cp -r이 부모 없이 실패하지 않는지 검증
+    rm -rf "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/usr/share/icons"
+
+    setup_proot_cursor_theme 2>/dev/null || true
+
+    assert_dir_exists "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/usr/share/icons/dist-dark"
+    cleanup_sandbox "$sb"
+}
+it "dst 부모 디렉토리가 없어도 커서 테마를 복사한다" _test_cursor_theme_copied_missing_parent
 
 # --proot-only 회귀: src 미존재여도 return 0(set -e 안전), 그리고
 # _install_fluent_cursor 헬퍼가 로드돼 있으면 자동 호출
@@ -407,170 +549,6 @@ _test_proot_update_calls_pkg_update() {
 it "setup_proot_update는 proot_pkg_update를 호출한다" _test_proot_update_calls_pkg_update
 
 # =============================================================================
-# setup_proot_korean — distro 분기 확인
-# =============================================================================
-
-describe "proot_env — setup_proot_korean"
-
-_test_korean_ubuntu_installs_pkgs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu"
-    _make_proot_rootfs "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-    MOCK_INSTALLED_PKGS=""
-
-    setup_proot_korean 2>/dev/null || true
-    assert_was_called "proot_pkg_install"
-    cleanup_sandbox "$sb"
-}
-it "Ubuntu: proot 한글 패키지 설치를 호출한다" _test_korean_ubuntu_installs_pkgs
-
-_test_korean_arch_installs_pkgs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-    reset_mock_calls
-    MOCK_INSTALLED_PKGS=""
-
-    setup_proot_korean 2>/dev/null || true
-    assert_was_called "proot_pkg_install"
-    cleanup_sandbox "$sb"
-}
-it "Arch: proot 한글 패키지 설치를 호출한다" _test_korean_arch_installs_pkgs
-
-# =============================================================================
-# _setup_ubuntu_korean_locale — PROOT_DISTRO 변수 사용 (하드코딩 수정 검증)
-# =============================================================================
-
-describe "proot_env — _setup_ubuntu_korean_locale 경로 검증"
-
-_test_ubuntu_korean_locale_uses_distro_var() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    _make_proot_rootfs "$sb" "ubuntu" "testuser"
-
-    _setup_ubuntu_korean_locale 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile"
-    local locale_file="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/default/locale"
-    assert_file_exists "$profile"
-    assert_file_contains "$profile" "termux-xfce-korean"
-    assert_file_exists "$locale_file"
-    assert_file_contains "$locale_file" "ko_KR.UTF-8"
-    cleanup_sandbox "$sb"
-}
-it "ubuntu: .profile과 /etc/default/locale을 올바른 경로에 작성한다" _test_ubuntu_korean_locale_uses_distro_var
-
-_test_ubuntu_korean_locale_idempotent() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    _make_proot_rootfs "$sb" "ubuntu" "testuser"
-
-    _setup_ubuntu_korean_locale 2>/dev/null || true
-    _setup_ubuntu_korean_locale 2>/dev/null || true
-
-    local count
-    count=$(grep -c "termux-xfce-korean" \
-        "${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile")
-    assert_eq "1" "$count" "멱등성: korean 블록이 1번만 있어야 한다"
-    cleanup_sandbox "$sb"
-}
-it "멱등성 — korean locale 블록이 중복 추가되지 않는다" _test_ubuntu_korean_locale_idempotent
-
-# =============================================================================
-# _setup_arch_korean_locale — PROOT_DISTRO 변수 사용 (하드코딩 수정 검증)
-# =============================================================================
-
-describe "proot_env — _setup_arch_korean_locale 경로 검증"
-
-_test_arch_korean_locale_uses_distro_var() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    local locale_gen="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/etc/locale.gen"
-    touch "$locale_gen"
-
-    _setup_arch_korean_locale 2>/dev/null || true
-
-    assert_file_contains "$locale_gen" "ko_KR.UTF-8"
-    cleanup_sandbox "$sb"
-}
-it "archlinux: locale.gen을 올바른 경로에 작성한다" _test_arch_korean_locale_uses_distro_var
-
-# =============================================================================
-# _setup_arch_nimf_or_fcitx5 — nimf 성공/실패 분기
-# =============================================================================
-
-describe "proot_env — _setup_arch_nimf_or_fcitx5"
-
-_test_arch_nimf_success_writes_nimf_env() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    # yay 사용 가능 + AUR nimf 설치 성공 mock (proot_aur_install 스파이는 기본 성공)
-    proot_ensure_aur_helper() { return 0; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_exists "$profile"
-    assert_file_contains "$profile" "GTK_IM_MODULE=nimf"
-    cleanup_sandbox "$sb"
-}
-it "nimf AUR 빌드 성공 시 nimf 환경변수를 .profile에 쓴다" _test_arch_nimf_success_writes_nimf_env
-
-_test_arch_nimf_failure_falls_back_to_fcitx5() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    # paru 설치 실패 mock → fcitx5 폴백 경로
-    proot_ensure_aur_helper() { return 1; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_exists "$profile"
-    assert_file_contains "$profile" "GTK_IM_MODULE=fcitx5"
-    cleanup_sandbox "$sb"
-}
-it "nimf AUR 빌드 실패 시 fcitx5로 폴백하고 .profile에 fcitx5 환경변수를 쓴다" _test_arch_nimf_failure_falls_back_to_fcitx5
-
-_test_arch_nimf_fcitx5_idempotent() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    proot_ensure_aur_helper() { return 1; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local count
-    count=$(grep -c "termux-xfce-korean" \
-        "${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile")
-    assert_eq "1" "$count" "멱등성: korean 블록이 1번만 있어야 한다"
-    cleanup_sandbox "$sb"
-}
-it "멱등성 — _setup_arch_nimf_or_fcitx5가 중복 호출돼도 .profile 블록은 1개" _test_arch_nimf_fcitx5_idempotent
-
-_test_arch_nimf_fallback_installs_fcitx5_pkgs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-    reset_mock_calls
-
-    proot_ensure_aur_helper() { return 1; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-    assert_was_called "proot_pkg_install"
-    cleanup_sandbox "$sb"
-}
-it "nimf 폴백 시 fcitx5 패키지 설치를 호출한다" _test_arch_nimf_fallback_installs_fcitx5_pkgs
-
-# =============================================================================
 # setup_proot_conky — SCRIPT_DIR cp / 멱등성 / emoji 폰트 복사
 # =============================================================================
 
@@ -627,161 +605,6 @@ _test_conky_copies_emoji_font() {
     cleanup_sandbox "$sb"
 }
 it "NotoColorEmoji를 proot 홈 .fonts에 복사한다" _test_conky_copies_emoji_font
-
-# =============================================================================
-# _install_ubuntu_nimf_deb — deb 다운로드/설치, 멱등성
-# =============================================================================
-
-describe "proot_env — _install_ubuntu_nimf_deb"
-
-_test_nimf_deb_skips_when_installed() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    # nimf 이미 설치됨 mock
-    proot_exec() {
-        _record_call "proot_exec $*"
-        if [[ "$*" == *"command -v nimf"* ]]; then return 0; fi
-        return 0
-    }
-
-    _install_ubuntu_nimf_deb 2>/dev/null || true
-    # nimf 존재 확인 후 return → deb 설치 포트 호출 없어야 함
-    assert_not_called "proot_pkg_install_deb_url"
-    cleanup_sandbox "$sb"
-}
-it "nimf 이미 설치 시 건너뛴다" _test_nimf_deb_skips_when_installed
-
-_test_nimf_deb_downloads_all_debs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    # nimf 미설치 mock
-    proot_exec() {
-        _record_call "proot_exec $*"
-        if [[ "$*" == *"command -v nimf"* ]]; then return 1; fi
-        return 0
-    }
-
-    _install_ubuntu_nimf_deb 2>/dev/null || true
-    assert_was_called "nimf_1.4.17_arm64-ubuntu.2404.arm64.deb"
-    assert_was_called "nimf-i18n_1.4.17_arm64-ubuntu.2404.arm64.deb"
-    cleanup_sandbox "$sb"
-}
-it "nimf 미설치 시 모든 .deb를 다운로드한다" _test_nimf_deb_downloads_all_debs
-
-# 헥사고날: 도메인은 apt/dpkg를 모른다. .deb URL 설치는 포트로 위임하고
-# 런타임 의존성 패키지명(도메인 지식)은 proot_pkg_install 포트로 요청한다.
-# (apt-get/dpkg raw 명령 검증은 tests/test_adapters.sh의 pkg_ubuntu 어댑터 테스트)
-_test_nimf_deb_delegates_to_port() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    proot_exec() {
-        _record_call "proot_exec $*"
-        if [[ "$*" == *"command -v nimf"* ]]; then return 1; fi
-        return 0
-    }
-
-    _install_ubuntu_nimf_deb 2>/dev/null || true
-    # 런타임 의존성은 포트로 설치
-    assert_was_called "proot_pkg_install libglib2.0-0 libgtk-3-0 libdbus-1-3"
-    # .deb 설치는 URL 포트로 위임 (도메인은 dpkg/apt를 모름)
-    assert_was_called "proot_pkg_install_deb_url"
-    cleanup_sandbox "$sb"
-}
-it "deb 설치를 포트(proot_pkg_install_deb_url)로 위임한다" _test_nimf_deb_delegates_to_port
-
-# =============================================================================
-# _setup_ubuntu_korean_locale — nimf & 가드
-# =============================================================================
-
-describe "proot_env — _setup_ubuntu_korean_locale nimf 가드"
-
-_test_ubuntu_profile_guards_nimf_exec() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    _make_proot_rootfs "$sb" "ubuntu" "testuser"
-
-    _setup_ubuntu_korean_locale 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile"
-    # "nimf &" 가 단독으로 있으면 안 됨 — command -v 가드 필요
-    # grep -c는 0 매치 시 "0" 출력 후 exit 1 → `|| echo 0`은 "0\n0" 생성하므로 사용 금지
-    local bare_nimf
-    bare_nimf=$(grep -c '^nimf &$' "$profile" 2>/dev/null) || bare_nimf=0
-    assert_eq "0" "$bare_nimf" ".profile에 가드 없는 'nimf &'가 없어야 한다"
-    assert_file_contains "$profile" "command -v nimf"
-    cleanup_sandbox "$sb"
-}
-it ".profile에서 nimf 실행을 command -v로 가드한다" _test_ubuntu_profile_guards_nimf_exec
-
-_test_ubuntu_profile_nimf_uses_disown() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    _make_proot_rootfs "$sb" "ubuntu" "testuser"
-
-    _setup_ubuntu_korean_locale 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.profile"
-    assert_file_contains "$profile" "disown" \
-        ".profile의 nimf 백그라운드 실행에 disown이 있어야 한다"
-    cleanup_sandbox "$sb"
-}
-it ".profile의 nimf 백그라운드 실행에 disown을 포함한다 (job 완료 메시지 억제)" _test_ubuntu_profile_nimf_uses_disown
-
-_test_arch_nimf_profile_guards_nimf_exec() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    proot_ensure_aur_helper() { return 0; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    local bare_nimf
-    bare_nimf=$(grep -c '^nimf &$' "$profile" 2>/dev/null) || bare_nimf=0
-    assert_eq "0" "$bare_nimf" ".profile에 가드 없는 'nimf &'가 없어야 한다"
-    assert_file_contains "$profile" "command -v nimf"
-    cleanup_sandbox "$sb"
-}
-it "Arch nimf 성공 시에도 .profile nimf 실행을 가드한다" _test_arch_nimf_profile_guards_nimf_exec
-
-_test_arch_nimf_profile_uses_disown() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    proot_ensure_aur_helper() { return 0; }
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_contains "$profile" "disown" \
-        ".profile의 nimf 백그라운드 실행에 disown이 있어야 한다"
-    cleanup_sandbox "$sb"
-}
-it "Arch nimf 성공 시 .profile nimf 백그라운드 실행에 disown을 포함한다" _test_arch_nimf_profile_uses_disown
-
-_test_arch_fcitx5_profile_uses_disown() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-
-    proot_ensure_aur_helper() { return 1; }  # nimf 빌드 실패 → fcitx5 폴백
-
-    _setup_arch_nimf_or_fcitx5 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_contains "$profile" "disown" \
-        ".profile의 fcitx5 백그라운드 실행에 disown이 있어야 한다"
-    cleanup_sandbox "$sb"
-}
-it "Arch fcitx5 폴백 시 .profile fcitx5 백그라운드 실행에 disown을 포함한다" _test_arch_fcitx5_profile_uses_disown
 
 # =============================================================================
 # setup_proot_timezone — getprop + proot_exec_root
@@ -1018,60 +841,6 @@ _test_fancybash_contains_git_branch() {
 }
 it "git branch 표시 함수가 포함된다" _test_fancybash_contains_git_branch
 
-# =============================================================================
-# _setup_ubuntu_nimf — im-config 호출
-# =============================================================================
-
-describe "proot_env — _setup_ubuntu_nimf"
-
-_test_ubuntu_nimf_calls_im_config() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    _setup_ubuntu_nimf 2>/dev/null || true
-    assert_was_called "im-config -n nimf"
-    cleanup_sandbox "$sb"
-}
-it "proot_exec로 im-config -n nimf를 호출한다" _test_ubuntu_nimf_calls_im_config
-
-# =============================================================================
-# _write_arch_im_env — nimf/fcitx5 분기 직접 검증
-# =============================================================================
-
-describe "proot_env — _write_arch_im_env"
-
-_test_write_arch_im_env_nimf() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-    touch "${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-
-    _write_arch_im_env true 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_contains "$profile" "GTK_IM_MODULE=nimf"
-    cleanup_sandbox "$sb"
-}
-it "use_nimf=true 시 nimf 환경변수를 쓴다" _test_write_arch_im_env_nimf
-
-_test_write_arch_im_env_fcitx5() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    _make_proot_rootfs "$sb" "archlinux" "testuser"
-    touch "${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-
-    _write_arch_im_env false 2>/dev/null || true
-
-    local profile="${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux/home/testuser/.profile"
-    assert_file_contains "$profile" "GTK_IM_MODULE=fcitx5"
-    cleanup_sandbox "$sb"
-}
-it "use_nimf=false 시 fcitx5 환경변수를 쓴다" _test_write_arch_im_env_fcitx5
-
-# =============================================================================
-# (yay 빌드 raw 명령 검증은 tests/test_adapters.sh의 pkg_arch 어댑터 테스트로 이동.
-#  헥사고날: 도메인은 AUR 헬퍼를 proot_ensure_aur_helper 포트로만 호출한다.)
 # =============================================================================
 # 회귀: set -e + ((_i++)) 폭탄 — proot_env.sh의 카운터 루프 5곳
 # -----------------------------------------------------------------------------

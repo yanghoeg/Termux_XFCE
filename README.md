@@ -74,12 +74,21 @@ archlinux          # Enter Arch Linux proot
 prun libreoffice   # Run proot app from Termux terminal
 cp2menu            # Copy proot .desktop files to XFCE menu
 app-installer      # GUI for installing/removing extra apps
+screenshot [full|region|window]   # Session-aware screenshot
+kill_display_session              # Shut the XFCE session / display server down
 ```
 
 ## GPU Acceleration
 
 Hardware acceleration via **Zink (OpenGL→Vulkan) + Turnip driver** on Adreno GPUs (Snapdragon 6xx/7xx/8xx).  
 Applied automatically to every bash/zsh session after installation.
+
+> **Why glamor alone isn't enough**  
+> X11's OpenGL acceleration (`glamor_egl`) requires DRI3 support, but Termux:X11's Xwayland doesn't expose Adreno DRI3.  
+> Zink routes OpenGL calls through Vulkan (Turnip) instead, reaching the GPU via `/dev/kgsl-3d0`.
+
+> **If GTK4 apps (zenity, etc.) crash**  
+> Fixed by `GSK_RENDERER=cairo` (forces the GTK4 Cairo renderer). Set automatically during install.
 
 ```bash
 echo $MESA_LOADER_DRIVER_OVERRIDE   # → zink
@@ -95,6 +104,7 @@ hud glxgears                         # FPS overlay
 | `MESA_NO_ERROR` | `1` | Disable GL error checks |
 | `MESA_GL_VERSION_OVERRIDE` | `4.6COMPAT` | Advertise OpenGL 4.6 compat |
 | `MESA_GLES_VERSION_OVERRIDE` | `3.2` | Advertise GLES 3.2 |
+| `MESA_VK_WSI_PRESENT_MODE` | `fifo` | Vulkan present mode (VSync, prevents tearing) |
 | `GSK_RENDERER` | `cairo` | GTK4 Cairo renderer (prevents GLX crash) |
 
 > **Note**: If the XFCE4 compositor (xfwm4) causes a black screen,  
@@ -120,6 +130,23 @@ hud glxgears                         # FPS overlay
 | Speech Recognition | Speech-to-text via Android STT engine |
 | Wallpaper Sync | Apply XFCE wallpaper to Android home screen |
 
+## Korean Locale (optional)
+
+Displays the XFCE menu/settings/app UI in Korean. Since Termux's bionic libc doesn't support `setlocale(LC_MESSAGES)`, this is worked around via **LD_PRELOAD-based gettext hooking**.
+
+> This approach is implemented based on a method shared by 미코 (Minigi Korea) community member 흡혈귀왕. 🙏
+
+Korean input (fcitx5) and the Korean locale can be installed via `app-installer`.
+Korean IME *inside* the proot distro (locale + nimf/fcitx5) is a separate `app-installer` item: `korean_proot`;
+it writes the locale and IME variables to `/etc/profile.d/termux-xfce-locale.sh` so every login shell
+picks them up (Arch's `~/.bash_profile` → `~/.bashrc` chain never reads `~/.profile`).
+
+| File | Role |
+|------|------|
+| `assets/force_gettext.c` | gettext hook C source (built with `clang -shared`) |
+| `domain/locale_ko.sh` | Places `.mo` catalogs + builds the `.so` |
+| `$PREFIX/lib/force_gettext.so` | Runtime-injected shared object |
+
 ## App Installer
 
 Install/remove extra apps, system tools, and Termux API tools via a tabbed GUI:
@@ -129,10 +156,15 @@ app-installer          # Full UI (tabs: Apps | System | Termux API | Wine)
 app-installer wine     # Wine apps only
 ```
 
+Headless CLI (no GUI): `bash app-installer/app-install.sh list|install <id>|remove <id>|status <id>`.
+
 - **Tabbed UI** — Apps / System / Termux API / Wine tabs
 - **Search** — type to filter by name/description (yad notebook, zenity fallback)
 - **Termux native first** — GIMP, Inkscape, Thunderbird install as native
-- **proot auto-routing** — LibreOffice, DBeaver, etc. install inside proot
+- **proot auto-routing** — LibreOffice, VS Code, DBeaver, etc. install inside proot
+- **Upgrade / rollback** — picking an already-installed app that supports upgrading offers
+  *Upgrade* alongside *Remove* (currently Claude Code; it backs up, smoke-tests, and rolls back
+  automatically on failure)
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
@@ -150,6 +182,7 @@ cat         # bat
 gpu-info    # show Adreno GPU model
 zink        # run app with Zink forced
 hud         # run app with FPS overlay
+zrunhud     # run proot app with Zink + FPS overlay
 ```
 
 ## What Gets Installed
@@ -158,10 +191,11 @@ hud         # run app with FPS overlay
 
 | Category | Packages |
 |----------|----------|
-| Base utils | wget, unzip, dbus, pulseaudio, yad, termux-api, xclip |
-| XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, zoxide, lazygit, git-delta, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, onefetch, jq, neofetch |
-| APKs | Termux:X11, Termux:API, Termux:Float |
+| Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
+| XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
+| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
+| APKs | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (optional)
 
@@ -169,6 +203,57 @@ hud         # run app with FPS overlay
 |--------|------|---------------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+> `btop`, GPU acceleration, Korean input, Wine and the rest are **not** part of the base install —
+> they live in `app-installer`. Packages from the TUR / root community repos are deliberately kept
+> out of the base set so a repo outage can never break the installer.
+
+## Wine — Two Backends
+
+You can choose between two Windows-app backends, and **install both side by side**.
+
+| | Wine (Box64+Staging) | Wine (Hangover) |
+|---|---|---|
+| Approach | Emulates all of Wine through Box64 | Wine runs native arm64; **only app binaries** go through FEX/ARM64EC |
+| Speed | Baseline | Faster |
+| Location | inside proot, or glibc-runner | Termux native (no proot needed) |
+| Source | Kron4ek/Wine-Builds tarball | Termux x11-repo `hangover` package |
+| WINEPREFIX | `$HOME/.wine` | `$HOME/.wine-hangover` |
+| Wrapper | `$PREFIX/bin/wine-box64` | `$PREFIX/bin/wine-hangover` |
+
+`wine` on your PATH is a **dispatcher that forwards to the active backend**. Wine apps
+(Notepad++, 7-Zip, SumatraPDF, WinMerge) are installed into whichever backend's
+WINEPREFIX is active at install time.
+
+```bash
+wine-backend              # show active backend + install status
+wine-backend hangover     # switch to Hangover
+wine-backend box64        # switch to Box64 + Wine-Staging
+wine notepad.exe          # run through the active backend
+wine-hangover notepad.exe # target a backend explicitly
+```
+
+> The WINEPREFIXes are deliberately separate: two different Wine builds (wow64 staging
+> vs ARM64EC) sharing one prefix would make `wineboot --update` thrash. After switching
+> backends, reinstall the Wine apps you need in that backend.
+
+## Autostart on Boot
+
+`termux-services` (runit) plus the Termux:Boot APK bring services up right after the
+device boots.
+
+```bash
+sv-enable sshd      # register (starts on boot)
+sv-disable sshd     # unregister
+sv status sshd      # check
+sv up sshd          # start now
+```
+
+The installer creates `~/.termux/boot/start-services`, which takes a `termux-wake-lock`
+and then starts runit. An existing file is never overwritten.
+
+> Android requires the Termux:Boot app to be **opened at least once** after install
+> before it becomes active.
 
 ## Tests
 
@@ -178,6 +263,14 @@ bash app-installer/tests/test_domain_apps.sh  # app installer domain
 bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
+
+Main installer suite: **413** tests across 12 suites (ports 12, adapters 38, adapters_deb 3,
+input_interactive 6, domain_termux 76, domain_xfce 47, domain_proot 51, domain_locale_ko 27,
+app_installer 86, prun_ld_preload 19, install_matrix 22, e2e_install 26).
+The app-installer submodule has its own suites (`test_domain_apps.sh` 173,
+`test_adapters.sh` 26, `test_ports.sh` 11, `test_fetch.sh` 7, `test_proot_path.sh` 6 — **223** total).
+
+> On Arch these are mock / static checks only — final verification needs a real Termux device.
 
 ## Android System Optimization
 
@@ -190,6 +283,10 @@ adb shell "/system/bin/device_config put activity_manager max_phantom_processes 
 ### Disable Battery Optimization
 
 **Android Settings → Apps → Termux** (and Termux:X11) → Battery → **Unrestricted**.
+
+### Wakelock
+
+`termux-wake-lock` is invoked automatically when `startXFCE` runs.
 
 ---
 
@@ -223,8 +320,15 @@ Termux_XFCE/
 ├── tests/                        ← main installer automated tests
 └── app-installer/                ← extra app GUI (Git Submodule)
     ├── install.sh                ← yad notebook tabbed GUI
-    └── domain/installers/        ← per-app install scripts (31 apps)
+    └── domain/installers/        ← per-app install scripts (59 apps)
 ```
+
+## Branch Strategy
+
+| Branch | Purpose |
+|--------|---------|
+| `main` | Stable — real-device tested, for end users |
+| `dev` | In development — merged to main after tests pass |
 
 ## Contributing
 

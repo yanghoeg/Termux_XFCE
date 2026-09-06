@@ -41,7 +41,7 @@ setup_termux_shortcuts() {
     _setup_screenshot
 }
 
-_download_and_open_apk() {
+termux_download_and_open_apk() {
     local apk_url="$1" apk_filename="$2"
     local dl_dir="$HOME/storage/downloads"
     local apk_path="${dl_dir}/${apk_filename}"
@@ -82,19 +82,19 @@ _download_and_open_apk() {
 # setup_termux_x11_apk: display_x11.sh:display_setup_apk()로 이동됨
 
 setup_termux_api_apk() {
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         'https://github.com/termux/termux-api/releases/download/v0.53.0/termux-api-app_v0.53.0+github.debug.apk' \
         'termux-api.apk'
 }
 
 setup_termux_float_apk() {
-    _download_and_open_apk \
+    termux_download_and_open_apk \
         'https://github.com/termux/termux-float/releases/download/v0.17.0/termux-float-app_v0.17.0+github.debug.apk' \
         'termux-float.apk'
 }
 
 setup_termux_widget() {
-    local apk_url='https://github.com/termux/termux-widget/releases/download/v0.13.0/termux-widget_v0.13.0+github-debug.apk'
+    local apk_url='https://github.com/termux/termux-widget/releases/download/v0.15.0/termux-widget-app_v0.15.0+github.debug.apk'
     ui_info "Termux-Widget 설치"
 
     [ -d "$HOME/.shortcuts" ] || mkdir -p "$HOME/.shortcuts"
@@ -103,7 +103,17 @@ setup_termux_widget() {
         ui_warn "startXFCE 단축키가 없습니다. setup_termux_shortcuts 를 먼저 실행하세요."
     fi
 
-    _download_and_open_apk "$apk_url" 'termux-widget.apk'
+    termux_download_and_open_apk "$apk_url" 'termux-widget.apk'
+}
+
+# Termux:Boot — 기기 부팅 시 ~/.termux/boot/ 안의 스크립트를 실행하는 애드온.
+# APK 설치 후 최소 한 번 앱을 열어야 활성화된다(Android 제약).
+setup_termux_boot_apk() {
+    ui_info "Termux:Boot 설치 (부팅 시 서비스 자동 기동)"
+    termux_download_and_open_apk \
+        'https://github.com/termux/termux-boot/releases/download/v0.8.1/termux-boot-app_v0.8.1+github.debug.apk' \
+        'termux-boot.apk'
+    _setup_termux_boot_script
 }
 
 # -----------------------------------------------------------------------------
@@ -145,10 +155,42 @@ _setup_termux_properties() {
     fi
 }
 
+# ~/.termux/boot/start-services — Termux:Boot이 부팅 직후 실행하는 스크립트.
+# termux-services(runit)가 sv-enable로 켜둔 서비스(sshd 등)를 기동한다.
+# 멱등: 이미 있으면 건드리지 않는다 (사용자 커스터마이즈 보존).
+_setup_termux_boot_script() {
+    local boot_dir="$HOME/.termux/boot"
+    local script="$boot_dir/start-services"
+
+    mkdir -p "$boot_dir" || return 0
+    [ -f "$script" ] && return 0
+
+    cat > "$script" << 'BOOTEOF'
+#!/data/data/com.termux/files/usr/bin/sh
+# Termux:Boot — 부팅 시 termux-services(runit) 기동
+# 서비스 켜기/끄기: sv-enable <서비스> / sv-disable <서비스>
+# 상태 확인:      sv status <서비스>
+
+# 활성화된(down 파일이 없는) runit 서비스가 하나라도 있을 때만 wake-lock을 잡는다.
+# 활성 서비스가 없으면 락을 잡지 않아 기기가 deep sleep에 들어갈 수 있다(배터리 절약).
+for _svc in "$PREFIX/var/service/"*; do
+    [ -d "$_svc" ] || continue
+    [ -e "$_svc/down" ] && continue
+    termux-wake-lock
+    break
+done
+
+. "$PREFIX/etc/profile.d/start-services.sh"
+BOOTEOF
+    chmod +x "$script"
+}
+
+# x11-repo만 base에서 미리 켠다 (XFCE/firefox/yad 등 termux-main+x11-repo 패키지에 필요).
+# tur-repo/root-repo는 켜지 않는다 — 커뮤니티/소규모 저장소라 여기서 미리 켜면 그 저장소
+# 장애가 pkg_update를 통해 설치 전체를 깨뜨린다. app-installer가 필요한 앱을 설치할 때
+# termux_pkg_enable_repo tur-repo|root-repo로 온디맨드로 켠다.
 _setup_termux_repos() {
     pkg_is_installed "x11-repo"  || pkg_install x11-repo
-    pkg_is_installed "tur-repo"  || pkg_install tur-repo
-    pkg_is_installed "root-repo" || pkg_install root-repo
     pkg_update
 }
 
@@ -166,8 +208,12 @@ _install_base_packages() {
     # 단, XFCE가 이미 설치된 idempotent 재실행에서는 cascade 제거를 피함
     # — `pkg uninstall dbus` 는 dbus를 require하는 64개 (xfce4, fcitx5 전체) 까지 함께 제거.
     # XFCE가 깔려 있다는 건 이전 설치가 성공했다는 뜻 → dbus 리셋 불필요.
-    if pkg_is_installed "dbus" && ! pkg_is_installed "xfce4-session"; then
+    # 마커 파일로 원샷 처리: 설치가 xfce4-session 이전에 크래시한 뒤 재실행되는 경우,
+    # 매번 dbus를 재제거하면 그 사이 사용자가 설치한 dbus 의존 패키지(예: fcitx5)까지 cascade 제거됨.
+    local dbus_reset_marker="$HOME/.config/termux-xfce/.dbus-reset-done"
+    if pkg_is_installed "dbus" && ! pkg_is_installed "xfce4-session" && [ ! -f "$dbus_reset_marker" ]; then
         pkg_remove dbus
+        mkdir -p "$(dirname "$dbus_reset_marker")" && : > "$dbus_reset_marker"
     fi
 
     local total=${#all_pkgs[@]} i=0
@@ -216,9 +262,11 @@ export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
 # XDG_RUNTIME_DIR은 _setup_xdg_runtime 블록에서 관리 (mode 700 user-private)
-export XMODIFIERS="@im=nimf"
-export GTK_IM_MODULE=nimf
-export QT_IM_MODULE=nimf
+if command -v nimf >/dev/null 2>&1; then
+    export XMODIFIERS="@im=nimf"
+    export GTK_IM_MODULE=nimf
+    export QT_IM_MODULE=nimf
+fi
 LOCALE
 )
 
@@ -312,43 +360,37 @@ GPU
 _setup_zsh_p10k() {
     command -v zsh &>/dev/null || return 0
 
-    # zsh를 기본 쉘로 설정 — Termux의 chsh는 ~/.termux/shell 심볼릭 링크로 관리됨
-    # (일반 Linux의 /etc/passwd 기반 getent는 Termux에선 빈값 반환 → 기존 getent 분기는 사실상 항상 실패)
-    local zsh_path
-    zsh_path=$(command -v zsh)
-    local current_shell
-    current_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
-    if [ "$current_shell" != "$zsh_path" ]; then
-        chsh -s zsh 2>/dev/null || true
-    fi
-
-    # Powerlevel10k 설치
+    # Powerlevel10k 설치 — 실패하면 zsh 전환 자체를 건너뜀(chsh/zshrc 변경 없음).
+    # set -euo pipefail 하에서 네트워크 실패로 clone이 죽으면 이후 로그인 셸이 이미
+    # zsh로 바뀐 채 ~/.zshrc가 없는 상태로 install 전체가 중단되는 걸 방지.
     local p10k_dir="$HOME/powerlevel10k"
     if [ ! -d "$p10k_dir" ]; then
         ui_info "Powerlevel10k 설치 중..."
-        git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"
+        if ! git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$p10k_dir"; then
+            ui_warn "Powerlevel10k 설치 실패 — zsh 전환을 건너뜁니다"
+            return 0
+        fi
     fi
 
-    # zsh 플러그인 설치
+    # zsh 플러그인 설치 — 실패해도 계속 진행(zshrc가 [[ -f ... ]] && source 로 방어)
     local plugin_dir="$HOME/.zsh/plugins"
     mkdir -p "$plugin_dir"
     if [ ! -d "$plugin_dir/zsh-autosuggestions" ]; then
         ui_info "zsh-autosuggestions 설치 중..."
         git clone --depth=1 https://github.com/zsh-users/zsh-autosuggestions \
-            "$plugin_dir/zsh-autosuggestions"
+            "$plugin_dir/zsh-autosuggestions" || ui_warn "zsh-autosuggestions 설치 실패 — 건너뜁니다"
     fi
     if [ ! -d "$plugin_dir/zsh-syntax-highlighting" ]; then
         ui_info "zsh-syntax-highlighting 설치 중..."
         git clone --depth=1 https://github.com/zsh-users/zsh-syntax-highlighting \
-            "$plugin_dir/zsh-syntax-highlighting"
+            "$plugin_dir/zsh-syntax-highlighting" || ui_warn "zsh-syntax-highlighting 설치 실패 — 건너뜁니다"
     fi
 
-    # ~/.zshrc 생성 (없는 경우에만)
+    # ~/.zshrc: 없으면 신규 생성, 있으면 p10k 블록만 멱등 추가(사용자 커스터마이즈 보존)
     local zshrc="$HOME/.zshrc"
-    [ -f "$zshrc" ] && return 0
-
-    ui_info "$HOME/.zshrc 생성"
-    cat > "$zshrc" << 'ZSHRC'
+    if [ ! -f "$zshrc" ]; then
+        ui_info "$HOME/.zshrc 생성"
+        cat > "$zshrc" << 'ZSHRC'
 # Enable Powerlevel10k instant prompt. Should stay close to the top of ~/.zshrc.
 if [[ -r "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh" ]]; then
   source "${XDG_CACHE_HOME:-$HOME/.cache}/p10k-instant-prompt-${(%):-%n}.zsh"
@@ -398,6 +440,32 @@ export EDITOR=nano
 export VISUAL=nano
 export PATH="$HOME/.local/bin:$PREFIX/bin:$PATH"
 ZSHRC
+    else
+        local block
+        block=$(cat << 'P10KBLOCK'
+
+# termux-xfce-p10k
+[[ -f ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh ]] && \
+    source ~/.zsh/plugins/zsh-autosuggestions/zsh-autosuggestions.zsh
+[[ -f ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh ]] && \
+    source ~/.zsh/plugins/zsh-syntax-highlighting/zsh-syntax-highlighting.zsh
+source ~/powerlevel10k/powerlevel10k.zsh-theme
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+P10KBLOCK
+)
+        _append_to_rc "# termux-xfce-p10k" "$block" "$zshrc"
+    fi
+
+    # zsh를 기본 쉘로 설정 — Termux의 chsh는 ~/.termux/shell 심볼릭 링크로 관리됨
+    # (일반 Linux의 /etc/passwd 기반 getent는 Termux에선 빈값 반환 → 기존 getent 분기는 사실상 항상 실패)
+    # p10k + ~/.zshrc가 준비된 뒤 마지막에 실행 — 실패해도 위 단계는 이미 완료된 상태.
+    local zsh_path
+    zsh_path=$(command -v zsh)
+    local current_shell
+    current_shell=$(readlink "$HOME/.termux/shell" 2>/dev/null || echo "")
+    if [ "$current_shell" != "$zsh_path" ]; then
+        chsh -s zsh 2>/dev/null || true
+    fi
 }
 
 _setup_korean_env() {
@@ -413,7 +481,7 @@ _setup_korean_env() {
 [Desktop Entry]
 Type=Application
 Name=Nimf
-Exec=nimf
+Exec=bash -c "pgrep -x nimf >/dev/null 2>&1 || exec nimf"
 Hidden=false
 X-GNOME-Autostart-enabled=true
 EOF
@@ -436,9 +504,11 @@ _install_nimf_native() {
     command -v nimf &>/dev/null && return 0
 
     local url="https://github.com/yanghoeg/Termux_XFCE/releases/download/nimf-termux-v1.4.19/nimf_1.4.19_aarch64.deb"
+    # nimf-termux-v1.4.19 태그 고정 릴리스 .deb의 sha256 (무결성 검증용)
+    local sha256="42e6f5a27ec99bc26b2492e08181d433caf26a3832867eef664bb935144c7fbe"
 
     ui_info "nimf 한글 입력기 설치 중..."
-    pkg_install_deb_url "$url" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
+    pkg_install_deb_url "$url" "$sha256" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
 
     # 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
     command -v nimf &>/dev/null || return 1
@@ -527,7 +597,7 @@ if [ $# -eq 0 ]; then
         -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
 else
     exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "$@"
+        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" bash --login -c 'exec "$@"' prun "$@"
 fi
 EOF
 
@@ -574,7 +644,9 @@ _migrate_desktop_to_prun_gui() {
         grep -q "prun-gui" "$f" 2>/dev/null && continue
         # prun을 사용하는 .desktop만 대상
         grep -q "prun " "$f" 2>/dev/null || continue
-        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-)
+        # Name= 라인이 없으면 grep이 exit 1 → pipefail 하에서 전체 마이그레이션이
+        # 중단되므로 관대 처리(다음 줄이 이미 "App" 기본값으로 처리)
+        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-) || true
         app_name="${app_name:-App}"
         # 홑따옴표 안에 리터럴 작은따옴표를 넣기 위한 셸 이스케이프: ' → '\''
         app_name="${app_name//\'/\'\\\'\'}"

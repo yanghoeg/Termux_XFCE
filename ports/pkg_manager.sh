@@ -137,27 +137,3 @@ _pkg_manager_check() {
 #   반환: 0=성공, 1=실패
 # proot_pkg_update_root() { ... }
 
-# -----------------------------------------------------------------------------
-# proot 비표준 설치 (공식 repo에 없는 패키지) — distro별 HOW를 어댑터에 은닉
-# 도메인은 "무엇을 설치할지"만 알고, apt/dpkg/pacman/yay 등 명령은 모른다.
-# 해당 distro 어댑터에만 존재하면 됨 (native/타 distro는 stub).
-# -----------------------------------------------------------------------------
-
-# proot_pkg_install_deb_url <url...>
-#   설명: URL의 .deb 파일들을 proot 내부에 다운로드 후 설치 (의존성 자동 해결)
-#   용도: 공식 apt repo에 없는 패키지(nimf 등)를 GitHub Releases에서 직접 설치
-#   인자: $@ = .deb 다운로드 URL 목록
-#   반환: 0=성공 (개별 실패는 관대 처리)
-# proot_pkg_install_deb_url() { ... }
-
-# proot_aur_install <package...>
-#   설명: AUR 헬퍼(yay)로 proot 내부에 패키지 설치 (Arch 전용)
-#   인자: $@ = 패키지 이름 목록
-#   반환: 0=성공, 1=실패
-# proot_aur_install() { ... }
-
-# proot_ensure_aur_helper
-#   설명: AUR 헬퍼(yay)가 없으면 빌드/설치 (Arch 전용, 멱등성)
-#   인자: 없음
-#   반환: 0=사용 가능, 1=실패
-# proot_ensure_aur_helper() { ... }

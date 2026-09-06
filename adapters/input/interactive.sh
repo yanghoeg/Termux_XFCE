@@ -6,6 +6,16 @@
 # PROOT_DISTRO, PROOT_USER 등이 비어있을 때 사용자에게 물어봄
 # =============================================================================
 
+# 다이얼로그 취소(Cancel/ESC) 처리 — zenity/yad의 ui_select·ui_input은 취소 시 return 1
+# (adapters/output/ui_zenity.sh, ui_yad.sh). set -e 하에서 이를 방치하면 install.sh의
+# EXIT 트랩이 "[ERROR] 설치 실패"를 출력해 사용자가 실제 오류로 오인한다.
+# 여기서 취소를 명시적으로 잡아 안내 메시지를 보여주고, install.sh 트랩이 예외 처리하는
+# 130(SIGINT 관례)으로 종료해 실패 메시지가 뜨지 않게 한다.
+_interactive_cancel() {
+    ui_info "설치를 취소했습니다."
+    exit 130
+}
+
 resolve_interactive_inputs() {
     # proot 설치 여부
     if [ "${SKIP_PROOT:-false}" = "false" ] && [ -z "${PROOT_DISTRO:-}" ]; then
@@ -15,7 +25,7 @@ resolve_interactive_inputs() {
             "설치할 Linux 환경을 선택하세요 (Termux native XFCE는 항상 설치됩니다):" \
             "ubuntu" \
             "archlinux" \
-            "없음 (Termux native만)")
+            "없음 (Termux native만)") || _interactive_cancel
 
         case "$distro_choice" in
             "없음 (Termux native만)")
@@ -31,7 +41,7 @@ resolve_interactive_inputs() {
 
     # proot를 실제로 설치할 때만 사용자 이름을 묻는다.
     if [ "${SKIP_PROOT:-false}" != "true" ] && [ -z "${PROOT_USER:-}" ]; then
-        PROOT_USER=$(ui_input "사용자 이름(id)을 입력하세요" "user")
+        PROOT_USER=$(ui_input "사용자 이름(id)을 입력하세요" "user") || _interactive_cancel
         export PROOT_USER
     fi
 
@@ -45,7 +55,7 @@ resolve_interactive_inputs() {
                 "디스플레이 서버 선택" \
                 "XFCE를 실행할 디스플레이 서버를 선택하세요:" \
                 "x11 (termux-x11 — 기본 권장)" \
-                "wayland (labwc — 실험적, 이슈 많음)")
+                "wayland (labwc — 실험적, 이슈 많음)") || _interactive_cancel
 
             case "$display_choice" in
                 wayland*) DISPLAY_SERVER="wayland" ;;

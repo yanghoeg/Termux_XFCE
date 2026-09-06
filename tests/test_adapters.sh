@@ -34,9 +34,6 @@ _test_pkg_termux_contract() {
     assert_cmd_exists proot_pkg_autoremove
     assert_cmd_exists proot_pkg_is_installed
     assert_cmd_exists pkg_install_deb_url
-    assert_cmd_exists proot_pkg_install_deb_url
-    assert_cmd_exists proot_aur_install
-    assert_cmd_exists proot_ensure_aur_helper
 }
 it "모든 계약 함수가 선언되어 있다" _test_pkg_termux_contract
 
@@ -172,101 +169,6 @@ _test_proot_pkg_autoremove_error() {
 }
 it "proot_pkg_autoremove는 에러 메시지를 출력한다" _test_proot_pkg_autoremove_error
 
-_test_proot_deb_url_stub_error() {
-    source "${ADAPTER_DIR}/pkg_termux.sh"
-    local out
-    out=$(proot_pkg_install_deb_url "http://x/y.deb" 2>&1) || true
-    assert_output_contains "$out" "ERROR"
-}
-it "proot_pkg_install_deb_url는 native에서 에러를 출력한다" _test_proot_deb_url_stub_error
-
-_test_proot_aur_stub_error() {
-    source "${ADAPTER_DIR}/pkg_termux.sh"
-    local out
-    out=$(proot_aur_install nimf 2>&1) || true
-    assert_output_contains "$out" "ERROR"
-}
-it "proot_aur_install는 native에서 에러를 출력한다" _test_proot_aur_stub_error
-
-# =============================================================================
-# pkg_ubuntu.sh — proot_pkg_install_deb_url (HOW: apt/dpkg 은닉 검증)
-# proot_exec를 스파이로 교체해 도메인에서 사라진 raw 명령이 어댑터에 있는지 확인
-# =============================================================================
-
-describe "pkg_ubuntu.sh — proot_pkg_install_deb_url"
-
-_test_ubuntu_deb_url_uses_dpkg_and_apt_fix() {
-    source "${ADAPTER_DIR}/pkg_ubuntu.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_pkg_install_deb_url "https://example.com/nimf_1.4.17.deb"
-
-    assert_file_contains "$log" "wget"
-    assert_file_contains "$log" "sudo dpkg -i"
-    assert_file_contains "$log" "nimf_1.4.17.deb"
-    assert_file_contains "$log" "sudo apt-get install -f -y"
-    rm -f "$log"
-}
-it "URL .deb를 dpkg로 설치하고 apt-get -f로 의존성을 해결한다" _test_ubuntu_deb_url_uses_dpkg_and_apt_fix
-
-_test_ubuntu_deb_url_installs_each_url() {
-    source "${ADAPTER_DIR}/pkg_ubuntu.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_pkg_install_deb_url "https://x/a.deb" "https://x/b.deb"
-
-    assert_file_contains "$log" "a.deb"
-    assert_file_contains "$log" "b.deb"
-    rm -f "$log"
-}
-it "여러 URL을 각각 설치한다" _test_ubuntu_deb_url_installs_each_url
-
-# =============================================================================
-# pkg_arch.sh — proot_ensure_aur_helper / proot_aur_install (HOW: pacman/yay 은닉)
-# =============================================================================
-
-describe "pkg_arch.sh — AUR 헬퍼"
-
-_test_arch_ensure_aur_helper_builds_yay() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_ensure_aur_helper
-
-    assert_file_contains "$log" "yay-bin"
-    assert_file_contains "$log" "makepkg -si --noconfirm"
-    assert_file_contains "$log" "git base-devel"
-    assert_file_contains "$log" "command -v yay"
-    rm -f "$log"
-}
-it "yay가 없으면 yay-bin을 AUR에서 빌드한다" _test_arch_ensure_aur_helper_builds_yay
-
-_test_arch_ensure_aur_helper_uses_bash_c() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local first=""
-    proot_exec() { [ -z "$first" ] && first="$1"; return 0; }
-
-    proot_ensure_aur_helper
-
-    assert_eq "bash" "$first" "proot_exec bash -c 형태로 호출돼야 한다"
-}
-it "proot_exec bash -c 형태로 호출된다" _test_arch_ensure_aur_helper_uses_bash_c
-
-_test_arch_aur_install_uses_yay() {
-    source "${ADAPTER_DIR}/pkg_arch.sh"
-    local log; log=$(mktemp)
-    proot_exec() { echo "$*" >> "$log"; return 0; }
-
-    proot_aur_install nimf
-
-    assert_file_contains "$log" "yay -S --noconfirm --needed nimf"
-    rm -f "$log"
-}
-it "proot_aur_install은 yay -S로 설치한다" _test_arch_aur_install_uses_yay
-
 # =============================================================================
 # script_builder_zenity.sh — 스크립트 빌더 직접 테스트
 # =============================================================================
@@ -296,6 +198,22 @@ _test_sb_start_xfce_has_display_detection() {
     cleanup_sandbox "$sb"
 }
 it "DISPLAY 자동 감지 로직이 있다" _test_sb_start_xfce_has_display_detection
+
+_test_sb_start_xfce_no_socket_rescan() {
+    source "${ADAPTER_DIR}/display_x11.sh"
+    source "${ADAPTER_DIR}/script_builder_zenity.sh"
+    local sb; sb=$(make_sandbox)
+    local out="${sb}/startXFCE"
+    script_build_start_xfce "$out"
+    # display_emit_session_detect의 _EXISTING_SOCK=... 재스캔(다른 목적: 기존 세션 감지)은
+    # 유지되므로, display_emit_server_start가 재스캔으로 DISPLAY_NUM을 다시 뽑아내던
+    # `DISPLAY_NUM=$(basename ...)` 패턴만 특정해서 검사
+    assert_file_not_contains "$out" 'DISPLAY_NUM=\$(basename'
+    assert_file_contains "$out" 'DISPLAY_NUM=$_DTRY'
+    bash -n "$out"
+    cleanup_sandbox "$sb"
+}
+it "X11 startXFCE는 띄운 디스플레이 번호를 그대로 쓴다 (ls|head 재스캔 없음)" _test_sb_start_xfce_no_socket_rescan
 
 _test_sb_start_xfce_pulse_no_idle_exit() {
     source "${ADAPTER_DIR}/display_x11.sh"
@@ -504,5 +422,35 @@ _test_display_x11_emit_clipboard_valid() {
     echo "$frag" | bash -n
 }
 it "display_emit_clipboard_sync이 유효한 bash를 출력한다" _test_display_x11_emit_clipboard_valid
+
+# =============================================================================
+# display_common.sh — x11/wayland 공유 세션 킬 로직
+# =============================================================================
+
+describe "display_common.sh — x11/wayland 공유"
+
+_test_display_common_sourced_by_both_adapters() {
+    grep -q 'source .*display_common\.sh' "${ADAPTER_DIR}/display_x11.sh" \
+        && grep -q 'source .*display_common\.sh' "${ADAPTER_DIR}/display_wayland.sh"
+}
+it "display_x11.sh와 display_wayland.sh가 display_common.sh를 source한다" _test_display_common_sourced_by_both_adapters
+
+_test_display_common_x11_emits_bare_kill_orphans() {
+    ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) \
+        | grep -qx '    _kill_orphans'
+}
+it "display_x11.sh가 방출하는 텍스트는 인자 없는 _kill_orphans를 호출한다" _test_display_common_x11_emits_bare_kill_orphans
+
+_test_display_common_wayland_emits_kill_orphans_labwc() {
+    ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) \
+        | grep -qx '    _kill_orphans labwc'
+}
+it "display_wayland.sh가 방출하는 텍스트는 _kill_orphans labwc를 호출한다" _test_display_common_wayland_emits_kill_orphans_labwc
+
+_test_display_common_emit_has_no_placeholder() {
+    ! ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON' \
+    && ! ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON'
+}
+it "방출된 텍스트에 __DISPLAY_COMMON 플레이스홀더가 남지 않는다" _test_display_common_emit_has_no_placeholder
 
 print_results

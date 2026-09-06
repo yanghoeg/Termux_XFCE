@@ -6,8 +6,8 @@
 # domain setup_* 함수의 호출 여부를 트레이스로 검증.
 #
 # - 실제 설치는 하지 않음 (모든 setup_* 함수는 _INSTALL_HOOK으로 스텁 교체)
-# - distro × proot-only × no-proot × gpu × gpu-dev × korean × korean-locale
-#   = 의미 있는 조합 14개 커버
+# - distro × proot-only × no-proot × config 보존(PROOT_SHELL/DISPLAY_SERVER) 조합 커버
+#   (케이스 수 = `bash tests/test_install_matrix.sh`가 출력하는 it 항목 수)
 # =============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -39,6 +39,8 @@ setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
 display_setup_apk()       { _trace "display_setup_apk"; }
 setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
 setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
+setup_termux_widget()     { _trace "setup_termux_widget"; }
+setup_termux_boot_apk()   { _trace "setup_termux_boot_apk"; }
 
 # proot setup
 setup_proot_install()         { _trace "setup_proot_install"; }
@@ -128,6 +130,54 @@ _test_minimal_native() {
     _assert_not_traced "setup_proot_install"
 }
 it "최소 native (no-proot) — companion APK 포함, proot 없음" _test_minimal_native
+
+_test_fancybash_failure_does_not_abort_install() {
+    # setup_xfce_fancybash가 실패해도 install.sh 전체가 rc 0으로 끝나야 함
+    # (fancybash 호출은 readlink "$HOME/.termux/shell"이 */zsh로 안 끝날 때만 발생하므로
+    #  샌드박스 HOME에는 해당 심볼릭 링크가 없다 — _run_install의 sandbox HOME이 그 조건 충족)
+    cat > "$HOOK_FILE" << 'HOOK_EOF'
+_trace() { printf '%s\n' "$*" >> "${_TRACE_FILE}"; }
+setup_termux_base()       { _trace "setup_termux_base"; }
+setup_xfce_packages()     { _trace "setup_xfce_packages"; }
+setup_xfce_theme()        { _trace "setup_xfce_theme"; }
+setup_xfce_fonts()        { _trace "setup_xfce_fonts"; }
+setup_xfce_wallpaper()    { _trace "setup_xfce_wallpaper"; }
+setup_xfce_fancybash()    { _trace "setup_xfce_fancybash $*"; return 1; }
+setup_xfce_autostart()    { _trace "setup_xfce_autostart"; }
+setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
+display_setup_apk()       { _trace "display_setup_apk"; }
+setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
+setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
+setup_termux_widget()     { _trace "setup_termux_widget"; }
+setup_termux_boot_apk()   { _trace "setup_termux_boot_apk"; }
+setup_proot_install()         { _trace "setup_proot_install"; }
+setup_proot_update()          { _trace "setup_proot_update"; }
+setup_proot_user()            { _trace "setup_proot_user"; }
+setup_proot_base_packages()   { _trace "setup_proot_base_packages"; }
+setup_proot_env()             { _trace "setup_proot_env"; }
+setup_proot_timezone()        { _trace "setup_proot_timezone"; }
+setup_proot_fancybash()       { _trace "setup_proot_fancybash"; }
+setup_proot_hardware_accel()  { _trace "setup_proot_hardware_accel"; }
+setup_proot_cursor_theme()    { _trace "setup_proot_cursor_theme"; }
+setup_proot_conky()           { _trace "setup_proot_conky"; }
+setup_proot_alias()           { _trace "setup_proot_alias"; }
+termux-setup-storage()    { _trace "termux-setup-storage"; }
+termux-reload-settings()  { _trace "termux-reload-settings"; return 0; }
+sleep()                   { :; }
+ui_info()  { :; }
+ui_warn()  { :; }
+ui_error() { echo "ERROR: $*" >&2; }
+HOOK_EOF
+
+    local rc=0
+    _run_install --no-proot || rc=$?
+
+    # 훅 파일을 원래 상태로 복원 — 이후 테스트에 영향 없게
+    _write_hook_file
+
+    assert_zero "$rc" "setup_xfce_fancybash 실패해도 install.sh는 rc 0으로 끝나야 함"
+}
+it "setup_xfce_fancybash 실패해도 install.sh 전체는 중단되지 않는다" _test_fancybash_failure_does_not_abort_install
 
 # =============================================================================
 # 매트릭스 2: --proot-only (proot만, native 생략)
@@ -307,6 +357,114 @@ _test_config_file_no_distro_when_no_proot() {
     rm -rf "$sandbox"
 }
 it "no-proot일 때 config의 PROOT_DISTRO는 빈 문자열" _test_config_file_no_distro_when_no_proot
+
+_test_config_preserves_proot_shell_zsh() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="x11"
+PROOT_SHELL="zsh"
+EOF
+
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "--proot-only 재실행해도 기존 PROOT_SHELL=zsh가 유지된다 (never reset)" _test_config_preserves_proot_shell_zsh
+
+_test_config_merge_tolerates_missing_keys() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+DISPLAY_SERVER="x11"
+EOF
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "구버전 config(키 누락) 병합은 크래시 없이 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="bash"'
+    rm -rf "$sandbox"
+}
+it "구버전 config(키 누락)로 재실행해도 크래시 없이 병합된다" _test_config_merge_tolerates_missing_keys
+
+_test_config_records_explicit_proot_shell() {
+    local sandbox; sandbox=$(mktemp -d)
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+    PROOT_SHELL=zsh \
+        bash "$REPO_ROOT/install.sh" --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "PROOT_SHELL=zsh 신규 설치는 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "PROOT_SHELL=zsh 신규 설치는 config에 zsh를 기록한다" _test_config_records_explicit_proot_shell
+
+_test_config_explicit_shell_overrides_existing() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="x11"
+PROOT_SHELL="bash"
+EOF
+
+    local rc=0
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+    PROOT_SHELL=zsh \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user testuser \
+        >/dev/null 2>&1 || rc=$?
+
+    assert_zero "$rc" "PROOT_SHELL=zsh로 기존 config 덮어쓰기는 rc 0이어야 함"
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PROOT_SHELL="zsh"'
+    rm -rf "$sandbox"
+}
+it "PROOT_SHELL=zsh는 기존 config의 값을 덮어쓴다" _test_config_explicit_shell_overrides_existing
+
+_test_config_preserves_display_server_on_proot_only() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+INSTALL_ARCH="aarch64"
+DISPLAY_SERVER="wayland"
+PROOT_SHELL="bash"
+EOF
+
+    # --display 미지정 → 이번 실행값은 기본 x11로 계산되지만, PROOT_ONLY=true이므로
+    # 기존 wayland를 유지해야 한다.
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'DISPLAY_SERVER="wayland"'
+    rm -rf "$sandbox"
+}
+it "--proot-only 재실행은 기존 DISPLAY_SERVER를 유지한다" _test_config_preserves_display_server_on_proot_only
 
 # =============================================================================
 # 정리
