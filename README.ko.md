@@ -74,6 +74,8 @@ archlinux          # Arch Linux proot 진입
 prun libreoffice   # proot 앱을 Termux에서 직접 실행
 cp2menu            # proot .desktop 파일을 XFCE 메뉴에 복사
 app-installer      # 앱 추가 설치/제거 GUI
+screenshot [full|region|window]   # 세션 인식 스크린샷
+kill_display_session              # XFCE 세션·디스플레이 서버 종료
 ```
 
 ## GPU 가속
@@ -135,7 +137,9 @@ XFCE 메뉴/설정/앱 UI를 한글로 표시합니다. Termux의 bionic libc가
 > 이 접근법은 **미코(미니기기 코리아) — 흡혈귀왕님**이 공유해 주신 방법을 바탕으로 구현되었습니다. 🙏
 
 한글 입력기(fcitx5), 한글 로케일은 `app-installer`에서 설치할 수 있습니다.
-proot 내부 한글 IME(로케일 + nimf/fcitx5)는 `app-installer`의 별도 항목 `korean_proot`입니다.
+proot 내부 한글 IME(로케일 + nimf/fcitx5)는 `app-installer`의 별도 항목 `korean_proot`이며,
+로케일·IM 환경변수를 `/etc/profile.d/termux-xfce-locale.sh`에 기록해 모든 로그인 셸에 반영합니다
+(Arch의 `~/.bash_profile` → `~/.bashrc` 체인은 `~/.profile`을 읽지 않기 때문입니다).
 
 | 파일 | 역할 |
 |------|------|
@@ -157,6 +161,7 @@ cat         # bat
 gpu-info    # Adreno GPU 모델 확인
 zink        # Zink 강제 지정으로 앱 실행
 hud         # FPS 오버레이로 앱 실행
+zrunhud     # proot 앱을 Zink + FPS 오버레이로 실행
 ```
 
 ## 설치 구성
@@ -165,9 +170,10 @@ hud         # FPS 오버레이로 앱 실행
 
 | 분류 | 패키지 |
 |------|--------|
-| 기본 유틸 | wget, unzip, dbus, pulseaudio, yad, termux-api, termux-services, xclip |
-| XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch |
+| 기본 유틸 | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
+| XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
+| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
 | APK | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (선택)
@@ -176,6 +182,10 @@ hud         # FPS 오버레이로 앱 실행
 |--------|------|-----------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+> `btop`·GPU 가속·한글 입력기·Wine 등은 기본 설치에 **포함되지 않고** `app-installer` 항목입니다.
+> TUR·root 커뮤니티 저장소 패키지는 저장소 장애가 설치 전체를 깨뜨리지 않도록 기본 세트에서
+> 의도적으로 제외했습니다.
 
 ## App Installer
 
@@ -191,7 +201,9 @@ app-installer wine     # Wine 앱만
 - **탭 기반 UI** — 앱 / 시스템 / Termux API / Wine 탭으로 분류
 - **검색** — 이름/설명 타이핑으로 즉시 필터링 (yad notebook, zenity 폴백)
 - **Termux native 우선** — GIMP, Inkscape, Thunderbird 등은 네이티브 설치
-- **proot 자동 라우팅** — LibreOffice, DBeaver 등은 proot 내부 설치
+- **proot 자동 라우팅** — LibreOffice, VS Code, DBeaver 등은 proot 내부 설치
+- **업그레이드 / 롤백** — 이미 설치된 앱이 업그레이드를 지원하면 *제거* 옆에 *업그레이드*가
+  함께 표시됩니다 (현재 Claude Code — 백업 → 스모크 테스트 → 실패 시 자동 롤백)
 
 소스: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 

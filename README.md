@@ -74,6 +74,8 @@ archlinux          # Enter Arch Linux proot
 prun libreoffice   # Run proot app from Termux terminal
 cp2menu            # Copy proot .desktop files to XFCE menu
 app-installer      # GUI for installing/removing extra apps
+screenshot [full|region|window]   # Session-aware screenshot
+kill_display_session              # Shut the XFCE session / display server down
 ```
 
 ## GPU Acceleration
@@ -135,7 +137,9 @@ Displays the XFCE menu/settings/app UI in Korean. Since Termux's bionic libc doe
 > This approach is implemented based on a method shared by 미코 (Minigi Korea) community member 흡혈귀왕. 🙏
 
 Korean input (fcitx5) and the Korean locale can be installed via `app-installer`.
-Korean IME *inside* the proot distro (locale + nimf/fcitx5) is a separate `app-installer` item: `korean_proot`.
+Korean IME *inside* the proot distro (locale + nimf/fcitx5) is a separate `app-installer` item: `korean_proot`;
+it writes the locale and IME variables to `/etc/profile.d/termux-xfce-locale.sh` so every login shell
+picks them up (Arch's `~/.bash_profile` → `~/.bashrc` chain never reads `~/.profile`).
 
 | File | Role |
 |------|------|
@@ -157,7 +161,10 @@ Headless CLI (no GUI): `bash app-installer/app-install.sh list|install <id>|remo
 - **Tabbed UI** — Apps / System / Termux API / Wine tabs
 - **Search** — type to filter by name/description (yad notebook, zenity fallback)
 - **Termux native first** — GIMP, Inkscape, Thunderbird install as native
-- **proot auto-routing** — LibreOffice, DBeaver, etc. install inside proot
+- **proot auto-routing** — LibreOffice, VS Code, DBeaver, etc. install inside proot
+- **Upgrade / rollback** — picking an already-installed app that supports upgrading offers
+  *Upgrade* alongside *Remove* (currently Claude Code; it backs up, smoke-tests, and rolls back
+  automatically on failure)
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
@@ -175,6 +182,7 @@ cat         # bat
 gpu-info    # show Adreno GPU model
 zink        # run app with Zink forced
 hud         # run app with FPS overlay
+zrunhud     # run proot app with Zink + FPS overlay
 ```
 
 ## What Gets Installed
@@ -183,9 +191,10 @@ hud         # run app with FPS overlay
 
 | Category | Packages |
 |----------|----------|
-| Base utils | wget, unzip, dbus, pulseaudio, yad, termux-api, termux-services, xclip |
-| XFCE | xfce4, xfce4-goodies, firefox, papirus-icon-theme, termux-x11-nightly |
-| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, btop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch |
+| Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
+| XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
+| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
 | APKs | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (optional)
@@ -194,6 +203,10 @@ hud         # run app with FPS overlay
 |--------|------|---------------|
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
+
+> `btop`, GPU acceleration, Korean input, Wine and the rest are **not** part of the base install —
+> they live in `app-installer`. Packages from the TUR / root community repos are deliberately kept
+> out of the base set so a repo outage can never break the installer.
 
 ## Wine — Two Backends
 
