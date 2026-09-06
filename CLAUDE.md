@@ -90,10 +90,9 @@ Termux_XFCE/
 
 ## 남은 TODO (실기기 검증 — PC에서는 mock/정적 검사만 가능)
 
-1. Claude Code 2.1.261 `/login` (회귀 시 `app-installer/docs/claude-code-login-regression.md` 롤백 절차)
-   — 재설치가 실행 중인 CLI 세션을 교체하므로 세션 종료 후 진행
+없음 — 아래 5항목 모두 실기기 검증 완료.
 
-### 완료 (2026-09-05 실기기 검증)
+### 완료 (2026-09-05~06 실기기 검증)
 
 - `prun` GPU env(`/etc/profile.d/termux-xfce-env.sh`) 전파 확인
 - zsh + Powerlevel10k 설정 순서 검증(`_setup_zsh_p10k` → `_setup_aliases`, 코드 수정 불필요)
@@ -101,6 +100,8 @@ Termux_XFCE/
 - `korean_proot` 로케일: Arch `~/.bash_profile→~/.bashrc` 체인이 `~/.profile`을 무시하는 버그를
   근본 수정 — `/etc/profile.d/termux-xfce-locale.sh`(모든 로그인 셸 경유)에 `export`로 이전.
   실기기에서 `LANG=ko_KR.UTF-8`·IM env 자식 프로세스 전파 확인
+- Claude Code 2.1.261 `/login` 2026-09-06 검증 완료 (세션 보존 스왑으로 업그레이드 후
+  `/login` 정상. 회귀 시 롤백: `app_rollback_claude_code 2.1.132`)
 
 ## 주의사항
 
