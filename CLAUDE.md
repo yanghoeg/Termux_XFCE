@@ -124,8 +124,9 @@ Termux_XFCE/
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
   - Wayland 어댑터(`display_wayland.sh`): Anland 5.13.3 + 패치 KWin + **KDE Plasma** (ARM64 Adreno)
-    — XFCE는 KWin에서 배경화면(wlr-layer-shell)·태스크리스트(wlr-foreign-toplevel)·배율(XSETTINGS)이
-    모두 불가하므로 Wayland 경로만 Plasma를 쓴다. `kwin-anland`의 `Provides: kwin-x11`이
+    — XFCE 4.20은 KWin에서 쓸 만한 데스크탑이 되지 않는다(패널·설정 데몬이
+    wlr-foreign-toplevel/ext-workspace/wlr-output-management 미지원 보고, 배율은
+    X11 XSETTINGS 필요, xfdesktop 배경화면 미출력). `kwin-anland`의 `Provides: kwin-x11`이
     `plasma-workspace` 의존을 충족해 Termux `kwin-x11`은 끌려오지 않는다.
     세션은 `startplasma-wayland`가 고른 Wayland 소켓 이름을 `anland-ready`에 기록한다.
   - `display_preflight`는 변경 전 지원 기기 검사, `display_setup_runtime`은 버전·SHA-256 고정 패키지 설치

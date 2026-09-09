@@ -4,13 +4,23 @@
 (patched KWin) → KDE Plasma**. The launcher no longer starts Termux:X11 or nested-X11
 labwc.
 
-The Wayland session runs Plasma, not XFCE. XFCE 4.20 has no working desktop on KWin:
-xfdesktop needs `wlr-layer-shell` for its wallpaper surface, the panel's tasklist needs
-`wlr-foreign-toplevel-management`, and XFCE applies scaling through the X11 XSETTINGS
-selection — KWin implements none of these, and forcing the session onto Xwayland
-instead crashed Xwayland in Mesa's freedreno a6xx texture path. Plasma uses KWin's own
-protocols, so wallpaper, per-output scaling, tasklist and display settings all work.
-XFCE stays installed and is still what `--display x11` runs.
+The Wayland session runs Plasma, not XFCE. On this device XFCE 4.20 did not produce a
+usable desktop on KWin. What was actually observed:
+
+* `xfce4-panel`, `xfsettingsd` and `xfdesktop` reported the compositor missing
+  `wlr_foreign_toplevel_manager_v1`, `ext_workspace_manager_v1` and
+  `wlr-output-management`, which disables the tasklist, show-desktop, intellihide and
+  the display-settings dialog.
+* `xfdesktop` ran but drew no desktop, so there was no wallpaper. The cause was not
+  established — note that KWin does implement `zwlr_layer_shell_v1`, so a missing
+  layer-shell is not the explanation.
+* XFCE applies scaling through the X11 XSETTINGS selection, which a Wayland-mode
+  `xfsettingsd` does not own, so `/Gdk/WindowScalingFactor` had no effect.
+* Running the whole session on Xwayland instead crashed Xwayland in Mesa's freedreno
+  a6xx texture path (`fd6_texture.cc` assertion, signal 6).
+
+Plasma uses KWin's own protocols, so wallpaper, per-output scaling, tasklist and
+display settings all work. XFCE stays installed and is still what `--display x11` runs.
 
 `plasma-workspace` depends on `kwin-x11`; the pinned `kwin-anland` declares
 `Provides: kwin-x11`, so Plasma resolves against the Anland compositor and Termux's

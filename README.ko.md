@@ -62,11 +62,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 
 > GPU 가속, 한글 입력기 등 선택적 구성요소는 설치 후 `app-installer`에서 관리합니다.
 
-> **`--display wayland`는 XFCE가 아니라 KDE Plasma를 설치합니다.** XFCE는 KWin
-> 위에서 데스크탑이 성립하지 않습니다 — 배경화면에 `wlr-layer-shell`, 태스크리스트에
-> `wlr-foreign-toplevel`이 필요하고 배율은 X11 XSETTINGS로 적용되는데 KWin은 셋 다
-> 제공하지 않습니다. Plasma는 KWin 자체 프로토콜을 쓰므로 배경화면·배율·태스크리스트·
-> 디스플레이 설정이 모두 동작합니다. XFCE는 그대로 설치되어 `--display x11`에서 쓰입니다.
+> **`--display wayland`는 XFCE가 아니라 KDE Plasma를 설치합니다.** XFCE 4.20은 KWin
+> 위에서 쓸 만한 데스크탑이 되지 못했습니다 — 패널·설정 데몬이 `wlr-foreign-toplevel`,
+> `ext-workspace`, `wlr-output-management` 미지원을 보고하고, 배율은 X11 XSETTINGS
+> 셀렉션이 필요하며, `xfdesktop`은 배경화면을 그리지 못했습니다. Plasma는 KWin 자체
+> 프로토콜을 쓰므로 배경화면·배율·태스크리스트·디스플레이 설정이 모두 동작합니다.
+> XFCE는 그대로 설치되어 `--display x11`에서 쓰입니다.
 >
 > 네이티브 백엔드는 ARM64 Snapdragon/Adreno 기기를 대상으로 합니다. APK 설치를 완료한 뒤
 > `startXFCE`를 실행하세요. 한글은 Anland가 안드로이드 키보드를 Wayland `text-input`으로

@@ -62,12 +62,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 
 > GPU acceleration, Korean input, and other optional components are managed via `app-installer` after installation.
 
-> **`--display wayland` installs KDE Plasma, not XFCE.** XFCE has no working
-> desktop on KWin — its wallpaper needs `wlr-layer-shell`, its tasklist needs
-> `wlr-foreign-toplevel`, and its scaling goes through X11 XSETTINGS, none of which
-> KWin provides. Plasma uses KWin's own protocols, so wallpaper, per-output scaling,
-> tasklist and display settings all work. XFCE stays installed and is what
-> `--display x11` runs.
+> **`--display wayland` installs KDE Plasma, not XFCE.** XFCE 4.20 did not produce a
+> usable desktop on KWin: its panel and settings daemon report
+> `wlr-foreign-toplevel`, `ext-workspace` and `wlr-output-management` missing, its
+> scaling needs the X11 XSETTINGS selection, and `xfdesktop` drew no wallpaper.
+> Plasma uses KWin's own protocols, so wallpaper, per-output scaling, tasklist and
+> display settings all work. XFCE stays installed and is what `--display x11` runs.
 >
 > The native backend targets ARM64 Snapdragon/Adreno devices. Complete the APK
 > installation before running `startXFCE`. Korean is typed with the Android keyboard
