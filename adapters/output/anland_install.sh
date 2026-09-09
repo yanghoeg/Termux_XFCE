@@ -67,7 +67,8 @@ anland_install_runtime() {
     [ "$rc" -eq 0 ] || return "$rc"
     mkdir -p "$PREFIX/bin" "$HOME/.config/termux-xfce"
     install -m 700 "$_ANLAND_REPO_ROOT/runtime/anland-session.sh" "$PREFIX/bin/termux-xfce-anland-session"
-    install -m 700 "$_ANLAND_REPO_ROOT/runtime/anland-xfce.sh" "$PREFIX/bin/termux-xfce-anland-xfce"
+    # Left behind by installs that ran the XFCE-on-KWin session; nothing starts it now.
+    rm -f "$PREFIX/bin/termux-xfce-anland-xfce"
     printf '%s\n' "$variant" > "$HOME/.config/termux-xfce/anland-variant"
 }
 

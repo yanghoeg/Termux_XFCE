@@ -41,6 +41,7 @@ Exec=flameshot
 Icon=org.flameshot.Flameshot
 Terminal=false
 Type=Application
+NotShowIn=KDE;
 Categories=Graphics;
 StartupNotify=false
 StartupWMClass=flameshot

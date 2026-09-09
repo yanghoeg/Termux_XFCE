@@ -443,9 +443,27 @@ it "display_x11.sh가 방출하는 텍스트는 인자 없는 _kill_orphans를 �
 
 _test_display_common_wayland_emits_kill_orphans_labwc() {
     ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) \
-        | grep -qx '    _kill_orphans labwc kwin_wayland'
+        | grep -qx '    _kill_orphans labwc'
 }
-it "Wayland 종료는 KWin과 구버전 labwc를 정리한다" _test_display_common_wayland_emits_kill_orphans_labwc
+it "Wayland 종료는 구버전 labwc를 -x 목록에 넣는다" _test_display_common_wayland_emits_kill_orphans_labwc
+
+# comm은 15바이트에서 잘리고 argv[0]을 그대로 담으므로, 긴 이름이나 절대경로로
+# 실행되는 Plasma/KWin 프로세스는 pkill -x로 절대 매칭되지 않는다(-f 목록이어야 한다).
+_test_display_common_wayland_cmdline_matched_names() {
+    local frag
+    frag=$( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session )
+    printf '%s\n' "$frag" \
+        | grep -qx '    local cmdline_names="kwin_wayland kwin_wayland_wrapper startplasma-wayland plasmashell kded6"' \
+    && printf '%s\n' "$frag" | grep -q 'pkill -TERM -f "(\^|/)\$_n( |\\\$)"' \
+    && ! printf '%s\n' "$frag" | grep -q '_kill_orphans .*startplasma-wayland'
+}
+it "15자 초과/절대경로 프로세스는 -x가 아니라 커맨드라인으로 정리한다" _test_display_common_wayland_cmdline_matched_names
+
+_test_display_common_x11_has_empty_cmdline_names() {
+    ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) \
+        | grep -qx '    local cmdline_names=""'
+}
+it "X11은 커맨드라인 매칭 목록이 비어 있다(0회 순회)" _test_display_common_x11_has_empty_cmdline_names
 
 _test_display_common_emit_has_no_placeholder() {
     ! ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON' \

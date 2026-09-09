@@ -1,5 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
-# Wayland: Anland: Termux APK -> anland daemon -> patched KWin -> XFCE.
+# Wayland: Anland: Termux APK -> anland daemon -> startplasma-wayland (patched KWin).
 # See docs/wayland-anland.md for pinned upstream sources and device limitations.
 source "${BASH_SOURCE[0]%/*}/display_common.sh"
 source "${BASH_SOURCE[0]%/*}/anland_install.sh"
@@ -19,12 +19,21 @@ display_setup_apk() { anland_install_apk; }
 
 display_get_packages() {
     # Patched packages are installed by display_setup_runtime with SHA-256 pins.
-    echo "pipewire util-linux xdotool xclip wmctrl"
+    # XFCE has no Wayland desktop on KWin (no wlr-layer-shell, no XSETTINGS, no
+    # output scaling), so the Wayland session runs Plasma on the same compositor.
+    # kwin-anland Provides: kwin-x11, which satisfies plasma-workspace's KWin
+    # dependency without pulling Termux's X11-only build.
+    echo "pipewire util-linux xdotool xclip wmctrl \
+          plasma-workspace plasma-desktop kscreen systemsettings \
+          plasma-integration plasma-pa milou"
 }
 
 display_emit_kill_session() {
-    # Include labwc to clean up sessions from the old nested-X11 launcher.
-    display_common_emit_kill_session "labwc kwin_wayland"
+    # Include labwc to clean up sessions from the old nested-X11 launcher. The
+    # Plasma/KWin processes are started through absolute paths (and two of their
+    # names exceed comm's 15-byte cap), so they go in the command-line list.
+    display_common_emit_kill_session "labwc" \
+        "kwin_wayland kwin_wayland_wrapper startplasma-wayland plasmashell kded6"
 }
 
 display_emit_session_detect() {
@@ -32,18 +41,27 @@ display_emit_session_detect() {
 _DISPLAY_SERVER=wayland
 export SESSION_STATE_DIR
 _ANLAND_SOCKET="${TMPDIR}/anland/display_daemon.sock"
-_ANLAND_WAYLAND=wayland-termux-xfce
+# startplasma-wayland chooses KWin's socket name; the session publishes it here.
+_ANLAND_WAYLAND=""
+[ -r "$SESSION_STATE_DIR/anland-ready" ] &&
+    read -r _ANLAND_WAYLAND < "$SESSION_STATE_DIR/anland-ready"
 if [ -r "$SESSION_STATE_DIR/session.pid" ]; then
     read -r _pid _expected < "$SESSION_STATE_DIR/session.pid" || true
     case "${_pid:-}" in
         ''|*[!0-9]*) ;;
         *)
+            # A live supervisor and socket are not enough: Android's low-memory
+            # killer can take plasmashell and leave a compositor drawing nothing,
+            # and then pressing startXFCE must rebuild the session rather than
+            # report the black screen as already running.
             if kill -0 "$_pid" 2>/dev/null &&
                [ -r "/proc/$_pid/cmdline" ] &&
                tr '\0' ' ' < "/proc/$_pid/cmdline" | grep -q 'termux-xfce-anland-session' &&
-               [ -S "$XDG_RUNTIME_DIR/$_ANLAND_WAYLAND" ]; then
+               [ -n "$_ANLAND_WAYLAND" ] &&
+               [ -S "$XDG_RUNTIME_DIR/$_ANLAND_WAYLAND" ] &&
+               ps -eo args | grep -q '\(^\|[ /]\)plasmashell\( \|$\)'; then
                 am start -n com.anland.termux/.MainActivity || exit 1
-                echo "Anland XFCE 세션이 실행 중입니다. 재시작: kill_display_session 후 startXFCE"
+                echo "Anland Plasma 세션이 실행 중입니다. 재시작: kill_display_session 후 startXFCE"
                 exit 0
             fi
             ;;
@@ -54,7 +72,7 @@ FRAG
 
 display_emit_server_start() {
     cat << 'FRAG'
-for _cmd in anland anland-compatible kwin_wayland Xwayland dbus-run-session pipewire wireplumber flock; do
+for _cmd in anland anland-compatible startplasma-wayland plasmashell kwin_wayland Xwayland dbus-run-session pipewire wireplumber flock; do
     command -v "$_cmd" >/dev/null 2>&1 || {
         echo "ERROR: $_cmd 없음. 설치기를 --display wayland로 다시 실행하세요." >&2
         exit 1
@@ -89,6 +107,9 @@ _ANLAND_START_OWNED=true
 termux-wake-lock || exit 1
 rm -f "$SESSION_STATE_DIR/anland-ready"
 mkdir -p "${TMPDIR}/.X11-unix"
+# KWin's Xwayland refuses a socket dir without the sticky bit and then leaves
+# DISPLAY unset, so enforce 1777 even when a restrictive umask created it.
+chmod 1777 "${TMPDIR}/.X11-unix" || exit 1
 XDISPLAY="" # KWin assigns the inner Xwayland DISPLAY; never guess it here.
 FRAG
 }
@@ -100,7 +121,7 @@ display_emit_clipboard_sync() {
 display_emit_session_launch() {
     cat << 'FRAG'
 _WL_LOG="$HOME/.xfce-wayland.log"
-nohup bash "$PREFIX/bin/termux-xfce-anland-session" >"$_WL_LOG" 2>&1 </dev/null &
+setsid nohup bash "$PREFIX/bin/termux-xfce-anland-session" >"$_WL_LOG" 2>&1 </dev/null &
 _ANLAND_PID=$!
 printf '%s\t%s\n' "$_ANLAND_PID" "termux-xfce-anland-session" > "$SESSION_STATE_DIR/session.pid"
 for _i in $(seq 1 60); do
@@ -109,14 +130,17 @@ for _i in $(seq 1 60); do
         tail -n 20 "$_WL_LOG" >&2
         exit 1
     fi
-    if [ -f "$SESSION_STATE_DIR/anland-ready" ] &&
-       [ -S "$XDG_RUNTIME_DIR/$_ANLAND_WAYLAND" ]; then
-        echo "Anland XFCE 세션 시작. 키보드는 Anland 설정의 소프트키보드 호출키를 사용하세요."
-        exit 0
+    if [ -f "$SESSION_STATE_DIR/anland-ready" ]; then
+        read -r _ANLAND_WAYLAND < "$SESSION_STATE_DIR/anland-ready" || true
+        if [ -n "${_ANLAND_WAYLAND:-}" ] &&
+           [ -S "$XDG_RUNTIME_DIR/$_ANLAND_WAYLAND" ]; then
+            echo "Anland Plasma 세션 시작. 키보드는 Anland 설정의 소프트키보드 호출키를 사용하세요."
+            exit 0
+        fi
     fi
     sleep 0.5
 done
-echo "ERROR: Anland/XFCE 시작 대기 시간 초과. 로그: $_WL_LOG" >&2
+echo "ERROR: Anland/Plasma 시작 대기 시간 초과. 로그: $_WL_LOG" >&2
 exit 1
 FRAG
 }

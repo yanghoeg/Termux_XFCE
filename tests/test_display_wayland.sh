@@ -105,12 +105,13 @@ _test_launcher() {
     assert_file_contains "$sb/startXFCE" 'com.anland.termux/.MainActivity'
     assert_file_contains "$sb/startXFCE" 'termux-xfce-anland-session'
     assert_file_contains "$sb/startXFCE" 'anland-ready'
+    assert_file_contains "$sb/startXFCE" 'startplasma-wayland'
     assert_file_not_contains "$sb/startXFCE" 'termux-x11 :'
     assert_file_not_contains "$sb/startXFCE" 'WLR_BACKENDS=x11'
     assert_file_not_contains "$sb/startXFCE" 'termux-clipboard-sync &'
     cleanup_sandbox "$sb"
 }
-it 'Wayland launcher uses Anland and waits for XFCE readiness' _test_launcher
+it 'Wayland launcher uses Anland and waits for Plasma readiness' _test_launcher
 
 _test_supervisor() {
     local sb; sb=$(make_sandbox)
