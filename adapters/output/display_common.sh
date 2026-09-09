@@ -52,11 +52,13 @@ _kill_pidfile() {
 # (-f 부분일치를 쓰지 않으므로 이름이 다른 무관 프로세스는 건드리지 않는다.)
 _kill_orphans() {
     local names="Xwayland xfwm4 xfdesktop xfce4-panel xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd xfce4-screensaver nimf pulseaudio conky dbus-daemon dbus-launch $*"
-    # pkill -x compares the kernel's comm, which is capped at 15 bytes and holds
-    # argv[0] verbatim. Names longer than that, and processes started through an
-    # absolute path, therefore never match -x and must be matched on the command
-    # line instead, anchored so an unrelated process merely mentioning the name
-    # is left alone. Empty expands to zero iterations.
+    # pkill's name matching is not usable for these on Android/Termux. Names over
+    # 15 bytes are rejected outright (comm is capped there, and pgrep says so:
+    # startplasma-wayland, kwin_wayland_wrapper). plasmashell is worse — its comm
+    # reads back as exactly "plasmashell" yet neither pkill -x nor a substring
+    # match finds it, while -f does. So match the command line, anchored so an
+    # unrelated process merely mentioning the name is left alone. Empty expands to
+    # zero iterations.
     local cmdline_names="__DISPLAY_COMMON_CMDLINE_NAMES__"
     local _n
     for _n in $names; do pkill -TERM -x "$_n" 2>/dev/null || true; done

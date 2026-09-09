@@ -19,8 +19,10 @@ display_setup_apk() { anland_install_apk; }
 
 display_get_packages() {
     # Patched packages are installed by display_setup_runtime with SHA-256 pins.
-    # XFCE has no Wayland desktop on KWin (no wlr-layer-shell, no XSETTINGS, no
-    # output scaling), so the Wayland session runs Plasma on the same compositor.
+    # XFCE 4.20 produced no usable desktop on KWin: its panel and settings daemon
+    # reported wlr-foreign-toplevel / ext-workspace / wlr-output-management missing,
+    # xfdesktop drew no wallpaper, and scaling needs the X11 XSETTINGS selection.
+    # The Wayland session therefore runs Plasma on the same compositor.
     # kwin-anland Provides: kwin-x11, which satisfies plasma-workspace's KWin
     # dependency without pulling Termux's X11-only build.
     echo "pipewire util-linux xdotool xclip wmctrl \
