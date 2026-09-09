@@ -16,11 +16,14 @@
 # 치환으로 반영한다(함수를 실제로 정의하거나 eval하지 않는다).
 # =============================================================================
 
-# display_common_emit_kill_session <extra_orphan_names>
+# display_common_emit_kill_session <extra_orphan_names> [cmdline_matched_names]
 #   _kill_pidfile/_kill_orphans/_kill_display_session 함수 정의 텍스트를 출력한다.
-#   $1: _kill_orphans에 추가로 넘길 프로세스명(공백 구분, 없으면 "")
+#   $1: _kill_orphans에 추가로 넘길 프로세스명(공백 구분, 없으면 "") — pkill -x 대상
+#   $2: comm이 15자로 잘리거나 절대경로로 실행돼 -x로는 잡히지 않는 프로세스명 —
+#       pkill -f 대상(공백 구분, 없으면 "")
 display_common_emit_kill_session() {
     local extra="${1:-}"
+    local cmdline="${2:-}"
     local frag
     frag=$(cat << 'FRAG'
 _kill_pidfile() {
@@ -49,15 +52,30 @@ _kill_pidfile() {
 # (-f 부분일치를 쓰지 않으므로 이름이 다른 무관 프로세스는 건드리지 않는다.)
 _kill_orphans() {
     local names="Xwayland xfwm4 xfdesktop xfce4-panel xfsettingsd xfconfd xfce4-power-manager xfce4-notifyd xfce4-screensaver nimf pulseaudio conky dbus-daemon dbus-launch $*"
+    # pkill -x compares the kernel's comm, which is capped at 15 bytes and holds
+    # argv[0] verbatim. Names longer than that, and processes started through an
+    # absolute path, therefore never match -x and must be matched on the command
+    # line instead, anchored so an unrelated process merely mentioning the name
+    # is left alone. Empty expands to zero iterations.
+    local cmdline_names="__DISPLAY_COMMON_CMDLINE_NAMES__"
     local _n
     for _n in $names; do pkill -TERM -x "$_n" 2>/dev/null || true; done
+    for _n in $cmdline_names; do pkill -TERM -f "(^|/)$_n( |\$)" 2>/dev/null || true; done
     sleep 1
     for _n in $names; do pkill -KILL -x "$_n" 2>/dev/null || true; done
+    for _n in $cmdline_names; do pkill -KILL -f "(^|/)$_n( |\$)" 2>/dev/null || true; done
 }
 
 _kill_display_session() {
     _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
+    # Stop the Anland supervisor first so it can reap its own children. These
+    # pidfiles are absent for X11 sessions and safe when switching display mode.
+    _kill_pidfile "$SESSION_STATE_DIR/anland-worker.pid"
     _kill_pidfile "$SESSION_STATE_DIR/session.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/compositor.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/bridge.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/wireplumber.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/pipewire.pid"
     _kill_pidfile "$SESSION_STATE_DIR/display.pid"
 
     # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.
@@ -89,5 +107,6 @@ FRAG
         # x11처럼 추가분이 없으면 마커 줄 자체(와 개행)를 통째로 제거한다
         frag="${frag/$'__DISPLAY_COMMON_EXTRA_COMMENT_LINE__\n'/}"
     fi
+    frag="${frag/__DISPLAY_COMMON_CMDLINE_NAMES__/$cmdline}"
     printf '%s\n' "${frag/ __DISPLAY_COMMON_EXTRA_ORPHANS__/${extra:+ $extra}}"
 }

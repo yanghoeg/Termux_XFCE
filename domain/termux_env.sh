@@ -481,6 +481,7 @@ _setup_korean_env() {
 [Desktop Entry]
 Type=Application
 Name=Nimf
+NotShowIn=KDE;
 Exec=bash -c "pgrep -x nimf >/dev/null 2>&1 || exec nimf"
 Hidden=false
 X-GNOME-Autostart-enabled=true

@@ -111,10 +111,31 @@ setup_xfce_fancybash() {
     _install_fancybash "$username" "termux"
 }
 
+# XFCE 전용 autostart 항목을 Plasma(Wayland) 세션에서 제외한다.
+# Why: conky는 prun으로 XFCE 세션 디스플레이에 붙어 Plasma에서 SIGSEGV로 죽고,
+#      fix-x11-input은 Termux:X11 전용 우회, nimf는 Anland가 안드로이드 키보드를
+#      Wayland text-input으로 직접 넘겨주므로 불필요하다. 중복 프로세스는 메모리
+#      압박을 키워 LMK가 plasmashell을 죽이는 원인이 된다.
+# OnlyShowIn=XFCE가 아니라 NotShowIn=KDE를 쓴다 — X11 런처는 XDG_CURRENT_DESKTOP을
+# 설정하지 않으므로 OnlyShowIn을 쓰면 X11에서 전부 실행되지 않는다.
+_migrate_autostart_not_show_in_kde() {
+    local dir="$HOME/.config/autostart" f
+    for f in conky.desktop fix-x11-input.desktop org.flameshot.Flameshot.desktop nimf.desktop; do
+        [ -f "$dir/$f" ] || continue
+        grep -q '^NotShowIn=' "$dir/$f" 2>/dev/null && continue
+        # 기존 설치본의 사용자 오버라이드는 Type 줄이 없을 수 있어 그룹 헤더에 붙인다.
+        grep -q '^\[Desktop Entry\]$' "$dir/$f" 2>/dev/null || continue
+        sed -i '0,/^\[Desktop Entry\]$/s//[Desktop Entry]\nNotShowIn=KDE;/' "$dir/$f"
+    done
+    # set -e 하에서 마지막 grep 실패 상태가 새어나가 설치가 중단되지 않도록 한다.
+    return 0
+}
+
 setup_xfce_autostart() {
     ui_info "자동시작 설정 (Conky, Flameshot)"
     _setup_autostart_config
     _migrate_fix_x11_input
+    _migrate_autostart_not_show_in_kde
     _migrate_flameshot_native
     _migrate_terminal_font
     _migrate_borderless_maximize

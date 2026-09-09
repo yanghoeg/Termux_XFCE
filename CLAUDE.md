@@ -123,9 +123,17 @@ Termux_XFCE/
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
-  - Wayland 어댑터(`display_wayland.sh`): labwc 기반 (구현됨)
+  - Wayland 어댑터(`display_wayland.sh`): Anland 5.13.3 + 패치 KWin + **KDE Plasma** (ARM64 Adreno)
+    — XFCE는 KWin에서 배경화면(wlr-layer-shell)·태스크리스트(wlr-foreign-toplevel)·배율(XSETTINGS)이
+    모두 불가하므로 Wayland 경로만 Plasma를 쓴다. `kwin-anland`의 `Provides: kwin-x11`이
+    `plasma-workspace` 의존을 충족해 Termux `kwin-x11`은 끌려오지 않는다.
+    세션은 `startplasma-wayland`가 고른 Wayland 소켓 이름을 `anland-ready`에 기록한다.
+  - `display_preflight`는 변경 전 지원 기기 검사, `display_setup_runtime`은 버전·SHA-256 고정 패키지 설치
+  - Anland APK 일반판/호환판 선택과 실기기 미검증 항목: `docs/wayland-anland.md`
   - `--display x11|wayland` CLI 옵션 / `DISPLAY_SERVER` 환경변수 / 미지정 시 대화형 선택
-  - **설치 시 하나 고정**: 선택된 서버의 런처(`startXFCE`)만 생성 (기본: x11, wayland는 실험적)
+  - **설치 시 하나 고정**: 선택된 서버의 런처(`startXFCE`)만 생성 (기본: x11)
+  - Wayland는 `$TMPDIR/.X11-unix`가 1777이어야 한다 — sticky bit가 없으면 KWin의 Xwayland가
+    소켓 생성을 거부하고 `DISPLAY`가 비어 세션이 즉시 죽는다
   - X11: `termux-x11 :N` → 소켓 자동 감지 (`${TMPDIR}/.X11-unix/X*`)
 - **기본 쉘은 zsh + Powerlevel10k**: `domain/termux_env.sh` `_setup_zsh_p10k()`가 설치 시 자동 구성
   - RC 파일 수정은 bash/zsh 양쪽 모두 반영해야 함 (`_rc_targets()` + `_append_to_rc()` 참조)

@@ -8,6 +8,9 @@
 
 source "${BASH_SOURCE[0]%/*}/display_common.sh"
 
+display_preflight() { :; }
+display_setup_runtime() { :; }
+
 display_emit_kill_session() {
     display_common_emit_kill_session ""
 }

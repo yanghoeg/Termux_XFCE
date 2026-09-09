@@ -1,6 +1,7 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
+NotShowIn=KDE;
 Name=conky
 Comment=
 Exec=prun conky -c .config/conky/Alterf/Alterf.conf

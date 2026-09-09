@@ -61,6 +61,8 @@ SCRIPT_BUILDER_CONTRACTS=(
 
 # display 포트가 요구하는 함수 목록
 DISPLAY_CONTRACTS=(
+    display_preflight
+    display_setup_runtime
     display_emit_kill_session
     display_emit_session_detect
     display_emit_server_start

@@ -22,6 +22,10 @@ _display_check() {
 # emit 패턴: display_emit_* 함수는 install 시점에 호출되어 stdout으로
 # bash 코드 조각을 출력. script_builder가 이 조각을 조립하여 런타임 스크립트 생성.
 
+# display_preflight: validate hardware/options before any installer changes.
+# display_setup_runtime: install pinned backend dependencies and runtime helpers
+# after the common XFCE packages. X11 implements both as no-ops.
+
 # display_emit_kill_session
 #   설명: 디스플레이 세션 종료 셸 코드 조각 출력
 #         _kill_display_session() 함수 정의를 stdout에 출력
@@ -38,7 +42,7 @@ _display_check() {
 
 # display_emit_server_start
 #   설명: 디스플레이 서버 시작 + XDISPLAY 변수 설정 코드 출력
-#         서버 프로세스 시작, 소켓 감지, XDISPLAY=":N" 설정 필수
+#         X11은 XDISPLAY=":N", Anland는 KWin이 자식에 DISPLAY를 전달하므로 빈 값
 #   인자: 없음
 #   출력: stdout — bash 코드 조각 (XDISPLAY 변수를 반드시 설정)
 # display_emit_server_start() { ... }
@@ -46,7 +50,7 @@ _display_check() {
 # display_emit_session_launch
 #   설명: XFCE 세션 시작 셸 코드 조각 출력
 #         X11: $XDISPLAY 위에 xfce4-session 실행
-#         Wayland: nested labwc 실행 후 startxfce4 --wayland 실행
+#         Wayland: Anland 데몬/APK + 패치 KWin에서 XFCE 자식 세션 실행
 #         GPU 환경변수는 상위(script_builder)에서 export되어 상속됨
 #   인자: 없음
 #   출력: stdout — bash 코드 조각 ($XDISPLAY, $XDG_RUNTIME_DIR 사용)

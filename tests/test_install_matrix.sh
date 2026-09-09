@@ -37,6 +37,8 @@ setup_xfce_fancybash()    { _trace "setup_xfce_fancybash $*"; }
 setup_xfce_autostart()    { _trace "setup_xfce_autostart"; }
 setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
 display_setup_apk()       { _trace "display_setup_apk"; }
+display_preflight()       { _trace "display_preflight"; }
+display_setup_runtime()   { _trace "display_setup_runtime"; }
 setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
 setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
 setup_termux_widget()     { _trace "setup_termux_widget"; }
@@ -146,6 +148,8 @@ setup_xfce_fancybash()    { _trace "setup_xfce_fancybash $*"; return 1; }
 setup_xfce_autostart()    { _trace "setup_xfce_autostart"; }
 setup_termux_shortcuts()  { _trace "setup_termux_shortcuts"; }
 display_setup_apk()       { _trace "display_setup_apk"; }
+display_preflight()       { _trace "display_preflight"; }
+display_setup_runtime()   { _trace "display_setup_runtime"; }
 setup_termux_api_apk()    { _trace "setup_termux_api_apk"; }
 setup_termux_float_apk()  { _trace "setup_termux_float_apk"; }
 setup_termux_widget()     { _trace "setup_termux_widget"; }
@@ -465,6 +469,33 @@ EOF
     rm -rf "$sandbox"
 }
 it "--proot-only 재실행은 기존 DISPLAY_SERVER를 유지한다" _test_config_preserves_display_server_on_proot_only
+
+# =============================================================================
+# Anland install dispatch
+# =============================================================================
+_test_wayland_dispatch() {
+    _write_hook_file
+    _run_install --no-proot --display wayland
+    _assert_traced display_preflight
+    _assert_traced display_setup_runtime
+    _assert_traced display_setup_apk
+    local checks
+    checks=$(awk '/display_preflight|setup_xfce_packages|display_setup_runtime|setup_termux_shortcuts|display_setup_apk/' "$TRACE_FILE")
+    assert_eq $'display_preflight\nsetup_xfce_packages\ndisplay_setup_runtime\nsetup_termux_shortcuts\ndisplay_setup_apk' "$checks"
+}
+it 'Wayland validates hardware and installs runtime before generating the launcher' _test_wayland_dispatch
+
+_test_wayland_preflight_rejects() {
+    _write_hook_file
+    echo 'display_preflight() { _trace "display_preflight"; return 1; }' >> "$HOOK_FILE"
+    local rc=0
+    _run_install --no-proot --display wayland || rc=$?
+    assert_nonzero "$rc"
+    _assert_not_traced setup_termux_base
+    _assert_not_traced display_setup_runtime
+    _assert_not_traced display_setup_apk
+}
+it 'a rejected Wayland device does not start package installation' _test_wayland_preflight_rejects
 
 # =============================================================================
 # 정리

@@ -58,12 +58,21 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 | `--user <이름>` | `USERNAME=` | proot 사용자 이름 |
 | `--no-proot` | `SKIP_PROOT=true` | proot 없이 native만 |
 | `--proot-only` | `PROOT_ONLY=true` | proot만 설치 (두 번째 distro 추가 시) |
-| `--display x11\|wayland` | `DISPLAY_SERVER=` | 디스플레이 서버 (기본: `x11`) |
+| `--display x11\|wayland` | `DISPLAY_SERVER=` | 디스플레이 서버/데스크탑: `x11` = XFCE, `wayland` = KDE Plasma (기본: `x11`) |
 
 > GPU 가속, 한글 입력기 등 선택적 구성요소는 설치 후 `app-installer`에서 관리합니다.
 
-> ⚠️ **Wayland(labwc)는 실험적(테스트 중)입니다.** 한글 입력·스크린샷 등 알려진 이슈가 많아
-> 기본값은 `x11`이며, 안정적인 사용을 원하면 `x11`을 권장합니다.
+> **`--display wayland`는 XFCE가 아니라 KDE Plasma를 설치합니다.** XFCE는 KWin
+> 위에서 데스크탑이 성립하지 않습니다 — 배경화면에 `wlr-layer-shell`, 태스크리스트에
+> `wlr-foreign-toplevel`이 필요하고 배율은 X11 XSETTINGS로 적용되는데 KWin은 셋 다
+> 제공하지 않습니다. Plasma는 KWin 자체 프로토콜을 쓰므로 배경화면·배율·태스크리스트·
+> 디스플레이 설정이 모두 동작합니다. XFCE는 그대로 설치되어 `--display x11`에서 쓰입니다.
+>
+> 네이티브 백엔드는 ARM64 Snapdragon/Adreno 기기를 대상으로 합니다. APK 설치를 완료한 뒤
+> `startXFCE`를 실행하세요. 한글은 Anland가 안드로이드 키보드를 Wayland `text-input`으로
+> 넘겨주므로 별도의 Linux 입력기가 실행되지 않습니다. APK 종류, 고정 Mesa 패키지와
+> 실기기 확인 항목은 [Anland 안내](docs/wayland-anland.md)를 참고하세요.
+> 기본 디스플레이는 `x11`입니다.
 
 ## 사용법
 
@@ -172,9 +181,10 @@ zrunhud     # proot 앱을 Zink + FPS 오버레이로 실행
 |------|--------|
 | 기본 유틸 | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
-| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, 패치 KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
+| Plasma (wayland 전용) | plasma-workspace, plasma-desktop, kscreen, systemsettings, plasma-integration, plasma-pa, milou |
 | CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
-| APK | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
+| APK | Termux:X11(x11) 또는 Anland(wayland), Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (선택)
 

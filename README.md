@@ -58,12 +58,22 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 | `--user <name>` | `USERNAME=` | proot username |
 | `--no-proot` | `SKIP_PROOT=true` | Termux native only |
 | `--proot-only` | `PROOT_ONLY=true` | proot only (for adding a 2nd distro) |
-| `--display x11\|wayland` | `DISPLAY_SERVER=` | display server (default: `x11`) |
+| `--display x11\|wayland` | `DISPLAY_SERVER=` | display server / desktop: `x11` = XFCE, `wayland` = KDE Plasma (default: `x11`) |
 
 > GPU acceleration, Korean input, and other optional components are managed via `app-installer` after installation.
 
-> ⚠️ **Wayland (labwc) is experimental (under testing).** It has many known issues
-> (Korean input, screenshots, etc.), so the default is `x11`. Use `x11` for a stable setup.
+> **`--display wayland` installs KDE Plasma, not XFCE.** XFCE has no working
+> desktop on KWin — its wallpaper needs `wlr-layer-shell`, its tasklist needs
+> `wlr-foreign-toplevel`, and its scaling goes through X11 XSETTINGS, none of which
+> KWin provides. Plasma uses KWin's own protocols, so wallpaper, per-output scaling,
+> tasklist and display settings all work. XFCE stays installed and is what
+> `--display x11` runs.
+>
+> The native backend targets ARM64 Snapdragon/Adreno devices. Complete the APK
+> installation before running `startXFCE`. Korean is typed with the Android keyboard
+> over Wayland `text-input`; no Linux IME is started. See the
+> [Anland guide](docs/wayland-anland.md) for APK variants, pinned Mesa packages and
+> device checks. The default remains `x11`.
 
 ## Usage
 
@@ -193,9 +203,10 @@ zrunhud     # run proot app with Zink + FPS overlay
 |----------|----------|
 | Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
-| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, patched KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
+| Plasma (wayland only) | plasma-workspace, plasma-desktop, kscreen, systemsettings, plasma-integration, plasma-pa, milou |
 | CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
-| APKs | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
+| APKs | Termux:X11 (x11) or Anland (wayland), Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (optional)
 

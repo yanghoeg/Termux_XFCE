@@ -1,0 +1,157 @@
+"""Exercise actual runtime scripts with mock Android/compositor processes only."""
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import subprocess
+import sys
+import time
+
+root = Path(sys.argv[1])
+prefix = Path(os.environ['PREFIX'])
+base = prefix.parent
+bin_dir = prefix / 'bin'
+stub = bin_dir / 'mock-anland-tool'
+# Termux has no /usr/bin, so name the running interpreter instead of using env.
+stub.write_text(f'#!{sys.executable}\n' + r'''
+import json, os, pathlib, signal, socket, subprocess, sys, time
+name = pathlib.Path(sys.argv[0]).name
+if name == 'dbus-run-session':
+    args = sys.argv[1:]
+    if args[0] == '--': args = args[1:]
+    os.execvp(args[0], args)
+with open(os.environ['ANLAND_TEST_TRACE'], 'a') as f:
+    f.write(json.dumps({'name': name, 'pid': os.getpid(), 'argv': sys.argv[1:],
+        'DISPLAY': os.getenv('DISPLAY'), 'WAYLAND_DISPLAY': os.getenv('WAYLAND_DISPLAY'),
+        'ANLAND_SOCKET': os.getenv('ANLAND_SOCKET'),
+        'MESA': os.getenv('MESA_LOADER_DRIVER_OVERRIDE'),
+        'GDK': os.getenv('GDK_BACKEND')})+'\n')
+if name in ('am', 'termux-wake-unlock', 'dbus-update-activation-environment'):
+    sys.exit(0)
+if os.getenv('ANLAND_TEST_FAIL') == name:
+    sys.exit(7)
+sock = None
+if name == 'anland':
+    path = pathlib.Path(sys.argv[sys.argv.index('--socket')+1])
+elif name == 'pipewire':
+    path = pathlib.Path(os.environ['PIPEWIRE_RUNTIME_DIR']) / 'pipewire-0'
+elif name == 'startplasma-wayland':
+    path = pathlib.Path(os.environ['XDG_RUNTIME_DIR']) / 'wayland-0'
+else:
+    path = None
+if path:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.unlink(missing_ok=True)
+    sock = socket.socket(socket.AF_UNIX)
+    sock.bind(str(path)); sock.listen()
+child = None
+stopping = False
+def stop(*_):
+    global stopping
+    stopping = True
+    if child: child.terminate()
+signal.signal(signal.SIGTERM, stop)
+if name == 'startplasma-wayland':
+    # Real startplasma-wayland starts KWin, which starts plasmashell with the
+    # compositor's own DISPLAY/WAYLAND_DISPLAY, and keeps running when that shell
+    # dies — which is exactly why the supervisor has to respawn it.
+    env = dict(os.environ, DISPLAY=':91', WAYLAND_DISPLAY=path.name)
+    subprocess.Popen([str(pathlib.Path(sys.argv[0]).parent / 'plasmashell')], env=env)
+    while not stopping: time.sleep(0.05)
+    if sock: sock.close(); path.unlink(missing_ok=True)
+    sys.exit(0)
+while not stopping: time.sleep(0.05)
+if sock: sock.close(); path.unlink(missing_ok=True)
+''')
+stub.chmod(0o755)
+for name in ('dbus-run-session', 'anland', 'anland-compatible', 'am', 'pipewire',
+             'wireplumber', 'startplasma-wayland', 'plasmashell',
+             'termux-wake-unlock', 'dbus-update-activation-environment'):
+    (bin_dir / name).symlink_to(stub)
+shutil.copyfile(root / 'runtime' / 'anland-session.sh', bin_dir / 'termux-xfce-anland-session')
+
+def alive(pid):
+    try: os.kill(pid, 0)
+    except ProcessLookupError: return False
+    return True
+
+_case_seq = 0
+
+def run_case(failure, variant):
+    # AF_UNIX paths cap at 108 bytes and Termux's TMPDIR prefix is long, so the
+    # per-case directory stays short rather than naming the case.
+    global _case_seq
+    _case_seq += 1
+    case = base / f'c{_case_seq}'
+    state = case / 'state'
+    runtime = case / 'run'
+    temp = case / 'tmp'
+    for d in (state, runtime, temp): d.mkdir(parents=True)
+    (Path(os.environ['HOME']) / '.config/termux-xfce/anland-variant').write_text(variant+'\n')
+    trace = case / 'trace.jsonl'
+    env = dict(os.environ, PATH=str(bin_dir)+os.pathsep+os.environ['PATH'],
+               SESSION_STATE_DIR=str(state), XDG_RUNTIME_DIR=str(runtime), TMPDIR=str(temp),
+               ANLAND_TEST_TRACE=str(trace), ANLAND_TEST_FAIL=failure,
+               DISPLAY=':0', WAYLAND_DISPLAY='wrong-parent', WLR_BACKENDS='x11',
+               MESA_LOADER_DRIVER_OVERRIDE='zink', GDK_BACKEND='x11')
+    with (case / 'log').open('w') as log:
+        proc = subprocess.Popen(['bash', str(bin_dir/'termux-xfce-anland-session')], env=env,
+                                stdout=log, stderr=log)
+        try:
+            deadline = time.monotonic()+12
+            while time.monotonic() < deadline:
+                if proc.poll() is not None or (state/'anland-ready').exists(): break
+                time.sleep(.05)
+            rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            if failure:
+                # A shell that never comes up is only given up on after
+                # _wait_plasma's full 90s deadline, so allow for that here.
+                assert proc.wait(timeout=120) != 0, (failure, (case/'log').read_text())
+                assert not (state/'anland-ready').exists()
+            else:
+                assert (state/'anland-ready').exists(), (case/'log').read_text()
+                # The marker carries the socket name KWin actually picked.
+                assert (state/'anland-ready').read_text().strip() == 'wayland-0', (case/'log').read_text()
+                plasma = next(r for r in rows if r['name']=='startplasma-wayland')
+                assert plasma['DISPLAY'] is None and plasma['WAYLAND_DISPLAY'] is None
+                assert plasma['MESA']=='kgsl' and plasma['GDK']=='wayland,x11'
+                shell = next(r for r in rows if r['name']=='plasmashell')
+                assert shell['DISPLAY']==':91' and shell['WAYLAND_DISPLAY']=='wayland-0'
+                assert any(r['name']=='anland-compatible' for r in rows) == (variant=='compatible')
+                assert any(r['name']=='am' and 'com.anland.termux/.MainActivity' in r['argv'] for r in rows)
+                # The low-memory killer takes plasmashell in practice; the
+                # supervisor must bring it back instead of leaving a black screen.
+                os.kill(shell['pid'], signal.SIGKILL)
+                deadline = time.monotonic()+20
+                while time.monotonic() < deadline:
+                    shells = [json.loads(l) for l in trace.read_text().splitlines()
+                              if json.loads(l)['name']=='plasmashell']
+                    if len(shells) > 1 and alive(shells[-1]['pid']): break
+                    time.sleep(.1)
+                assert len(shells) > 1, ('shell not respawned', (case/'log').read_text())
+                assert shells[-1]['WAYLAND_DISPLAY']=='wayland-0', shells[-1]
+                rows = [json.loads(line) for line in trace.read_text().splitlines()]
+                os.kill(plasma['pid'], signal.SIGTERM)
+                proc.wait(timeout=8)
+            deadline = time.monotonic()+3
+            while time.monotonic()<deadline and any(alive(r['pid']) for r in rows): time.sleep(.05)
+            assert not any(alive(r['pid']) for r in rows), ('child leaked', rows)
+            assert not (state/'anland-ready').exists()
+            assert not (temp/'anland/display_daemon.sock').exists()
+            print(f'PASS runtime: {variant}, {failure or "normal shutdown"}')
+        finally:
+            if proc.poll() is None: proc.terminate()
+            try: proc.wait(timeout=5)
+            except subprocess.TimeoutExpired: proc.kill(); proc.wait()
+            if trace.exists():
+                for row in map(json.loads, trace.read_text().splitlines()):
+                    try: os.kill(row['pid'], signal.SIGTERM)
+                    except ProcessLookupError: pass
+
+run_case('', 'compatible')
+run_case('', 'standard')
+run_case('anland', 'compatible')
+run_case('anland-compatible', 'compatible')
+run_case('startplasma-wayland', 'compatible')
+run_case('plasmashell', 'compatible')

@@ -1,5 +1,6 @@
 [Desktop Entry]
 Type=Application
+NotShowIn=KDE;
 Name=Fix X11 Input
 # Termux:X11 입력 초기화 — 세션 시작 시 1회 실행
 #
