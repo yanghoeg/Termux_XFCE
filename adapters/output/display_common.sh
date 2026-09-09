@@ -57,7 +57,14 @@ _kill_orphans() {
 
 _kill_display_session() {
     _kill_pidfile "$SESSION_STATE_DIR/clipboard.pid"
+    # Stop the Anland supervisor first so it can reap its own children. These
+    # pidfiles are absent for X11 sessions and safe when switching display mode.
+    _kill_pidfile "$SESSION_STATE_DIR/anland-worker.pid"
     _kill_pidfile "$SESSION_STATE_DIR/session.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/compositor.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/bridge.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/wireplumber.pid"
+    _kill_pidfile "$SESSION_STATE_DIR/pipewire.pid"
     _kill_pidfile "$SESSION_STATE_DIR/display.pid"
 
     # 구버전 런처로 시작해 PID 파일이 없는 세션만 제한적으로 정리한다.

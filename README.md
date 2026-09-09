@@ -62,8 +62,10 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 
 > GPU acceleration, Korean input, and other optional components are managed via `app-installer` after installation.
 
-> ⚠️ **Wayland (labwc) is experimental (under testing).** It has many known issues
-> (Korean input, screenshots, etc.), so the default is `x11`. Use `x11` for a stable setup.
+> **Wayland uses the Anland APK + KWin + XFCE and is experimental.** The native
+> backend targets ARM64 Snapdragon/Adreno devices. Complete the APK installation
+> before running `startXFCE`. See the [Anland guide](docs/wayland-anland.md) for APK
+> variants, pinned Mesa packages and device checks. The default remains `x11`.
 
 ## Usage
 
@@ -193,9 +195,9 @@ zrunhud     # run proot app with Zink + FPS overlay
 |----------|----------|
 | Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
-| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, patched KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
 | CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
-| APKs | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
+| APKs | Termux:X11 (x11) or Anland (wayland), Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (optional)
 

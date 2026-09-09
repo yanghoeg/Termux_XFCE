@@ -443,9 +443,9 @@ it "display_x11.sh가 방출하는 텍스트는 인자 없는 _kill_orphans를 �
 
 _test_display_common_wayland_emits_kill_orphans_labwc() {
     ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) \
-        | grep -qx '    _kill_orphans labwc'
+        | grep -qx '    _kill_orphans labwc kwin_wayland'
 }
-it "display_wayland.sh가 방출하는 텍스트는 _kill_orphans labwc를 호출한다" _test_display_common_wayland_emits_kill_orphans_labwc
+it "Wayland 종료는 KWin과 구버전 labwc를 정리한다" _test_display_common_wayland_emits_kill_orphans_labwc
 
 _test_display_common_emit_has_no_placeholder() {
     ! ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON' \

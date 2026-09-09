@@ -26,7 +26,7 @@ TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 # 것을 방지한다. bionic $PREFIX/bin을 앞세워 coreutils가 bionic으로 해석되게 한다.
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 PATH="$PREFIX/bin:$PREFIX/bin/applets:$PATH"
-export PATH
+export PATH PREFIX TMPDIR
 
 # XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
 XDG_RUNTIME_DIR="${PREFIX:-/data/data/com.termux/files/usr}/var/run/user/$(id -u)"
@@ -41,7 +41,7 @@ chmod 700 "$SESSION_STATE_DIR" 2>/dev/null || true
 _cleanup_failed_start() {
     local rc=$?
     trap - EXIT INT TERM
-    if [ "$rc" -ne 0 ]; then
+    if [ "$rc" -ne 0 ] && { [ "${_DISPLAY_SERVER:-x11}" = x11 ] || [ "${_ANLAND_START_OWNED:-false}" = true ]; }; then
         _kill_display_session
         termux-wake-unlock 2>/dev/null || true
     fi
@@ -114,6 +114,7 @@ NIMF
         cat << 'GPU_ENV'
 
 # GPU 자동 감지 → Zink(OpenGL→Vulkan)+Turnip 또는 llvmpipe 소프트웨어 폴백
+if [ "${_DISPLAY_SERVER:-x11}" = x11 ]; then
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
 export PULSE_SERVER=tcp:127.0.0.1:4713
@@ -149,10 +150,11 @@ else
     # llvmpipe 소프트웨어 폴백 (KGSL 미감지)
     export LIBGL_ALWAYS_SOFTWARE=1
 fi
+fi # Anland configures its own KGSL environment in its session supervisor.
 GPU_ENV
 
         # ── 10. 세션 시작 (display 어댑터) ──
-        # X11: xfce4-session on $XDISPLAY / Wayland: nested labwc + startxfce4 --wayland
+        # X11: xfce4-session on $XDISPLAY / Wayland: Anland + KWin + XFCE
         display_emit_session_launch
     } > "$output"
 
@@ -181,7 +183,7 @@ fi
 
 # 디스플레이 세션 종료 전 존재 여부 확인
 XFCE_PID=$(pgrep -x xfce4-session 2>/dev/null | head -1)
-DISPLAY_PID=$(pgrep -f "termux-x11\|labwc" 2>/dev/null | head -1)
+DISPLAY_PID=$(pgrep -f '(^|/)(termux-x11|labwc|kwin_wayland|anland)( |$)' 2>/dev/null | head -1)
 
 if [ -z "$XFCE_PID" ] && [ -z "$DISPLAY_PID" ]; then
     zenity --info --text="실행 중인 세션을 찾을 수 없습니다."

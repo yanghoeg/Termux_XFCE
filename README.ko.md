@@ -62,8 +62,10 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 
 > GPU 가속, 한글 입력기 등 선택적 구성요소는 설치 후 `app-installer`에서 관리합니다.
 
-> ⚠️ **Wayland(labwc)는 실험적(테스트 중)입니다.** 한글 입력·스크린샷 등 알려진 이슈가 많아
-> 기본값은 `x11`이며, 안정적인 사용을 원하면 `x11`을 권장합니다.
+> **Wayland는 Anland APK + KWin + XFCE로 연결되며 실험적입니다.** 현재 ARM64
+> Snapdragon/Adreno 기기를 대상으로 합니다. APK 설치를 완료한 뒤 `startXFCE`를 실행하세요.
+> APK 종류, 고정 Mesa 패키지와 실기기 확인 항목은 [Anland 안내](docs/wayland-anland.md)를 참고하세요.
+> 기본 디스플레이는 `x11`입니다.
 
 ## 사용법
 
@@ -172,9 +174,9 @@ zrunhud     # proot 앱을 Zink + FPS 오버레이로 실행
 |------|--------|
 | 기본 유틸 | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
-| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: termux-x11-nightly, labwc, xwayland, wlr-randr, xdotool, xclip, wmctrl |
+| 디스플레이 서버 | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, 패치 KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
 | CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
-| APK | Termux:X11, Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
+| APK | Termux:X11(x11) 또는 Anland(wayland), Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
 ### proot (선택)
 

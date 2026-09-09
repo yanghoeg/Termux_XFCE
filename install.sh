@@ -106,7 +106,7 @@ fi
 # -----------------------------------------------------------------------------
 # 6. Output Adapter 선택 — Display Server
 # DISPLAY_SERVER는 CLI/환경변수/대화형에서 설정 (기본: x11) — 설치 시 하나 고정
-# wayland(labwc)는 실험적 — 한글 입력·스크린샷 등 이슈가 있어 x11이 기본이다.
+# wayland는 Anland + KWin 기반 실험적 세션이며 x11이 기본이다.
 # -----------------------------------------------------------------------------
 case "${DISPLAY_SERVER}" in
     x11)
@@ -167,6 +167,10 @@ fi
 # -----------------------------------------------------------------------------
 if [[ "$ARCH" != "aarch64" ]]; then
     ui_warn "이 스크립트는 aarch64(arm64) 기기에 최적화되어 있습니다. 현재: $ARCH"
+fi
+
+if [ "${PROOT_ONLY:-false}" != true ]; then
+    display_preflight
 fi
 
 # -----------------------------------------------------------------------------
@@ -243,6 +247,7 @@ if [ "${PROOT_ONLY:-false}" != "true" ]; then
 
     _step_msg "XFCE 데스크탑 설치"
     setup_xfce_packages
+    display_setup_runtime
     ui_info "  테마 설치..."
     setup_xfce_theme
     ui_info "  폰트 설치..."
