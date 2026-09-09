@@ -53,9 +53,9 @@ resolve_interactive_inputs() {
             local display_choice
             display_choice=$(ui_select \
                 "디스플레이 서버 선택" \
-                "XFCE를 실행할 디스플레이 서버를 선택하세요:" \
-                "x11 (termux-x11 — 기본 권장)" \
-                "wayland (Anland — ARM64 Snapdragon, 실험적)") || _interactive_cancel
+                "디스플레이 서버와 데스크탑을 선택하세요:" \
+                "x11 (termux-x11 + XFCE — 기본 권장)" \
+                "wayland (Anland + KDE Plasma — ARM64 Snapdragon/Adreno)") || _interactive_cancel
 
             case "$display_choice" in
                 wayland*) DISPLAY_SERVER="wayland" ;;
