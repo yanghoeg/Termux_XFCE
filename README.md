@@ -69,6 +69,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 > Plasma uses KWin's own protocols, so wallpaper, per-output scaling, tasklist and
 > display settings all work. XFCE stays installed and is what `--display x11` runs.
 >
+> **Not usable day to day yet.** On Adreno 750, `plasmashell` is killed by a fatal
+> Wayland protocol error whenever a panel popup opens, and the pinned Mesa aborts
+> Xwayland, so X11 apps such as Firefox do not stay running. Both are upstream
+> defects with no version combination that avoids them — see
+> [Known blockers](docs/wayland-anland.md#known-blockers-device-verified-2026-09-10).
+>
 > The native backend targets ARM64 Snapdragon/Adreno devices. Complete the APK
 > installation before running `startXFCE`. Korean is typed with the Android keyboard
 > over Wayland `text-input`; no Linux IME is started. See the

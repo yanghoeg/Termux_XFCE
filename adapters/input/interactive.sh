@@ -55,7 +55,7 @@ resolve_interactive_inputs() {
                 "디스플레이 서버 선택" \
                 "디스플레이 서버와 데스크탑을 선택하세요:" \
                 "x11 (termux-x11 + XFCE — 기본 권장)" \
-                "wayland (Anland + KDE Plasma — ARM64 Snapdragon/Adreno)") || _interactive_cancel
+                "wayland (Anland + KDE Plasma — 실사용 불가, docs/wayland-anland.md 참고)") || _interactive_cancel
 
             case "$display_choice" in
                 wayland*) DISPLAY_SERVER="wayland" ;;
