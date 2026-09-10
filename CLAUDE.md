@@ -130,6 +130,11 @@ Termux_XFCE/
     `plasma-workspace` 의존을 충족해 Termux `kwin-x11`은 끌려오지 않는다.
     세션은 `startplasma-wayland`가 고른 Wayland 소켓 이름을 `anland-ready`에 기록한다.
   - `display_preflight`는 변경 전 지원 기기 검사, `display_setup_runtime`은 버전·SHA-256 고정 패키지 설치
+  - **wayland는 현재 실사용 불가** (2026-09-10 실기기): 패널 팝업마다 `plasmashell`이
+    치명적 Wayland 프로토콜 오류(`layershellqt: Cannot attach popup of unknown type`)로
+    종료되고, 고정 Mesa가 A7xx에서 Xwayland를 크래시(`fd6_texture.cc` 어서션)시킨다.
+    Termux x11-repo는 Plasma 6.7.5만, upstream은 `kwin-anland` 6.7.4만 제공해 버전을
+    맞출 수 없다. 상세: `docs/wayland-anland.md`의 "Known blockers"
   - Anland APK 일반판/호환판 선택과 실기기 미검증 항목: `docs/wayland-anland.md`
   - `--display x11|wayland` CLI 옵션 / `DISPLAY_SERVER` 환경변수 / 미지정 시 대화형 선택
   - **설치 시 하나 고정**: 선택된 서버의 런처(`startXFCE`)만 생성 (기본: x11)

@@ -30,6 +30,46 @@ X11-only KWin is never pulled in.
 session publishes the name it actually got in `$SESSION_STATE_DIR/anland-ready` and the
 launcher waits on that rather than assuming a socket.
 
+## Known blockers (device-verified, 2026-09-10)
+
+Two defects in the pinned upstream components make this session unsuitable for daily
+use on SM-F956N / Adreno 750. Neither is fixable by configuration here.
+
+* **`plasmashell` is killed by a fatal Wayland protocol error on layer-shell popups.**
+  Right-clicking the panel, or launching an app from it, produces:
+
+  ```
+  layershellqt: Cannot attach popup of unknown type
+  xdg_wm_base#3: error 3: no xdg_popup parent surface has been specified
+  The Wayland connection experienced a fatal error: Protocol error
+  ```
+
+  The screen goes black until the supervisor's watchdog restarts the shell. Disabling
+  the task manager's tooltips (`showToolTips=false`) and launch feedback
+  (`klaunchrc` `BusyCursor`/`TaskbarButton=false`) did not stop it. KWin is not at
+  fault for lacking a protocol — `libkwin.so.6.7.4` implements `org_kde_plasma_shell`,
+  `org_kde_plasma_window_management` and `zwlr_layer_shell_v1`. The likely cause is the
+  version split: Termux's x11-repo ships Plasma **6.7.5** only, while upstream Anland's
+  newest `kwin-anland` is **6.7.4**, so neither side can be matched to the other.
+
+* **The pinned Mesa crashes Xwayland on A7xx.** X11 clients (Firefox, proot GUI apps)
+  abort the X server:
+
+  ```
+  fd6_texture.cc:854: assertion "state->view_rsc_seqno[i] == seqno" failed  [CHIP = A7XX]
+  Fatal server error: (EE) Caught signal 6 (Aborted). Server aborting
+  ```
+
+  This happened twice in a single session under ordinary use, and Firefox exited three
+  times in a row as a result.
+
+Re-test when upstream publishes a `kwin-anland` matching the Plasma version in
+x11-repo, or a Mesa build without the a6xx texture assertion. Restoring the stock
+graphics packages afterwards is `apt-mark unhold mesa mesa-vulkan-icd-freedreno
+xwayland` followed by installing the repository versions; note that the same
+`CreateSwapchainKHR failed` / zink fallback appears under Termux:X11 with stock Mesa
+too, so that fallback is a property of this device, not of the pinned build.
+
 ## Install and start
 
 The pinned native packages target **ARM64 Snapdragon/Adreno with `/dev/kgsl-3d0`**.
@@ -93,7 +133,9 @@ does not roll back already completed package transactions.
 ## Runtime and validation
 
 * The daemon socket is `$TMPDIR/anland/display_daemon.sock`; another running daemon
-  is not replaced. The Wayland socket is `$XDG_RUNTIME_DIR/wayland-termux-xfce`.
+  is not replaced. `startplasma-wayland` picks KWin's Wayland socket name itself (it
+  has been `wayland-0` in practice), and the session writes the name it actually got
+  into `$SESSION_STATE_DIR/anland-ready` for the launcher to read.
 * The supervisor tracks its daemon, bridge, compositor and PipeWire children by PID,
   propagates failures and cleans them up on exit. Startup waits for a running
   `plasmashell` whose Wayland socket exists. This does not prove that a frame was
@@ -107,9 +149,12 @@ does not roll back already completed package transactions.
 * Verified on a device (SM-F956N, Adreno 750): Plasma shell renders, KWin composites
   through OpenGL 4.6 on `freedreno`/FD750, Xwayland runs glamor on the KGSL surfaceless
   EGL backend (`zink`/Turnip, direct rendering), `kscreen-doctor` reports the output at
-  scale 2, `plasma-apply-wallpaperimage` sets the wallpaper, and Korean input arrives
-  from the Android keyboard over Wayland `text-input` with no Linux IME running —
-  `nimf`/`fcitx5` are not started in this session.
+  scale 2, `plasma-apply-wallpaperimage` sets the wallpaper, and Korean is typed from
+  the Android keyboard over Wayland `text-input` with the IME variables unset —
+  leaving `GTK_IM_MODULE`/`QT_IM_MODULE`/`XMODIFIERS` set to `nimf` breaks input
+  instead. `NotShowIn=KDE` keeps XFCE's autostart from starting `nimf`, but Plasma's
+  `manage-inputmethod` applet may still launch it; it is not needed on this path.
+  These checks were made before the blockers above were hit.
 * **Device checks still required:** rotation/app switching, clipboard, proot GUI apps,
   sound, and X11 with the shared patched Mesa packages. Existing X11 screenshot tools
   do not guarantee capture of the whole Wayland desktop. XFCE's autostart entries are

@@ -69,6 +69,12 @@ DISTRO=ubuntu USERNAME=<username> bash install.sh
 > 프로토콜을 쓰므로 배경화면·배율·태스크리스트·디스플레이 설정이 모두 동작합니다.
 > XFCE는 그대로 설치되어 `--display x11`에서 쓰입니다.
 >
+> **아직 일상 사용은 어렵습니다.** Adreno 750에서 패널 팝업이 열릴 때마다
+> `plasmashell`이 치명적 Wayland 프로토콜 오류로 종료되고, 고정 Mesa가 Xwayland를
+> 크래시시켜 Firefox 같은 X11 앱이 유지되지 않습니다. 둘 다 상위 컴포넌트 결함이며
+> 이를 피하는 버전 조합이 없습니다 —
+> [Known blockers](docs/wayland-anland.md#known-blockers-device-verified-2026-09-10) 참고.
+>
 > 네이티브 백엔드는 ARM64 Snapdragon/Adreno 기기를 대상으로 합니다. APK 설치를 완료한 뒤
 > `startXFCE`를 실행하세요. 한글은 Anland가 안드로이드 키보드를 Wayland `text-input`으로
 > 넘겨주므로 별도의 Linux 입력기가 실행되지 않습니다. APK 종류, 고정 Mesa 패키지와

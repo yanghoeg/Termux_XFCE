@@ -125,7 +125,8 @@ _cli_usage() {
   -u, --user <이름>       proot 사용자 이름 (기본: 대화형 입력)
   -d, --distro <distro>   proot distro: ubuntu | archlinux (기본: 대화형 선택)
       --display <server>  디스플레이 서버/데스크탑: x11(XFCE) | wayland(KDE Plasma)
-                          (미지정 시 대화형 선택, 기본: x11)
+                          wayland는 현재 실사용 불가 — docs/wayland-anland.md의
+                          'Known blockers' 참고 (미지정 시 대화형 선택, 기본: x11)
       --no-proot          Termux native만 설치 (proot 생략)
       --proot-only        proot만 설치 (Termux native 설정 생략, 추가 distro용)
   -h, --help              이 도움말 출력
