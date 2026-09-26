@@ -17,8 +17,24 @@ _load_domain() {
     mock_wget
 
     # locale_ko.sh는 clang, unzip 등 호출 → mock
-    clang()  { _record_call "clang $*"; }
-    unzip()  { _record_call "unzip $*"; mkdir -p "$PREFIX/share/locale/ko/LC_MESSAGES" 2>/dev/null; }
+    clang() {
+        _record_call "clang $*"
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = -o ]; then printf 'shared library\n' > "$2"; return; fi
+            shift
+        done
+        return 1
+    }
+    unzip() {
+        _record_call "unzip $*"
+        local dest=""
+        while [ "$#" -gt 0 ]; do
+            if [ "$1" = -d ]; then dest="$2"; break; fi
+            shift
+        done
+        mkdir -p "$dest/ko/LC_MESSAGES"
+        printf 'catalog\n' > "$dest/ko/LC_MESSAGES/gtk30.mo"
+    }
     chmod()  { command chmod "$@"; }
 
     export SCRIPT_DIR="${SCRIPT_DIR}/.."
@@ -39,11 +55,13 @@ _test_locale_native_skips_without_zip() {
     export KOREAN_LOCALE_ZIP=""
     reset_ui_output
 
-    setup_korean_locale_native 2>/dev/null || true
-    assert_ui_contains "WARN"
+    local rc=0
+    setup_korean_locale_native 2>/dev/null || rc=$?
+    assert_nonzero "$rc"
+    assert_ui_contains "ERROR"
     cleanup_sandbox "$sb"
 }
-it "KOREAN_LOCALE_ZIP 미설정 시 경고 후 건너뛴다" _test_locale_native_skips_without_zip
+it "KOREAN_LOCALE_ZIP 미설정 시 실패를 반환한다" _test_locale_native_skips_without_zip
 
 _test_locale_native_skips_invalid_path() {
     local sb; sb=$(make_sandbox)
@@ -51,11 +69,13 @@ _test_locale_native_skips_invalid_path() {
     export KOREAN_LOCALE_ZIP="/nonexistent/locale.zip"
     reset_ui_output
 
-    setup_korean_locale_native 2>/dev/null || true
-    assert_ui_contains "WARN"
+    local rc=0
+    setup_korean_locale_native 2>/dev/null || rc=$?
+    assert_nonzero "$rc"
+    assert_ui_contains "ERROR"
     cleanup_sandbox "$sb"
 }
-it "KOREAN_LOCALE_ZIP 파일 미존재 시 경고 후 건너뛴다" _test_locale_native_skips_invalid_path
+it "KOREAN_LOCALE_ZIP 파일 미존재 시 실패를 반환한다" _test_locale_native_skips_invalid_path
 
 _test_locale_native_runs_all_steps() {
     local sb; sb=$(make_sandbox)
@@ -68,7 +88,7 @@ _test_locale_native_runs_all_steps() {
     reset_mock_calls
     reset_ui_output
 
-    setup_korean_locale_native 2>/dev/null || true
+    setup_korean_locale_native
 
     assert_ui_contains "glibc .mo 카탈로그"
     assert_ui_contains "force_gettext.so"
@@ -136,12 +156,23 @@ _test_deploy_catalogs_unzip_failure_preserves_original() {
     local rc=0
     _deploy_locale_catalogs "$zip_path" 2>/dev/null || rc=$?
 
-    assert_zero "$rc" "unzip 실패해도 set -e 트립 없이 rc 0"
+    assert_nonzero "$rc" "unzip 실패를 호출자에 전파"
     assert_file_exists "${dest}/marker.txt"
     ! compgen -G "${dest}.bak."* > /dev/null 2>&1
     cleanup_sandbox "$sb"
 }
 it "unzip 실패 시 기존 locale 보존 + .bak 생성 안 함" _test_deploy_catalogs_unzip_failure_preserves_original
+
+_test_deploy_catalogs_missing_catalog_preserves_original() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    unzip() { return 0; }
+    mkdir -p "$PREFIX/share/locale"
+    touch "$PREFIX/share/locale/marker.txt"
+    if _deploy_locale_catalogs "$sb/unrelated.zip"; then return 1; fi
+    assert_file_exists "$PREFIX/share/locale/marker.txt"
+    cleanup_sandbox "$sb"
+}
+it "한글 카탈로그가 없는 ZIP은 거부하고 기존 locale을 보존한다" _test_deploy_catalogs_missing_catalog_preserves_original
 
 _test_deploy_catalogs_merges_when_bak_exists() {
     local sb; sb=$(make_sandbox)
@@ -188,8 +219,9 @@ _test_force_gettext_builds_so() {
     mkdir -p "$src_dir"
     touch "${src_dir}/force_gettext.c"
 
-    _build_force_gettext 2>/dev/null || true
+    _build_force_gettext
     assert_was_called "clang -shared"
+    [ -s "${PREFIX}/lib/force_gettext.so" ]
     cleanup_sandbox "$sb"
 }
 it "clang -shared로 force_gettext.so를 빌드한다" _test_force_gettext_builds_so
@@ -200,7 +232,7 @@ _test_force_gettext_idempotent() {
     reset_mock_calls
 
     # 이미 빌드된 .so가 있음
-    touch "${PREFIX}/lib/force_gettext.so"
+    printf 'shared library\n' > "${PREFIX}/lib/force_gettext.so"
 
     _build_force_gettext 2>/dev/null || true
     assert_not_called "clang"
@@ -218,11 +250,13 @@ _test_force_gettext_warns_if_src_missing() {
     export SCRIPT_DIR="$sb"
     rm -f "${PREFIX}/lib/force_gettext.so"
 
-    _build_force_gettext 2>/dev/null || true
-    assert_ui_contains "WARN"
+    local rc=0
+    _build_force_gettext 2>/dev/null || rc=$?
+    assert_nonzero "$rc"
+    assert_ui_contains "ERROR"
     cleanup_sandbox "$sb"
 }
-it "force_gettext.c 누락 시 경고를 출력한다" _test_force_gettext_warns_if_src_missing
+it "force_gettext.c 누락 시 오류를 반환한다" _test_force_gettext_warns_if_src_missing
 
 _test_force_gettext_warns_if_clang_fails() {
     local sb; sb=$(make_sandbox)
@@ -247,13 +281,14 @@ _test_force_gettext_warns_if_clang_fails() {
     local rc=0
     _build_force_gettext 2>/dev/null || rc=$?
 
-    assert_zero "$rc" "clang 실패해도 set -e 트립 없이 rc 0"
-    assert_ui_contains "WARN"
+    assert_nonzero "$rc" "clang 실패를 호출자에 전파"
+    assert_ui_contains "ERROR"
+    [ ! -e "${PREFIX}/lib/force_gettext.so" ]
 
     unset -f command
     cleanup_sandbox "$sb"
 }
-it "clang 빌드 실패 시 경고 후 건너뛴다 (set -e 트립 방지)" _test_force_gettext_warns_if_clang_fails
+it "clang 빌드 실패 시 오류를 반환하고 불완전한 .so를 남기지 않는다" _test_force_gettext_warns_if_clang_fails
 
 # =============================================================================
 # _install_startxfce4_ko_wrapper — 래퍼 스크립트 생성

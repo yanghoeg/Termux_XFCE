@@ -789,6 +789,7 @@ _test_base_pkgs_installs_missing() {
 
     _install_base_packages 2>/dev/null || true
     assert_was_called "pkg_install"
+    assert_was_called "pkg_install zenity"
     cleanup_sandbox "$sb"
 }
 it "미설치 패키지에 대해 pkg_install을 호출한다" _test_base_pkgs_installs_missing

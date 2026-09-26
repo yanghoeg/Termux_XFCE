@@ -18,7 +18,8 @@ PKGS_TERMUX_BASE=(
     ncurses-utils
     dbus
     pulseaudio
-    yad            # app-installer 검색 가능 GUI (zenity 대체)
+    yad            # app-installer 검색 가능 GUI
+    zenity         # cp2menu / X11 세션 선택 / 세션 종료 런처
     termux-api     # Android API 브리지 (클립보드, 알림, 배터리 등)
     termux-services # runit 서비스 관리 (sv-enable/sv — Termux:Boot 자동 기동용)
     # xclip: display 어댑터(display_get_packages)로 이동
@@ -129,4 +130,3 @@ PKGS_PROOT_ARCH_DESKTOP=(
     mesa-demos   # glxinfo/glxgears — GPU 가속 테스트
     vulkan-tools # vulkaninfo — Vulkan 가속 확인
 )
-

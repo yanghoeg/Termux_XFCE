@@ -207,7 +207,7 @@ zrunhud     # run proot app with Zink + FPS overlay
 
 | Category | Packages |
 |----------|----------|
-| Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, termux-api, termux-services |
+| Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, zenity, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
 | Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, patched KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
 | Plasma (wayland only) | plasma-workspace, plasma-desktop, kscreen, systemsettings, plasma-integration, plasma-pa, milou |
@@ -281,11 +281,12 @@ bash tests/run_tests.sh domain_termux
 bash tests/run_tests.sh e2e_install
 ```
 
-Main installer suite: **413** tests across 12 suites (ports 12, adapters 38, adapters_deb 3,
-input_interactive 6, domain_termux 76, domain_xfce 47, domain_proot 51, domain_locale_ko 27,
-app_installer 86, prun_ld_preload 19, install_matrix 22, e2e_install 26).
-The app-installer submodule has its own suites (`test_domain_apps.sh` 173,
-`test_adapters.sh` 26, `test_ports.sh` 11, `test_fetch.sh` 7, `test_proot_path.sh` 6 — **223** total).
+The main suite covers ports, adapters, display setup, domains, generated launchers,
+and installation flows. The `force_gettext` suite compiles a string-normalization
+harness with AddressSanitizer and UndefinedBehaviorSanitizer; it needs Clang or GCC
+with sanitizer support.
+The app-installer submodule has separate domain, adapter, port, download, rootfs,
+and CLI suites; see its [test instructions](app-installer/README.md#tests).
 
 > On Arch these are mock / static checks only — final verification needs a real Termux device.
 

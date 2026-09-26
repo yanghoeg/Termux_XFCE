@@ -132,6 +132,11 @@ does not roll back already completed package transactions.
 
 ## Runtime and validation
 
+`wayvnc` requires a wlroots compositor and does not support this Anland/KWin
+backend. The app installer and `wayvnc-start` reject known KWin sessions; switching
+to `--display wayland` does not enable VNC access. See the
+[wayvnc compatibility statement](https://github.com/any1/wayvnc#introduction).
+
 * The daemon socket is `$TMPDIR/anland/display_daemon.sock`; another running daemon
   is not replaced. `startplasma-wayland` picks KWin's Wayland socket name itself (it
   has been `wayland-0` in practice), and the session writes the name it actually got
