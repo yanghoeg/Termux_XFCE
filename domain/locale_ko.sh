@@ -6,7 +6,7 @@
 # "XFCE 설정 → 언어 선택"식 접근이 불가. 대신 다음 3-레이어로 강제 한글화:
 #   (1) glibc용 .mo 카탈로그를 $PREFIX/share/locale에 배치
 #   (2) force_gettext.so (LD_PRELOAD) — gettext/GTK 심볼 후킹
-#   (3) startxfce4-ko 래퍼 — 환경변수 + LD_PRELOAD 주입 후 startxfce4 exec
+#   (3) startXFCE 및 로그인 셸 — 같은 로케일 환경으로 세션 시작
 # =============================================================================
 
 # FALLBACK_DOMAINS — force_gettext.so가 후킹할 gettext 도메인 목록
@@ -116,54 +116,14 @@ _build_force_gettext() {
     chmod 755 "$built" && mv -f "$built" "$dst" || { rm -f "$built"; return 1; }
 }
 
+# Keep the old command as a forwarding entry point; session setup has one owner.
 _install_startxfce4_ko_wrapper() {
     local wrapper="$HOME/bin/startxfce4-ko"
-    [ -x "$wrapper" ] && return 0
-
-    mkdir -p "$HOME/bin" || return 1
-    local content
-    content=$(cat << 'EOF'
+    mkdir -p "${wrapper%/*}" || return 1
+    cat > "$wrapper" << 'EOF' || return 1
 #!/data/data/com.termux/files/usr/bin/bash
-set -euo pipefail
-
-PREFIX="/data/data/com.termux/files/usr"
-
-# 로케일 힌트 (QLocale/KDE 포함)
-export LANG="ko_KR.UTF-8"
-export LANGUAGE="ko_KR:ko:en_US:en"
-
-# Qt 번역 경로 (누적)
-QT_TRANSLATIONS_PATH="$PREFIX/share/qt6/translations:$PREFIX/share/qt/translations${QT_TRANSLATIONS_PATH:+:$QT_TRANSLATIONS_PATH}"
-export QT_TRANSLATIONS_PATH
-export KDE_FULL_SESSION=1
-export KDE_LANG=ko
-export KDE_USE_QT_TRANSLATIONS=1
-export QT_LOCALE_OVERRIDE=ko_KR
-
-# gettext(.mo) 루트
-export FORCE_TEXTDOMAINDIR="$PREFIX/share/locale"
-
-# 폴백 도메인 — XFCE/GTK/KDE FW6/그래픽 앱 카탈로그
-export FALLBACK_DOMAINS="__KOREAN_FALLBACK_DOMAINS__"
-
-export XDG_DATA_DIRS="$PREFIX/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
-
-# LD_PRELOAD — libtermux-exec 먼저, force_gettext 뒤 (둘 다 중복 방지)
-case ":${LD_PRELOAD-}:" in *:"$PREFIX/lib/libtermux-exec.so":*) ;; *)
-  export LD_PRELOAD="$PREFIX/lib/libtermux-exec.so${LD_PRELOAD:+:$LD_PRELOAD}";; esac
-case ":${LD_PRELOAD-}:" in *:"$PREFIX/lib/force_gettext.so":*) ;; *)
-  export LD_PRELOAD="$PREFIX/lib/force_gettext.so${LD_PRELOAD:+:$LD_PRELOAD}";; esac
-
-# DBus 세션 (없을 때만)
-if command -v dbus-launch >/dev/null 2>&1 && [[ -z "${DBUS_SESSION_BUS_ADDRESS-}" ]]; then
-  eval "$(dbus-launch --sh-syntax)"
-  export DBUS_SESSION_BUS_ADDRESS DBUS_SESSION_BUS_PID
-fi
-
-exec startxfce4
+exec startXFCE "$@"
 EOF
-)
-    printf '%s\n' "${content/__KOREAN_FALLBACK_DOMAINS__/$_KOREAN_FALLBACK_DOMAINS}" > "$wrapper" || return 1
     chmod +x "$wrapper"
 }
 

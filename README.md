@@ -21,124 +21,149 @@ Derived from [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFC
 
 ## Features
 
-- **Termux native first** — XFCE, Firefox, GPU acceleration all installed as Termux native
+- **Termux native first** — XFCE and Firefox run in Termux; Ubuntu / Arch proot is optional
 - **Optional proot** — Ubuntu / Arch Linux / none
 - **Hexagonal Architecture** — distro abstraction keeps Ubuntu & Arch code unified
-- **Idempotent** — already installed items are skipped automatically
-- **GPU acceleration** — Zink + Turnip auto-activated for Adreno 6xx/7xx/8xx
+- **Repeatable setup** — installed packages are skipped where possible; managed launchers and settings are refreshed
+- **Optional GPU acceleration** — install the drivers with App Installer; the X11 launcher selects Zink + Turnip when available and falls back to software rendering
 - **Termux API integration** — Android clipboard sync, battery monitor, brightness/volume control
 - **zsh + Powerlevel10k** — set as default shell with autosuggestions & syntax-highlighting
 
 ## Installation
 
-> **Just run `install.sh` — every option is asked interactively.**  
-> The flags & env vars are only for non-interactive / scripted installs.
+Run in **Android Termux**, with ARM64 (`aarch64`) as the primary target. With no
+options, the installer asks for a distro, a proot username when needed, and a display
+backend. The default backend is Termux:X11 + XFCE.
 
 ```bash
-# one-liner (auto clones repo then runs — interactive)
+# Download, clone the repository and start interactive setup
 curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
 ```
 
-```bash
-# non-interactive: with options
-bash install.sh --distro ubuntu --user <username>
-bash install.sh --distro archlinux --user <username>
-bash install.sh --no-proot          # Termux native only
-bash install.sh --distro archlinux --user <username> --proot-only  # add 2nd distro
-```
+For a checkout you can also inspect and rerun:
 
 ```bash
-# non-interactive: via environment variables
-DISTRO=ubuntu USERNAME=<username> bash install.sh
+git clone --recurse-submodules https://github.com/yanghoeg/Termux_XFCE.git
+cd Termux_XFCE
+bash install.sh
 ```
 
-| Option | Env var | Description |
-|--------|---------|-------------|
-| `--distro ubuntu\|archlinux` | `DISTRO=` | proot distro |
-| `--user <name>` | `USERNAME=` | proot username |
-| `--no-proot` | `SKIP_PROOT=true` | Termux native only |
-| `--proot-only` | `PROOT_ONLY=true` | proot only (for adding a 2nd distro) |
-| `--display x11\|wayland` | `DISPLAY_SERVER=` | display server / desktop: `x11` = XFCE, `wayland` = KDE Plasma (default: `x11`) |
+An existing clone needs `git submodule update --init --recursive` before installation.
+The `app-installer` submodule supplies shared helpers even for native-only setup.
+Keep the checkout: the installed `app-installer` command points to it. The one-liner
+uses `~/.termux-xfce-installer`.
 
-> GPU acceleration, Korean input, and other optional components are managed via `app-installer` after installation.
+```bash
+# Scripted examples: replace desktop with your proot username
+bash install.sh --distro ubuntu --user desktop
+bash install.sh --distro archlinux --user desktop
+bash install.sh --no-proot
+bash install.sh --distro archlinux --user desktop --proot-only
 
-> **`--display wayland` installs KDE Plasma, not XFCE.** XFCE 4.20 did not produce a
-> usable desktop on KWin: its panel and settings daemon report
-> `wlr-foreign-toplevel`, `ext-workspace` and `wlr-output-management` missing, its
-> scaling needs the X11 XSETTINGS selection, and `xfdesktop` drew no wallpaper.
-> Plasma uses KWin's own protocols, so wallpaper, per-output scaling, tasklist and
-> display settings all work. XFCE stays installed and is what `--display x11` runs.
->
-> **Not usable day to day yet.** On Adreno 750, `plasmashell` is killed by a fatal
-> Wayland protocol error whenever a panel popup opens, and the pinned Mesa aborts
-> Xwayland, so X11 apps such as Firefox do not stay running. Both are upstream
-> defects with no version combination that avoids them — see
-> [Known blockers](docs/wayland-anland.md#known-blockers-device-verified-2026-09-10).
->
-> The native backend targets ARM64 Snapdragon/Adreno devices. Complete the APK
-> installation before running `startXFCE`. Korean is typed with the Android keyboard
-> over Wayland `text-input`; no Linux IME is started. See the
-> [Anland guide](docs/wayland-anland.md) for APK variants, pinned Mesa packages and
-> device checks. The default remains `x11`.
+# Equivalent environment variables
+DISTRO=ubuntu USERNAME=desktop bash install.sh
+```
+
+| Option | Environment variable | Description |
+|--------|----------------------|-------------|
+| `--distro`, `-d` | `DISTRO=ubuntu` or `archlinux` | proot distro |
+| `--user`, `-u` | `USERNAME=desktop` | proot username |
+| `--no-proot` | `SKIP_PROOT=true` | Skip proot setup |
+| `--proot-only` | `PROOT_ONLY=true` | Configure proot without reinstalling the native desktop |
+| `--display` | `DISPLAY_SERVER=x11` or `wayland` | `x11`: XFCE; `wayland`: experimental KDE Plasma |
+| — | `PROOT_SHELL=bash` or `zsh` | Interactive proot shell; new configs default to `bash`. Install `zsh` in the container before selecting it |
+| `--help`, `-h` | — | Show help |
+
+CLI options override their environment equivalents. Missing distro/user values can
+still prompt; supplying flags alone does not guarantee unattended execution.
+Usernames must match `[a-z_][a-z0-9_-]{0,31}`. `--no-proot` cannot be combined with
+`--proot-only`, `--distro`, or `--user`.
+
+Settings are saved in `~/.config/termux-xfce/config` (mode 600). A `--proot-only` run
+preserves the saved display backend and selects the newly configured distro/user for
+`prun` and App Installer. An explicit `PROOT_SHELL` overrides the saved shell.
+`--no-proot` skips container setup and selects native-only operation by clearing the
+saved `PROOT_DISTRO` and `PROOT_USER`. Existing containers remain on disk. To select
+one again, rerun with its distro and user, using `--proot-only` if the native desktop
+does not need updating.
+
+**Wayland is experimental.** `--display wayland` adds Anland/KWin + KDE Plasma; XFCE
+remains installed for X11. This path requires ARM64 Adreno/KGSL hardware. The recorded
+Plasma popup and Xwayland failures have not been cleared by device validation of this
+installer. Upstream now requires a patched LayerShellQt package that this installer
+does not explicitly install. See the [Anland guide](docs/wayland-anland.md) for
+[pinned dependencies](docs/wayland-anland.md#pinned-dependencies), APK selection,
+and [known blockers](docs/wayland-anland.md#known-blockers).
+
+GPU packages, Korean input and other optional components are managed through App
+Installer. Downloaded APKs still require confirmation in Android's installation dialog.
 
 ## Usage
 
 ```bash
-startXFCE          # Start XFCE desktop
-ubuntu             # Enter Ubuntu proot
-archlinux          # Enter Arch Linux proot
-prun libreoffice   # Run proot app from Termux terminal
-cp2menu            # Copy proot .desktop files to XFCE menu
-app-installer      # GUI for installing/removing extra apps
-screenshot [full|region|window]   # Session-aware screenshot
-kill_display_session              # Shut the XFCE session / display server down
+startXFCE             # Start the backend selected at installation: XFCE or Plasma
+ubuntu                # Enter Ubuntu proot, if installed
+archlinux             # Enter Arch Linux proot, if installed
+prun libreoffice      # Run a command in the configured proot distro
+cp2menu               # Import proot .desktop launchers into the native menu
+app-installer         # Extra-app GUI
+screenshot            # Full screenshot of the current desktop
+screenshot region     # Also accepts: full, window
+kill_display_session  # Stop the desktop and display server
 ```
+
+The selected backend also has a `startXFCE-x11` or `startXFCE-wayland` launcher.
+Only the launcher for the backend being installed is generated. Run GUI commands
+from a terminal in that desktop so they inherit its `DISPLAY`/`WAYLAND_DISPLAY`.
+Screenshots use `xfce4-screenshooter` on X11 and `spectacle` on Wayland.
 
 ## GPU Acceleration
 
-Hardware acceleration via **Zink (OpenGL→Vulkan) + Turnip driver** on Adreno GPUs (Snapdragon 6xx/7xx/8xx).  
-Applied automatically to every bash/zsh session after installation.
+GPU acceleration is optional. Install `gpu_native` from App Installer for Termux:X11.
+`startXFCE` selects Zink + Turnip when it finds both an Adreno GPU and the installed
+Turnip ICD; missing support or a detected Zink swapchain failure selects software
+rendering. Driver installation does not guarantee acceleration on every Adreno
+model. The launcher owns these settings,
+so they are no longer forced into every shell. `GSK_RENDERER=cairo` remains the
+GTK4 compatibility setting for the X11 session.
 
-> **Why glamor alone isn't enough**  
-> X11's OpenGL acceleration (`glamor_egl`) requires DRI3 support, but Termux:X11's Xwayland doesn't expose Adreno DRI3.  
-> Zink routes OpenGL calls through Vulkan (Turnip) instead, reaching the GPU via `/dev/kgsl-3d0`.
-
-> **If GTK4 apps (zenity, etc.) crash**  
-> Fixed by `GSK_RENDERER=cairo` (forces the GTK4 Cairo renderer). Set automatically during install.
+For container apps, install `gpu_proot` separately. It uses the container's glibc
+Mesa driver and enables Zink only after `vulkaninfo` detects Turnip on KGSL. A distro
+Mesa build without KGSL support is reported as unsupported; the native Bionic ICD
+is not loaded into the container. Removing `gpu_proot` clears both current and old
+installer GPU overrides. Restart running apps after changing this setting.
 
 ```bash
-echo $MESA_LOADER_DRIVER_OVERRIDE   # → zink
-gpu-info                             # Show GPU model
-hud glxgears                         # FPS overlay
+gpu-info          # Show the GPU model
+glxinfo -B        # Check the renderer from a terminal inside the desktop
+hud glxgears      # FPS overlay in the current graphical session
 ```
 
-| Variable | Value | Role |
-|----------|-------|------|
-| `MESA_LOADER_DRIVER_OVERRIDE` | `zink` | Force OpenGL → Vulkan (Zink) |
-| `TU_DEBUG` | `noconform` | Disable Turnip conformance checks |
-| `ZINK_DESCRIPTORS` | `lazy` | Optimize descriptor updates |
-| `MESA_NO_ERROR` | `1` | Disable GL error checks |
-| `MESA_GL_VERSION_OVERRIDE` | `4.6COMPAT` | Advertise OpenGL 4.6 compat |
-| `MESA_GLES_VERSION_OVERRIDE` | `3.2` | Advertise GLES 3.2 |
-| `MESA_VK_WSI_PRESENT_MODE` | `fifo` | Vulkan present mode (VSync, prevents tearing) |
-| `GSK_RENDERER` | `cairo` | GTK4 Cairo renderer (prevents GLX crash) |
-
-> **Note**: If the XFCE4 compositor (xfwm4) causes a black screen,  
-> go to Settings → Window Manager Tweaks → Compositor → uncheck "Enable display compositing"
+Wayland uses the separate Anland/KWin runtime described in
+[the Wayland guide](docs/wayland-anland.md).
 
 ## Termux API Integration
 
-**Termux:API** package and APK are installed automatically. **Termux:Float** APK is also included.
+The `termux-api` package is installed by the native setup. Termux:API, Termux:Float,
+Termux:Widget and Termux:Boot APKs are downloaded and opened for Android installation;
+complete each dialog. `--proot-only` skips these steps.
+
+The companion APK URLs in this installer point to GitHub builds. Termux and its
+companions must use the same signing source; with F-Droid Termux, install the
+matching companions from F-Droid. See the
+[Termux installation guide](https://github.com/termux/termux-app#installation).
+Anland's standard/compatible selection is separate from these companion APKs.
 
 ### Auto-enabled
 
-- **Clipboard sync** — Android↔X11 bidirectional clipboard sync daemon starts automatically with XFCE
+- **X11 clipboard sync** — a bidirectional Android↔X11 daemon starts with XFCE.
+- **Wayland clipboard** — handled by Anland; the X11 polling daemon is not started.
 
 ### Available via App Installer
 
 | Tool | Description |
 |------|-------------|
-| Conky Battery | Display battery level & temperature in Conky widget |
+| Panel Battery (`api_conky_battery`) | XFCE Generic Monitor script for battery level/temperature; add the panel item manually |
 | Brightness Control | Screen brightness slider for XFCE panel |
 | Volume Control | Media volume slider for XFCE panel |
 | Notification | Send notifications to Android notification bar |
@@ -152,10 +177,22 @@ Displays the XFCE menu/settings/app UI in Korean. Since Termux's bionic libc doe
 
 > This approach is implemented based on a method shared by 미코 (Minigi Korea) community member 흡혈귀왕. 🙏
 
-Korean input (fcitx5) and the Korean locale can be installed via `app-installer`.
-Korean IME *inside* the proot distro (locale + nimf/fcitx5) is a separate `app-installer` item: `korean_proot`;
-it writes the locale and IME variables to `/etc/profile.d/termux-xfce-locale.sh` so every login shell
-picks them up (Arch's `~/.bash_profile` → `~/.bashrc` chain never reads `~/.profile`).
+Native Korean input (`korean_input` for fcitx5, or `nimf`) and UI localization
+(`korean_locale`) are separate App Installer items. A fresh base installation selects
+no IME. The native selection is stored in `~/.config/termux-xfce/input-method` and
+loaded by `$PREFIX/etc/profile.d/termux-xfce-input.sh`. Installing an IME selects it;
+installing another switches the selection. Removing the selected IME clears it,
+while rerunning setup migrates an existing selection. Restart XFCE to apply. Wayland clears these X11 IME variables and uses
+the Android keyboard through Anland.
+
+The locale installer needs a ZIP containing `ko/LC_MESSAGES/*.mo`; the GUI asks for
+it, or the CLI accepts `KOREAN_LOCALE_ZIP=/path/to/locale.zip`. See the
+[App Installer guide](app-installer/README.md#korean-input-and-localization).
+
+Proot Korean input (`korean_proot`) installs its own locale and nimf/fcitx5 packages
+and writes `/etc/profile.d/termux-xfce-locale.sh` inside the container. `prun` executes
+commands through a Bash login shell, which loads the container profiles; interactive
+`prun` uses the configured `PROOT_SHELL`.
 
 | File | Role |
 |------|------|
@@ -172,15 +209,27 @@ app-installer          # Full UI (tabs: Apps | System | Termux API | Wine)
 app-installer wine     # Wine apps only
 ```
 
-Headless CLI (no GUI): `bash app-installer/app-install.sh list|install <id>|remove <id>|status <id>`.
+From the Termux_XFCE checkout, the headless CLI supports:
+
+```bash
+bash app-installer/app-install.sh list
+bash app-installer/app-install.sh list Wine
+bash app-installer/app-install.sh install vlc
+bash app-installer/app-install.sh status vlc
+bash app-installer/app-install.sh remove vlc
+```
 
 - **Tabbed UI** — Apps / System / Termux API / Wine tabs
 - **Search** — type to filter by name/description (yad notebook, zenity fallback)
 - **Termux native first** — GIMP, Inkscape, Thunderbird install as native
 - **proot auto-routing** — LibreOffice, VS Code, DBeaver, etc. install inside proot
-- **Upgrade / rollback** — picking an already-installed app that supports upgrading offers
-  *Upgrade* alongside *Remove* (currently Claude Code; it backs up, smoke-tests, and rolls back
-  automatically on failure)
+- **Upgrade** — installed Claude Code, Codex CLI and Notion entries offer *Upgrade*.
+  Claude Code targets its pinned version and can restore a backup after a failed
+  download or version smoke check; this does not test `/login`. Codex targets its own
+  pin without that rollback flow. Notion refreshes its Firefox launcher.
+
+The CLI has no `upgrade` or `rollback` subcommand. App IDs, install targets and
+limitations are listed in the [App Installer README](app-installer/README.md).
 
 Source: [yanghoeg/App-Installer](https://github.com/yanghoeg/App-Installer) (Git Submodule)
 
@@ -203,14 +252,14 @@ zrunhud     # run proot app with Zink + FPS overlay
 
 ## What Gets Installed
 
-### Termux Native (always)
+### Termux Native (except `--proot-only`)
 
 | Category | Packages |
 |----------|----------|
 | Base utils | wget, unzip, which, ncurses-utils, dbus, pulseaudio, yad, zenity, termux-api, termux-services |
 | XFCE | xfce4, xfce4-goodies, firefox, flameshot, papirus-icon-theme, pavucontrol-qt, fontconfig-utils, libuv, libsimdutf |
 | Display server | x11: termux-x11-nightly, xdotool, xclip, wmctrl, mesa-demos<br>wayland: Anland 5.13.3, patched KWin/Xwayland/Mesa, pipewire, util-linux, xdotool, xclip, wmctrl |
-| Plasma (wayland only) | plasma-workspace, plasma-desktop, kscreen, systemsettings, plasma-integration, plasma-pa, milou |
+| Plasma (wayland only) | plasma-workspace, plasma-desktop, kscreen, systemsettings, plasma-integration, plasma-pa, milou, spectacle |
 | CLI | git, zsh, eza, bat, fzf, ripgrep, fd, sd, zoxide, lazygit, gitui, git-delta, difftastic, starship, atuin, zellij, htop, procs, dust, duf, ncdu, yazi, glow, tealdeer, xh, uv, onefetch, jq, fastfetch, netcat-openbsd |
 | APKs | Termux:X11 (x11) or Anland (wayland), Termux:API, Termux:Float, Termux:Widget, Termux:Boot |
 
@@ -221,9 +270,14 @@ zrunhud     # run proot app with Zink + FPS overlay
 | ubuntu | Ubuntu (proot-distro) | `ubuntu` |
 | archlinux | Arch Linux (proot-distro) | `archlinux` |
 
-> `btop`, GPU acceleration, Korean input, Wine and the rest are **not** part of the base install —
-> they live in `app-installer`. Packages from the TUR / root community repos are deliberately kept
-> out of the base set so a repo outage can never break the installer.
+> `btop`, optional X11/proot GPU packages, Korean input and Wine are App Installer
+> items. The base package lists do not require TUR or root-repo. Wayland is the
+> exception for graphics: it installs the pinned Mesa/KWin/Xwayland stack itself.
+
+The package lists are maintained in [domain/packages.sh](domain/packages.sh) and
+the [X11](adapters/output/display_x11.sh) / [Wayland](adapters/output/display_wayland.sh)
+adapters. Proot setup also installs distro-specific utilities and desktop tools,
+including Conky, Zenity and Onboard.
 
 ## Wine — Two Backends
 
@@ -232,10 +286,9 @@ You can choose between two Windows-app backends, and **install both side by side
 | | Wine (Box64+Staging) | Wine (Hangover) |
 |---|---|---|
 | Approach | Emulates all of Wine through Box64 | Wine runs native arm64; **only app binaries** go through FEX/ARM64EC |
-| Speed | Baseline | Faster |
 | Location | inside proot, or glibc-runner | Termux native (no proot needed) |
 | Source | Kron4ek/Wine-Builds tarball | Termux x11-repo `hangover` package |
-| WINEPREFIX | `$HOME/.wine` | `$HOME/.wine-hangover` |
+| Default WINEPREFIX | Proot user’s `$HOME/.wine`, or Termux `$HOME/.wine` without proot | Termux `$HOME/.wine-hangover` |
 | Wrapper | `$PREFIX/bin/wine-box64` | `$PREFIX/bin/wine-hangover` |
 
 `wine` on your PATH is a **dispatcher that forwards to the active backend**. Wine apps
@@ -250,9 +303,11 @@ wine notepad.exe          # run through the active backend
 wine-hangover notepad.exe # target a backend explicitly
 ```
 
-> The WINEPREFIXes are deliberately separate: two different Wine builds (wow64 staging
-> vs ARM64EC) sharing one prefix would make `wineboot --update` thrash. After switching
-> backends, reinstall the Wine apps you need in that backend.
+> The default prefixes are separate. Switching backends does not migrate Windows
+> apps. Reinstall apps for the selected backend; the installer’s status can still
+> reflect a shared launcher from the previous backend. Performance and app
+> compatibility depend on the device and workload. See the
+> [Wine guide](app-installer/README.md#wine--two-backends).
 
 ## Autostart on Boot
 
@@ -260,6 +315,7 @@ wine-hangover notepad.exe # target a backend explicitly
 device boots.
 
 ```bash
+pkg install openssh # prerequisite for this example
 sv-enable sshd      # register (starts on boot)
 sv-disable sshd     # unregister
 sv status sshd      # check
@@ -274,25 +330,37 @@ and then starts runit. An existing file is never overwritten.
 
 ## Tests
 
+Run from the Termux_XFCE checkout:
+
 ```bash
-bash tests/run_tests.sh              # main installer suite
-bash app-installer/tests/test_domain_apps.sh  # app installer domain
-bash tests/run_tests.sh domain_termux
-bash tests/run_tests.sh e2e_install
+bash tests/run_tests.sh
+bash tests/run_tests.sh install_matrix
+bash tests/run_tests.sh display_wayland modern_install
 ```
 
-The main suite covers ports, adapters, display setup, domains, generated launchers,
-and installation flows. The `force_gettext` suite compiles a string-normalization
-harness with AddressSanitizer and UndefinedBehaviorSanitizer; it needs Clang or GCC
-with sanitizer support.
-The app-installer submodule has separate domain, adapter, port, download, rootfs,
-and CLI suites; see its [test instructions](app-installer/README.md#tests).
+The runner is the source of truth for suite names and test counts. Host coverage
+includes ports, adapters, domains, generated launchers, input/GPU migrations, install
+dispatch and mocked end-to-end flows. Wayland runtime tests execute the supervisor
+with mock processes and need Python 3. `force_gettext` builds a normalization harness
+with AddressSanitizer and UndefinedBehaviorSanitizer, requiring Clang or GCC with
+sanitizer support.
 
-> On Arch these are mock / static checks only — final verification needs a real Termux device.
+See the [installation matrix guide](tests/INSTALL_MATRIX.md) for coverage and the
+boundary between host tests and device installation scripts. App Installer has
+[separate test suites](app-installer/README.md#tests) and a
+[device verification checklist](app-installer/TEST_LOG.md). Passing host tests does
+not establish that installation, graphics, input, audio or authentication work on an
+Android device.
 
 ## Android System Optimization
 
-### Disable Phantom Process Killer (Android 12+)
+### Raise the phantom-process count limit (Android 12+)
+
+Android 12+ can terminate background processes. This command raises the
+phantom-process count limit; it does not disable every process-killing policy, and
+its effect depends on the Android version and vendor. See the
+[Termux Android 12 notice](https://github.com/termux/termux-app#termux-application),
+then run from a PC connected over ADB.
 
 ```bash
 adb shell "/system/bin/device_config put activity_manager max_phantom_processes 2147483647"
@@ -300,7 +368,8 @@ adb shell "/system/bin/device_config put activity_manager max_phantom_processes 
 
 ### Disable Battery Optimization
 
-**Android Settings → Apps → Termux** (and Termux:X11) → Battery → **Unrestricted**.
+**Android Settings → Apps → Termux** and the selected display app (Termux:X11 or
+Anland) → Battery → **Unrestricted**. Menu names vary by device.
 
 ### Wakelock
 
@@ -310,13 +379,16 @@ adb shell "/system/bin/device_config put activity_manager max_phantom_processes 
 
 ## Known Issues
 
-### Termux:X11 — Right-click / Arrow Keys Broken After Switching Apps
+### Termux:X11 — stuck modifiers after switching apps
 
-Android stops sending key-release events when an app loses focus, causing Alt key to get stuck. ([#781](https://github.com/termux/termux-x11/issues/781))
+If mouse clicks or arrow keys stop working after Alt-Tab, release the modifier by
+pressing Alt again, or use Android gestures to switch apps. This behavior was
+reported in [#781](https://github.com/termux/termux-x11/issues/781); upstream closed it
+with the merged [stale-modifier fix](https://github.com/termux/termux-x11/pull/1025).
+Check the installed APK version before treating this as an unresolved upstream bug.
 
-**Workarounds**: Press Alt once, Super+I to reset input, or use swipe gesture instead of Alt+Tab.
-
-> Samsung DeX: Termux:X11 → Preferences → Keyboard → "Intercept system shortcuts".
+For Samsung DeX, also check Termux:X11 → Preferences → Keyboard → **Intercept system
+shortcuts**.
 
 ---
 
@@ -335,18 +407,25 @@ Termux_XFCE/
 │   ├── xfce_env.sh               ← XFCE setup
 │   ├── proot_env.sh              ← proot logic (Ubuntu/Arch common)
 │   └── locale_ko.sh              ← Korean locale (LD_PRELOAD gettext hook)
-├── tests/                        ← main installer automated tests
+├── runtime/                      ← Anland session supervisor
+├── docs/                         ← Anland setup and limitations
+├── tests/                        ← automated tests and installation matrix guide
 └── app-installer/                ← extra app GUI (Git Submodule)
     ├── install.sh                ← yad notebook tabbed GUI
-    └── domain/installers/        ← per-app install scripts (59 apps)
+    ├── app-install.sh            ← headless list/install/remove/status CLI
+    └── domain/installers/        ← per-app handlers (including removal-only entries)
 ```
 
 ## Branch Strategy
 
 | Branch | Purpose |
 |--------|---------|
-| `main` | Stable — real-device tested, for end users |
-| `dev` | In development — merged to main after tests pass |
+| `main` | Default branch used by the one-line installer |
+| `dev` | Development and validation before promotion to `main` |
+
+The parent repository records a specific App Installer submodule commit.
+`.gitmodules` names `dev` as its tracking branch; ordinary
+`git submodule update --init --recursive` checks out the recorded commit.
 
 ## Contributing
 

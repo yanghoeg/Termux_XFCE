@@ -52,7 +52,6 @@ setup_proot_base_packages()   { _trace "setup_proot_base_packages"; }
 setup_proot_env()             { _trace "setup_proot_env"; }
 setup_proot_timezone()        { _trace "setup_proot_timezone"; }
 setup_proot_fancybash()       { _trace "setup_proot_fancybash"; }
-setup_proot_hardware_accel()  { _trace "setup_proot_hardware_accel"; }
 setup_proot_cursor_theme()    { _trace "setup_proot_cursor_theme"; }
 setup_proot_conky()           { _trace "setup_proot_conky"; }
 setup_proot_alias()           { _trace "setup_proot_alias"; }
@@ -161,7 +160,6 @@ setup_proot_base_packages()   { _trace "setup_proot_base_packages"; }
 setup_proot_env()             { _trace "setup_proot_env"; }
 setup_proot_timezone()        { _trace "setup_proot_timezone"; }
 setup_proot_fancybash()       { _trace "setup_proot_fancybash"; }
-setup_proot_hardware_accel()  { _trace "setup_proot_hardware_accel"; }
 setup_proot_cursor_theme()    { _trace "setup_proot_cursor_theme"; }
 setup_proot_conky()           { _trace "setup_proot_conky"; }
 setup_proot_alias()           { _trace "setup_proot_alias"; }
@@ -350,6 +348,8 @@ it "config 파일에 distro/user가 기록되고 권한은 600" _test_config_fil
 
 _test_config_file_no_distro_when_no_proot() {
     local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    printf 'PROOT_DISTRO="ubuntu"\nPROOT_USER="testuser"\n' > "$sandbox/home/.config/termux-xfce/config"
     HOME="$sandbox/home" PREFIX="$sandbox/usr" \
     _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
         bash "$REPO_ROOT/install.sh" --no-proot \
@@ -360,7 +360,7 @@ _test_config_file_no_distro_when_no_proot() {
     assert_file_contains "$cfg" 'PROOT_DISTRO=""'
     rm -rf "$sandbox"
 }
-it "no-proot일 때 config의 PROOT_DISTRO는 빈 문자열" _test_config_file_no_distro_when_no_proot
+it "no-proot clears an earlier distro selection" _test_config_file_no_distro_when_no_proot
 
 _test_config_preserves_proot_shell_zsh() {
     local sandbox; sandbox=$(mktemp -d)

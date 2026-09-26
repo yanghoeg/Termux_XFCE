@@ -7,6 +7,30 @@
 # - 테마, 폰트, 배경화면, fancybash
 # =============================================================================
 
+# Immutable upstream release archives, verified after download. The two themes
+# ship their release payloads inside GitHub's tagged source archives.
+_WHITESUR_VER="2026-09-10"
+_WHITESUR_URL="https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${_WHITESUR_VER}.zip"
+_WHITESUR_SHA256="e06899f596706ad9a4aace9bec5f739d63e7f54530a488670026b027d915081c"
+_FLUENT_VER="2026-07-27"
+_FLUENT_URL="https://github.com/vinceliuice/Fluent-icon-theme/archive/refs/tags/${_FLUENT_VER}.zip"
+_FLUENT_SHA256="7b98420a734536ae53ae0a89a1adc767de5961ea7f6948a93af82563db4cca27"
+_CASCADIA_VER="2407.24"
+_CASCADIA_URL="https://github.com/microsoft/cascadia-code/releases/download/v${_CASCADIA_VER}/CascadiaCode-${_CASCADIA_VER}.zip"
+_CASCADIA_SHA256="e67a68ee3386db63f48b9054bd196ea752bc6a4ebb4df35adce6733da50c8474"
+_MESLO_VER="3.5.1"
+_MESLO_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v${_MESLO_VER}/Meslo.zip"
+_MESLO_SHA256="fb104893ecd8f57e8afacbc0a7086b42657120448d056d6093c728a9afb8e237"
+
+_download_verified_asset() {
+    local url="$1" target="$2" expected_sha256="$3"
+    wget -q "$url" -O "$target" || return 1
+    printf '%s  %s\n' "$expected_sha256" "$target" | sha256sum -c - >/dev/null 2>&1 || {
+        rm -f "$target"
+        return 1
+    }
+}
+
 _repo_asset_path() {
     local name="$1"
     local candidate="${SCRIPT_DIR:-}/$name"
@@ -116,8 +140,7 @@ setup_xfce_fancybash() {
 #      fix-x11-input은 Termux:X11 전용 우회, nimf는 Anland가 안드로이드 키보드를
 #      Wayland text-input으로 직접 넘겨주므로 불필요하다. 중복 프로세스는 메모리
 #      압박을 키워 LMK가 plasmashell을 죽이는 원인이 된다.
-# OnlyShowIn=XFCE가 아니라 NotShowIn=KDE를 쓴다 — X11 런처는 XDG_CURRENT_DESKTOP을
-# 설정하지 않으므로 OnlyShowIn을 쓰면 X11에서 전부 실행되지 않는다.
+# NotShowIn=KDE also supports existing X11 launchers without XDG_CURRENT_DESKTOP.
 _migrate_autostart_not_show_in_kde() {
     local dir="$HOME/.config/autostart" f
     for f in conky.desktop fix-x11-input.desktop org.flameshot.Flameshot.desktop nimf.desktop; do
@@ -152,9 +175,8 @@ setup_xfce_autostart() {
 # Private
 # -----------------------------------------------------------------------------
 
-# 주의: 아래 _install_* 함수들은 네트워크(wget)에 의존하므로 단위 테스트 불가.
-# 테스트는 tests/test_domain_xfce.sh의 멱등성 케이스(파일 존재 시 건너뜀)만 커버.
-# 실제 다운로드 경로 검증은 e2e(autopilot) 환경에서만 가능.
+# Network download paths are pinned above. Focused tests cover idempotency and
+# checksum rejection; full archive extraction remains an end-to-end concern.
 
 _install_whitesur_theme() (
     local theme_dir="$PREFIX/share/themes/WhiteSur-Dark"
@@ -164,12 +186,12 @@ _install_whitesur_theme() (
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    local zip="2024-11-18.zip"
-    wget -q "https://github.com/vinceliuice/WhiteSur-gtk-theme/archive/refs/tags/${zip}" -O "$tmpdir/$zip" \
+    local zip="WhiteSur-${_WHITESUR_VER}.zip"
+    _download_verified_asset "$_WHITESUR_URL" "$tmpdir/$zip" "$_WHITESUR_SHA256" \
         || { ui_warn "WhiteSur 테마 다운로드 실패"; return 1; }
     unzip -o -q "$tmpdir/$zip" -d "$tmpdir" \
         || { ui_warn "WhiteSur 테마 압축 해제 실패"; return 1; }
-    tar -xf "$tmpdir/WhiteSur-gtk-theme-2024-11-18/release/WhiteSur-Dark.tar.xz" -C "$tmpdir" \
+    tar -xf "$tmpdir/WhiteSur-gtk-theme-${_WHITESUR_VER}/release/WhiteSur-Dark.tar.xz" -C "$tmpdir" \
         || { ui_warn "WhiteSur 테마 tar 해제 실패"; return 1; }
     mv "$tmpdir/WhiteSur-Dark/" "$PREFIX/share/themes/"
 )
@@ -182,16 +204,16 @@ _install_fluent_cursor() (
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    local zip="2024-02-25.zip"
-    wget -q "https://github.com/vinceliuice/Fluent-icon-theme/archive/refs/tags/${zip}" -O "$tmpdir/$zip" \
+    local zip="Fluent-${_FLUENT_VER}.zip"
+    _download_verified_asset "$_FLUENT_URL" "$tmpdir/$zip" "$_FLUENT_SHA256" \
         || { ui_warn "Fluent 커서 다운로드 실패"; return 1; }
     unzip -o -q "$tmpdir/$zip" -d "$tmpdir" \
         || { ui_warn "Fluent 커서 압축 해제 실패"; return 1; }
     # proot-only 클린 설치에서는 native XFCE 패키지가 이 경로를 만들지 않는다.
     mkdir -p "$PREFIX/share/icons"
     rm -rf "$PREFIX/share/icons/dist" "$PREFIX/share/icons/dist-dark"
-    mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist"      "$PREFIX/share/icons/"
-    mv "$tmpdir/Fluent-icon-theme-2024-02-25/cursors/dist-dark" "$PREFIX/share/icons/"
+    mv "$tmpdir/Fluent-icon-theme-${_FLUENT_VER}/cursors/dist"      "$PREFIX/share/icons/"
+    mv "$tmpdir/Fluent-icon-theme-${_FLUENT_VER}/cursors/dist-dark" "$PREFIX/share/icons/"
 )
 
 _install_cascadia_code() (
@@ -201,8 +223,8 @@ _install_cascadia_code() (
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    local zip="CascadiaCode-2111.01.zip"
-    wget -q "https://github.com/microsoft/cascadia-code/releases/download/v2111.01/${zip}" -O "$tmpdir/$zip" \
+    local zip="CascadiaCode-${_CASCADIA_VER}.zip"
+    _download_verified_asset "$_CASCADIA_URL" "$tmpdir/$zip" "$_CASCADIA_SHA256" \
         || { ui_warn "CascadiaCode 폰트 다운로드 실패"; return 1; }
     unzip -q "$tmpdir/$zip" -d "$tmpdir" \
         || { ui_warn "CascadiaCode 폰트 압축 해제 실패"; return 1; }
@@ -211,7 +233,7 @@ _install_cascadia_code() (
 )
 
 _install_meslo_nerd() (
-    # ryanoasis/nerd-fonts v3.2.1 Meslo.zip은 "MesloLGSNerdFont-Regular.ttf" 형태로 압축
+    # ryanoasis/nerd-fonts v3.5.1 Meslo.zip은 "MesloLGSNerdFont-Regular.ttf" 형태로 압축
     # (family: "MesloLGS Nerd Font" / "MesloLGS Nerd Font Mono")
     [ -f "$HOME/.fonts/MesloLGSNerdFont-Regular.ttf" ] && return 0
 
@@ -219,7 +241,7 @@ _install_meslo_nerd() (
     tmpdir=$(mktemp -d)
     trap 'rm -rf "$tmpdir"' EXIT
 
-    wget -q "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/Meslo.zip" -O "$tmpdir/Meslo.zip" \
+    _download_verified_asset "$_MESLO_URL" "$tmpdir/Meslo.zip" "$_MESLO_SHA256" \
         || { ui_warn "Meslo Nerd Font 다운로드 실패"; return 1; }
     unzip -q "$tmpdir/Meslo.zip" -d "$tmpdir/meslo_tmp" \
         || { ui_warn "Meslo Nerd Font 압축 해제 실패"; return 1; }
@@ -396,8 +418,7 @@ _migrate_conky_exec_ampersand() {
 }
 
 # 기존 설치본의 Print 계열 스크린샷 키를 세션 인식 래퍼(screenshot)로 전환
-# Why: xfce4-screenshooter/flameshot은 X11 API라 labwc(Wayland) nested 세션에서
-#      캡처가 깨진다. screenshot 래퍼가 세션을 감지해 grim/slurp 또는 X11 도구로 분기.
+# The wrapper selects Spectacle for KWin/Wayland and xfce4-screenshooter for X11.
 _migrate_screenshot_keybindings() {
     local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-keyboard-shortcuts.xml"
     [ -f "$xml" ] || return 0

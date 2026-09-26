@@ -140,11 +140,11 @@ _test_locale_nimf_env_guarded() {
     _load_domain "$sb"
 
     _setup_locale
-    assert_file_contains "${PREFIX}/etc/bash.bashrc" "command -v nimf"
+    assert_file_not_contains "${PREFIX}/etc/bash.bashrc" "command -v nimf"
     assert_file_not_contains "${PREFIX}/etc/bash.bashrc" "^export GTK_IM_MODULE=nimf"
     cleanup_sandbox "$sb"
 }
-it "locale 블록의 nimf IM env는 nimf 존재 시에만 export된다" _test_locale_nimf_env_guarded
+it "locale setup leaves input-method selection to its managed profile" _test_locale_nimf_env_guarded
 
 # =============================================================================
 # _setup_start_xfce
@@ -261,39 +261,6 @@ _test_cp2menu_desktop_valid() {
 it "cp2menu.desktop에 필수 필드가 있다" _test_cp2menu_desktop_valid
 
 # =============================================================================
-# _setup_korean_env
-# =============================================================================
-
-describe "termux_env — _setup_korean_env (nimf)"
-
-_test_korean_nimf_desktop_created() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_korean_env
-    assert_file_exists "${HOME}/.config/autostart/nimf.desktop"
-    assert_file_contains "${HOME}/.config/autostart/nimf.desktop" "pgrep -x nimf"
-    cleanup_sandbox "$sb"
-}
-it "nimf.desktop 자동시작 파일을 생성한다" _test_korean_nimf_desktop_created
-
-_test_korean_env_idempotent() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_korean_env
-    local mtime1; mtime1=$(stat -c %Y "${HOME}/.config/autostart/nimf.desktop")
-    sleep 1
-    _setup_korean_env
-    local mtime2; mtime2=$(stat -c %Y "${HOME}/.config/autostart/nimf.desktop")
-    assert_eq "$mtime1" "$mtime2" "멱등성"
-    cleanup_sandbox "$sb"
-}
-it "멱등성 — nimf.desktop이 이미 있으면 덮어쓰지 않는다" _test_korean_env_idempotent
-
-# (_detect_and_log_gpu, _setup_tur_multilib: 삭제된 함수 — 테스트 제거)
-
-# =============================================================================
 # _setup_kill_display — bin 생성 및 desktop entry
 # =============================================================================
 
@@ -343,8 +310,10 @@ Name=TestApp
 Exec=bash -c "prun testapp --flag </dev/null >/dev/null 2>&1 &"
 EOF
 
+    cp "${PREFIX}/share/applications/testapp.desktop" "$HOME/Desktop/testapp.desktop"
     _migrate_desktop_to_prun_gui
 
+    assert_file_contains "$HOME/Desktop/testapp.desktop" "prun-gui 'TestApp' --"
     assert_file_contains "${PREFIX}/share/applications/testapp.desktop" "prun-gui 'TestApp' --"
     cleanup_sandbox "$sb"
 }
@@ -551,38 +520,6 @@ _test_xdg_runtime_removes_old_tmpdir_line() {
     cleanup_sandbox "$sb"
 }
 it "구버전 TMPDIR 기반 XDG_RUNTIME_DIR 라인을 제거한다" _test_xdg_runtime_removes_old_tmpdir_line
-
-# =============================================================================
-# _setup_gpu_env — GPU 환경변수 RC 추가
-# =============================================================================
-
-describe "termux_env — _setup_gpu_env"
-
-_test_gpu_env_written() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_gpu_env
-    assert_file_contains "${PREFIX}/etc/bash.bashrc" "termux-xfce-gpu"
-    assert_file_contains "${PREFIX}/etc/bash.bashrc" "MESA_LOADER_DRIVER_OVERRIDE"
-    assert_file_contains "${PREFIX}/etc/bash.bashrc" "GSK_RENDERER=cairo"
-    cleanup_sandbox "$sb"
-}
-it "bash.bashrc에 GPU 환경변수 블록을 추가한다" _test_gpu_env_written
-
-_test_gpu_env_idempotent() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _setup_gpu_env
-    _setup_gpu_env
-
-    local count
-    count=$(grep -c "termux-xfce-gpu" "${PREFIX}/etc/bash.bashrc")
-    assert_eq "1" "$count"
-    cleanup_sandbox "$sb"
-}
-it "멱등성 — GPU 블록이 중복 추가되지 않는다" _test_gpu_env_idempotent
 
 # =============================================================================
 # _setup_zsh_p10k — zsh/p10k/plugins 설치 + ~/.zshrc 관리
@@ -1289,19 +1226,18 @@ _test_screenshot_creates_executable() {
 }
 it "screenshot 스크립트를 생성하고 실행 권한을 부여한다" _test_screenshot_creates_executable
 
-_test_screenshot_forces_x11_backend_on_wayland() {
+_test_screenshot_uses_wayland_tool() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
     _setup_screenshot
 
     local bin="$PREFIX/bin/screenshot"
-    # Wayland 세션에서는 X11 백엔드로 강제해 표시면(Termux:X11)을 캡처
-    grep -q 'GDK_BACKEND=x11' "$bin"
+    grep -q 'spectacle "$@"' "$bin"
     grep -q 'xfce4-screenshooter' "$bin"
     cleanup_sandbox "$sb"
 }
-it "Wayland 세션에서 X11 백엔드를 강제한다" _test_screenshot_forces_x11_backend_on_wayland
+it "Wayland 세션에서는 Spectacle을 실행한다" _test_screenshot_uses_wayland_tool
 
 # =============================================================================
 # _setup_termux_repos — 3개 repo + pkg_update

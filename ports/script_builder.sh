@@ -21,8 +21,6 @@
 #   인자: $1 = 스크립트 출력 경로
 #   반환: 0=성공, 1=실패
 # script_build_kill_display() { ... }
-#
-# 하위 호환 별칭: script_build_kill_x11 → script_build_kill_display
 
 # script_build_cp2menu <output_path>
 #   설명: cp2menu 런타임 스크립트 생성

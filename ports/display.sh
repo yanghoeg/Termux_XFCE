@@ -50,7 +50,7 @@ _display_check() {
 # display_emit_session_launch
 #   설명: XFCE 세션 시작 셸 코드 조각 출력
 #         X11: $XDISPLAY 위에 xfce4-session 실행
-#         Wayland: Anland 데몬/APK + 패치 KWin에서 XFCE 자식 세션 실행
+#         Wayland: Anland 데몬/APK + 패치 KWin에서 Plasma 세션 실행
 #         GPU 환경변수는 상위(script_builder)에서 export되어 상속됨
 #   인자: 없음
 #   출력: stdout — bash 코드 조각 ($XDISPLAY, $XDG_RUNTIME_DIR 사용)

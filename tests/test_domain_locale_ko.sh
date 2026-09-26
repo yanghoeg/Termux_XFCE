@@ -309,82 +309,23 @@ _test_ko_wrapper_created() {
 }
 it "startxfce4-ko 래퍼를 생성하고 실행 권한을 부여한다" _test_ko_wrapper_created
 
-_test_ko_wrapper_sets_lang() {
+_test_ko_wrapper_forwards_session() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-
-    local wrapper="${HOME}/bin/startxfce4-ko"
-    assert_file_contains "$wrapper" 'LANG="ko_KR.UTF-8"'
-    assert_file_contains "$wrapper" 'LANGUAGE="ko_KR:ko:en_US:en"'
+    mkdir -p "$HOME/bin"
+    printf 'exec startxfce4\n' > "$HOME/bin/startxfce4-ko"
+    _install_startxfce4_ko_wrapper
+    printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' > "$PREFIX/bin/startXFCE"
+    chmod +x "$PREFIX/bin/startXFCE"
+    export PATH="$PREFIX/bin:$PATH"
+    local output
+    output=$(bash "$HOME/bin/startxfce4-ko" 'argument with spaces')
+    assert_eq 'argument with spaces' "$output"
+    assert_file_not_contains "$HOME/bin/startxfce4-ko" LD_PRELOAD
+    bash -n "$HOME/bin/startxfce4-ko"
     cleanup_sandbox "$sb"
 }
-it "LANG/LANGUAGE를 한국어로 설정한다" _test_ko_wrapper_sets_lang
-
-_test_ko_wrapper_has_ld_preload() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-
-    local wrapper="${HOME}/bin/startxfce4-ko"
-    assert_file_contains "$wrapper" "force_gettext.so"
-    assert_file_contains "$wrapper" "LD_PRELOAD"
-    cleanup_sandbox "$sb"
-}
-it "LD_PRELOAD에 force_gettext.so를 포함한다" _test_ko_wrapper_has_ld_preload
-
-_test_ko_wrapper_execs_startxfce4() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-
-    local wrapper="${HOME}/bin/startxfce4-ko"
-    assert_file_contains "$wrapper" "exec startxfce4"
-    cleanup_sandbox "$sb"
-}
-it "exec startxfce4로 XFCE를 실행한다" _test_ko_wrapper_execs_startxfce4
-
-_test_ko_wrapper_idempotent() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-    local mtime1; mtime1=$(stat -c %Y "${HOME}/bin/startxfce4-ko")
-    sleep 1
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-    local mtime2; mtime2=$(stat -c %Y "${HOME}/bin/startxfce4-ko")
-
-    assert_eq "$mtime1" "$mtime2" "멱등성: 이미 있으면 덮어쓰지 않는다"
-    cleanup_sandbox "$sb"
-}
-it "멱등성 — startxfce4-ko가 이미 있으면 덮어쓰지 않는다" _test_ko_wrapper_idempotent
-
-_test_ko_wrapper_has_fallback_domains() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-
-    local wrapper="${HOME}/bin/startxfce4-ko"
-    assert_file_contains "$wrapper" "FALLBACK_DOMAINS"
-    assert_file_contains "$wrapper" "mousepad"
-    assert_file_contains "$wrapper" "thunar"
-    cleanup_sandbox "$sb"
-}
-it "FALLBACK_DOMAINS에 XFCE/GTK 앱 도메인 목록이 있다" _test_ko_wrapper_has_fallback_domains
-
-_test_ko_wrapper_syntax_valid() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb"
-
-    _install_startxfce4_ko_wrapper 2>/dev/null || true
-    bash -n "${HOME}/bin/startxfce4-ko"
-    cleanup_sandbox "$sb"
-}
-it "startxfce4-ko의 bash 문법 오류가 없다" _test_ko_wrapper_syntax_valid
+it "the old locale command forwards arguments to the managed session launcher" _test_ko_wrapper_forwards_session
 
 # =============================================================================
 # setup_korean_rc — RC 파일에 한글 환경변수 영구 등록

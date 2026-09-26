@@ -96,16 +96,15 @@ fi
 
 LOCALE
 
-        # ── 7. nimf 한글 입력기 (공유) ──
-        cat << 'NIMF'
-# nimf 입력기 — 설치되어 있으면 세션 전체에 적용
-if command -v nimf >/dev/null 2>&1; then
-    export XMODIFIERS="@im=nimf"
-    export GTK_IM_MODULE=nimf
-    export QT_IM_MODULE=nimf
+        # ── 7. Selected input method ──
+        cat << 'INPUT_METHOD'
+if [ "${_DISPLAY_SERVER:-x11}" = x11 ]; then
+    unset WAYLAND_DISPLAY
+    export XDG_SESSION_TYPE=x11 XDG_CURRENT_DESKTOP=XFCE XDG_SESSION_DESKTOP=xfce
 fi
+[ ! -r "$PREFIX/etc/profile.d/termux-xfce-input.sh" ] || . "$PREFIX/etc/profile.d/termux-xfce-input.sh"
 
-NIMF
+INPUT_METHOD
 
         # ── 8. 클립보드 동기화 (display 어댑터) ──
         display_emit_clipboard_sync
@@ -118,12 +117,11 @@ if [ "${_DISPLAY_SERVER:-x11}" = x11 ]; then
 GPU_MODEL=$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null || echo "")
 
 export PULSE_SERVER=tcp:127.0.0.1:4713
-export MESA_NO_ERROR=1
-export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
-export MESA_GLES_VERSION_OVERRIDE=3.2
 export GSK_RENDERER=cairo
 
-if [ -n "$GPU_MODEL" ]; then
+unset MESA_LOADER_DRIVER_OVERRIDE LIBGL_ALWAYS_SOFTWARE TU_DEBUG ZINK_DESCRIPTORS
+unset MESA_NO_ERROR MESA_GL_VERSION_OVERRIDE MESA_GLES_VERSION_OVERRIDE MESA_VK_WSI_PRESENT_MODE
+if [ -n "$GPU_MODEL" ] && [ -f "$PREFIX/share/vulkan/icd.d/freedreno_icd.aarch64.json" ]; then
     # Adreno GPU 감지 → Zink + Turnip
     export MESA_LOADER_DRIVER_OVERRIDE=zink
     export TU_DEBUG=noconform
@@ -154,7 +152,7 @@ fi # Anland configures its own KGSL environment in its session supervisor.
 GPU_ENV
 
         # ── 10. 세션 시작 (display 어댑터) ──
-        # X11: xfce4-session on $XDISPLAY / Wayland: Anland + KWin + XFCE
+        # X11: xfce4-session on $XDISPLAY / Wayland: Anland + KWin + Plasma
         display_emit_session_launch
     } > "$output"
 
@@ -195,9 +193,6 @@ BODY
     } > "$output"
 }
 
-# 하위 호환 별칭
-script_build_kill_x11() { script_build_kill_display "$@"; }
-
 script_build_cp2menu() {
     local output="$1"
 
@@ -206,18 +201,22 @@ script_build_cp2menu() {
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
-DISTRO="${PROOT_DISTRO:-ubuntu}"
+DISTRO="${PROOT_DISTRO:-}"
+if [ -z "$DISTRO" ]; then
+    echo '[ERROR] proot 환경이 설정되지 않았습니다.' >&2
+    exit 1
+fi
+source "$PREFIX/libexec/termux-xfce/desktop.sh" || exit 1
 ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
 if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
     ROOTFS="$ROOTFS_BASE/containers/$DISTRO/rootfs"
 else
     ROOTFS="$ROOTFS_BASE/installed-rootfs/$DISTRO"
 fi
-USERNAME="${PROOT_USER:-}"
-if [ -z "$USERNAME" ]; then
-    USERNAME=$(ls "$ROOTFS/home/" 2>/dev/null | grep -v '^alarm$' | head -1)
+if [ ! -d "$ROOTFS" ]; then
+    echo "[ERROR] proot rootfs를 찾을 수 없습니다: $ROOTFS" >&2
+    exit 1
 fi
-USERNAME="${USERNAME:-user}"
 
 action=$(zenity --list --title="cp2menu" --text="작업 선택:" \
     --radiolist --column="" --column="Action" \
@@ -233,15 +232,7 @@ if [[ "$action" == "Copy .desktop file" ]]; then
 
     filename=$(basename "$selected")
     cp "$selected" "$PREFIX/share/applications/"
-    app_name=$(grep -m1 '^Name=' "$PREFIX/share/applications/$filename" | cut -d= -f2-)
-    app_name="${app_name:-App}"
-    # sed 구분자(|)와 작은따옴표 충돌 방지
-    app_name="${app_name//\\/\\\\}"
-    app_name="${app_name//\'/\'\\\'\'}"
-    app_name="${app_name//&/\\&}"
-    app_name="${app_name//|/\\|}"
-    sed -i "s|^Exec=\(.*\)$|Exec=bash -c \"prun-gui '${app_name}' -- \1 </dev/null >/dev/null 2>\&1 \&\"|" \
-        "$PREFIX/share/applications/$filename"
+    desktop_rewrite_for_proot "$PREFIX/share/applications/$filename" || exit 1
     zenity --info --text="복사 완료: $filename"
 
 elif [[ "$action" == "Remove .desktop file" ]]; then

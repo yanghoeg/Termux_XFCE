@@ -30,12 +30,13 @@ declare -A SUITES=(
     [app_installer]="${SCRIPT_DIR}/test_app_installer.sh"
     [prun_ld_preload]="${SCRIPT_DIR}/test_prun_ld_preload.sh"
     [install_matrix]="${SCRIPT_DIR}/test_install_matrix.sh"
+    [modern_install]="${SCRIPT_DIR}/test_modern_install.sh"
     [e2e_install]="${SCRIPT_DIR}/test_e2e_install.sh"
 )
 
 # 실행할 스위트 결정
 if [ $# -eq 0 ]; then
-    selected_suites=("ports" "adapters" "adapters_deb" "display_wayland" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "force_gettext" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install")
+    selected_suites=("ports" "adapters" "adapters_deb" "display_wayland" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "force_gettext" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install" "modern_install")
 else
     selected_suites=("$@")
 fi
