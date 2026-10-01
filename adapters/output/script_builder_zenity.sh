@@ -25,7 +25,15 @@ TMPDIR="${TMPDIR:-/data/data/com.termux/files/usr/tmp}"
 # preload되는 bionic force_gettext.so와 충돌(libdl.so 로드 실패 → 세션 미기동)하는
 # 것을 방지한다. bionic $PREFIX/bin을 앞세워 coreutils가 bionic으로 해석되게 한다.
 PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
-PATH="$PREFIX/bin:$PREFIX/bin/applets:$PATH"
+unset RUNNING_IN_GLIBC_RUNNER APP_PREFIX GLIBC_PREFIX
+_native_path=""
+IFS=: read -r -a _path_entries <<< "$PATH"
+for _path_entry in "${_path_entries[@]}"; do
+    case "$_path_entry" in "$PREFIX/glibc/bin"|"$PREFIX/glibc/bin/"|"") continue ;; esac
+    _native_path="${_native_path:+$_native_path:}$_path_entry"
+done
+PATH="$PREFIX/bin:$PREFIX/bin/applets${_native_path:+:$_native_path}"
+unset _native_path _path_entries _path_entry
 export PATH PREFIX TMPDIR
 
 # XDG runtime dir (dbus 요구: mode 700 user-private) — shortcut은 rc를 source하지 않음
@@ -195,26 +203,36 @@ BODY
 
 script_build_cp2menu() {
     local output="$1"
+    local desktop_helper="${2:-${BASH_SOURCE[0]%/*}/../../app-installer/domain/desktop.sh}"
+    desktop_helper="$(cd -- "${desktop_helper%/*}" && pwd)/${desktop_helper##*/}" || return 1
 
-    cat > "$output" << 'EOF'
-#!/data/data/com.termux/files/usr/bin/bash
+    {
+    printf '#!/data/data/com.termux/files/usr/bin/bash\nDESKTOP_HELPER=%q\n' "$desktop_helper"
+    cat << 'EOF'
+_cp2menu_error() {
+    echo "[ERROR] $1" >&2
+    zenity --error --text="$1" || true
+}
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
 DISTRO="${PROOT_DISTRO:-}"
 if [ -z "$DISTRO" ]; then
-    echo '[ERROR] proot 환경이 설정되지 않았습니다.' >&2
+    _cp2menu_error 'proot 환경이 설정되지 않았습니다.'
     exit 1
 fi
-source "$PREFIX/libexec/termux-xfce/desktop.sh" || exit 1
-ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
+if ! source "$DESKTOP_HELPER"; then
+    _cp2menu_error "데스크톱 관리 스크립트를 읽을 수 없습니다: $DESKTOP_HELPER"
+    exit 1
+fi
+ROOTFS_BASE="${PROOT_ROOTFS_BASE:-$PREFIX/var/lib/proot-distro}"
 if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
     ROOTFS="$ROOTFS_BASE/containers/$DISTRO/rootfs"
 else
     ROOTFS="$ROOTFS_BASE/installed-rootfs/$DISTRO"
 fi
 if [ ! -d "$ROOTFS" ]; then
-    echo "[ERROR] proot rootfs를 찾을 수 없습니다: $ROOTFS" >&2
+    _cp2menu_error "proot rootfs를 찾을 수 없습니다: $ROOTFS"
     exit 1
 fi
 
@@ -230,9 +248,11 @@ if [[ "$action" == "Copy .desktop file" ]]; then
         --filename="$ROOTFS/usr/share/applications")
     [ -z "$selected" ] && exit 0
 
-    filename=$(basename "$selected")
-    cp "$selected" "$PREFIX/share/applications/"
-    desktop_rewrite_for_proot "$PREFIX/share/applications/$filename" || exit 1
+    filename="${selected##*/}"
+    if ! desktop_import_proot "$selected" "$ROOTFS" "$PREFIX/share/applications/$filename"; then
+        _cp2menu_error "복사 실패: $filename"
+        exit 1
+    fi
     zenity --info --text="복사 완료: $filename"
 
 elif [[ "$action" == "Remove .desktop file" ]]; then
@@ -241,8 +261,12 @@ elif [[ "$action" == "Remove .desktop file" ]]; then
         --filename="$PREFIX/share/applications")
     [ -z "$selected" ] && exit 0
 
-    rm "$selected"
+    if ! rm -- "$selected"; then
+        _cp2menu_error "제거 실패: ${selected##*/}"
+        exit 1
+    fi
     zenity --info --text="제거 완료: $(basename "$selected")"
 fi
 EOF
+    } > "$output"
 }

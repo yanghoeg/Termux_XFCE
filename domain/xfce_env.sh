@@ -217,7 +217,7 @@ _install_fluent_cursor() (
 )
 
 _install_cascadia_code() (
-    [ -f "$HOME/.fonts/CascadiaCode.otf" ] && return 0
+    [ -f "$HOME/.fonts/CascadiaCode-Regular.otf" ] && return 0
 
     local tmpdir
     tmpdir=$(mktemp -d)

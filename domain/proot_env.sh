@@ -157,10 +157,24 @@ mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
 chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
 EOF
 
-    # 2) .bashrc: 기존 생성 블록(마커 ~ code() 줄)을 먼저 제거 →
-    #    멱등성 + 구버전(export/무가드 alias 포함) 설치본 마이그레이션. 사용자 라인은 보존된다.
+    # 2) 삭제 범위는 설치기가 생성한 줄로 한정한다. code()가 없는 구버전도
+    #    사용자 프롬프트와 conda 설정을 보존한다.
     if [ -f "$bashrc" ] && grep -q '^# termux-xfce-proot-env$' "$bashrc"; then
-        sed -i '/^# termux-xfce-proot-env$/,/^code() {/d' "$bashrc"
+        local cleaned
+        cleaned=$(mktemp "${bashrc}.XXXXXX") || return 1
+        awk '
+            /^# termux-xfce-proot-env$/ { managed=1; next }
+            /^# termux-xfce-proot-env-end$/ { managed=0; next }
+            managed && (/^$/ || /^# aliases$/ || /^# Termux Turnip Vulkan ICD/ ||
+                /^export (DISPLAY|LD_PRELOAD|XDG_RUNTIME_DIR|MESA_[A-Z_]+|TU_DEBUG|ZINK_DESCRIPTORS|vblank_mode|VK_ICD_FILENAMES|VK_DRIVER_FILES)=/ ||
+                /^\[ -f \/etc\/profile.d\/termux-xfce-env.sh \]/ ||
+                /^alias (hud|ls|ll|shutdown|cat|python|pip|start)=/ ||
+                /^command -v (eza|bat) .*alias (ls|cat)=/) { next }
+            managed && /^code\(\) \{/ { managed=0; next }
+            { managed=0; print }
+        ' "$bashrc" > "$cleaned" || { rm -f "$cleaned"; return 1; }
+        cat "$cleaned" > "$bashrc" || { rm -f "$cleaned"; return 1; }
+        rm -f "$cleaned"
     fi
 
     cat >> "$bashrc" << 'EOF'
@@ -175,6 +189,7 @@ alias shutdown='kill -9 -1'
 command -v bat >/dev/null 2>&1 && alias cat='bat'
 alias start='echo "Termux에서 실행하세요."'
 code() { nohup dbus-run-session /usr/bin/code --no-sandbox "$@" >/dev/null 2>&1 & disown; }
+# termux-xfce-proot-env-end
 EOF
 }
 

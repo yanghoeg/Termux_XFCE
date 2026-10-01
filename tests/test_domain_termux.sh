@@ -313,8 +313,8 @@ EOF
     cp "${PREFIX}/share/applications/testapp.desktop" "$HOME/Desktop/testapp.desktop"
     _migrate_desktop_to_prun_gui
 
-    assert_file_contains "$HOME/Desktop/testapp.desktop" "prun-gui 'TestApp' --"
-    assert_file_contains "${PREFIX}/share/applications/testapp.desktop" "prun-gui 'TestApp' --"
+    assert_file_contains "$HOME/Desktop/testapp.desktop" 'prun-gui "TestApp" --'
+    assert_file_contains "${PREFIX}/share/applications/testapp.desktop" 'prun-gui "TestApp" --'
     cleanup_sandbox "$sb"
 }
 it "prun 사용 .desktop 파일을 prun-gui로 변환한다" _test_migrate_prun_to_prun_gui
@@ -369,7 +369,7 @@ EOF
 
     _migrate_desktop_to_prun_gui
 
-    assert_file_contains "${PREFIX}/share/applications/named.desktop" "prun-gui 'LibreOffice Writer' --"
+    assert_file_contains "${PREFIX}/share/applications/named.desktop" 'prun-gui "LibreOffice Writer" --'
     cleanup_sandbox "$sb"
 }
 it "Name= 필드를 prun-gui 앱 이름으로 사용한다" _test_migrate_uses_name_field
@@ -387,7 +387,7 @@ EOF
 
     _migrate_desktop_to_prun_gui
 
-    assert_file_contains "${PREFIX}/share/applications/noname.desktop" "prun-gui 'App' --"
+    assert_file_contains "${PREFIX}/share/applications/noname.desktop" 'prun-gui "App" --'
     cleanup_sandbox "$sb"
 }
 it "Name= 없는 .desktop도 중단 없이 'App' 기본값으로 마이그레이션된다" _test_migrate_no_name_field_does_not_abort

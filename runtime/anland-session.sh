@@ -152,8 +152,10 @@ _is_descendant() {
     return 1
 }
 _wait_plasma() {
-    local i pid wd
-    for ((i=0; i<180; i++)); do
+    local pid wd deadline=$((SECONDS + 90))
+    # Process discovery can be slow on Android; count elapsed time rather than
+    # assuming each iteration takes only the half-second sleep.
+    while [ "$SECONDS" -lt "$deadline" ]; do
         _child_running "$_compositor_pid" || return 1
         # The name is matched loosely across the whole command line because a
         # process started through an interpreter reports the interpreter as

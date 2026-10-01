@@ -286,7 +286,7 @@ _test_wine_has_proot_distro_check() {
 it "wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
 
 _test_wine_has_native_fallback() {
-    grep -q '_install_wine_native\|which wine' "${APP_DIR}/domain/installers/wine.sh"
+    grep -q '_wine_install_native' "${APP_DIR}/domain/installers/wine.sh"
 }
 it "wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
 
@@ -297,7 +297,7 @@ _test_wine_creates_desktop() {
 it "wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
 
 _test_wine_idempotent_check() {
-    grep -q 'which wine' "${APP_DIR}/domain/installers/wine.sh"
+    grep -q 'test -x /opt/wine-staging/bin/wine' "${APP_DIR}/domain/installers/wine.sh"
 }
 it "wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
 

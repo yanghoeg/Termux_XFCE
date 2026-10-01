@@ -314,7 +314,7 @@ _test_cascadia_skipped_if_exists() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     reset_mock_calls
-    touch "${HOME}/.fonts/CascadiaCode.otf"
+    touch "${HOME}/.fonts/CascadiaCode-Regular.otf"
     _install_cascadia_code 2>/dev/null || true
     assert_not_called "wget"
     cleanup_sandbox "$sb"

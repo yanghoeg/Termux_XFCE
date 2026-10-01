@@ -1,4 +1,4 @@
-#!/usr/bin/env bash
+#!/data/data/com.termux/files/usr/bin/bash
 # Runtime regression tests for fresh installs and upgrades from old presets.
 _MODERN_ROOT="$(cd "${BASH_SOURCE[0]%/*}/.." && pwd)"
 source "$_MODERN_ROOT/tests/framework.sh"
@@ -6,6 +6,10 @@ source "$_MODERN_ROOT/tests/mocks.sh"
 
 _modern_setup() {
     setup_fs_sandbox "$1"
+    export SCRIPT_DIR="$_MODERN_ROOT"
+    export PATH="$PREFIX/bin:$PATH"
+    printf '#!/data/data/com.termux/files/usr/bin/bash\nexit 0\n' > "$PREFIX/bin/termux-wake-lock"
+    chmod +x "$PREFIX/bin/termux-wake-lock"
     mock_ui_adapter
     mock_pkg_adapter
     source "$_MODERN_ROOT/domain/termux_env.sh"
@@ -32,6 +36,7 @@ it 'base setup does not install or select an input method' _test_input_optional
 
 _test_input_upgrade_and_selection() {
     local sb; sb=$(make_sandbox); _modern_setup "$sb"
+    fcitx5() { :; }
     cat >> "$PREFIX/etc/bash.bashrc" <<'RC'
 # termux-xfce-locale
 export LANG=ko_KR.UTF-8
@@ -247,9 +252,14 @@ _test_wine_proot_wrapper() {
     has_proot_distro() { return 0; }
     _wine_create_launchers
     cat > "$PREFIX/bin/prun" <<'STUB'
-#!/bin/sh
+#!/data/data/com.termux/files/usr/bin/bash
+# The mock container maps its /opt Wine path into the temporary filesystem.
+args=()
+for arg in "$@"; do
+    args+=("${arg//\/opt\/wine-staging\/bin\/wine/$CONTAINER_STUB_BIN/wine}")
+done
 export PATH="$CONTAINER_STUB_BIN:$PATH"
-exec "$@"
+exec "${args[@]}"
 STUB
     cat > "$sb/container-bin/wine" <<'STUB'
 #!/bin/sh

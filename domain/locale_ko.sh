@@ -94,12 +94,17 @@ _deploy_locale_catalogs() {
 _build_force_gettext() {
     local src="${SCRIPT_DIR}/assets/force_gettext.c"
     local dst="$PREFIX/lib/force_gettext.so"
-
-    [ -s "$dst" ] && return 0  # 멱등성
+    local source_hash
 
     if [ ! -f "$src" ]; then
         ui_error "force_gettext.c를 찾을 수 없습니다: $src"
         return 1
+    fi
+    source_hash=$(sha256sum "$src") || return 1
+    source_hash=${source_hash%% *}
+    if [ -s "$dst" ] && [ -r "${dst}.sha256" ] && \
+       [ "$(cat "${dst}.sha256")" = "$source_hash" ]; then
+        return 0
     fi
     if ! command -v clang >/dev/null 2>&1; then
         pkg_install clang || return 1
@@ -114,6 +119,7 @@ _build_force_gettext() {
     }
     [ -s "$built" ] || { rm -f "$built"; return 1; }
     chmod 755 "$built" && mv -f "$built" "$dst" || { rm -f "$built"; return 1; }
+    printf '%s\n' "$source_hash" > "${dst}.sha256"
 }
 
 # Keep the old command as a forwarding entry point; session setup has one owner.

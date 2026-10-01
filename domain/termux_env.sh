@@ -254,6 +254,11 @@ ALIASES
 }
 
 _setup_locale() {
+    # 기존 한글 UI 설치에도 수정된 gettext 훅을 배포한다. 새 설치는 선택 항목이다.
+    if [ -s "$PREFIX/lib/force_gettext.so" ] && declare -F _build_force_gettext >/dev/null; then
+        _build_force_gettext || return 1
+        setup_korean_rc || return 1
+    fi
     local block
     block=$(cat << 'LOCALE'
 
@@ -284,7 +289,7 @@ if [ -f "$PREFIX/lib/force_gettext.so" ]; then
     QT_TRANSLATIONS_PATH="$PREFIX/share/qt6/translations:$PREFIX/share/qt/translations${QT_TRANSLATIONS_PATH:+:$QT_TRANSLATIONS_PATH}"
     export QT_TRANSLATIONS_PATH
     export KDE_LANG=ko QT_LOCALE_OVERRIDE=ko_KR
-    case ":${LD_PRELOAD-}:" in *:"$PREFIX/lib/force_gettext.so":*) ;; *)
+    case "${RUNNING_IN_GLIBC_RUNNER:-false}:${LD_PRELOAD-}:" in true:*|*:"$PREFIX/lib/force_gettext.so":*) ;; *)
         export LD_PRELOAD="$PREFIX/lib/force_gettext.so${LD_PRELOAD:+:$LD_PRELOAD}";; esac
 fi
 KOREAN
@@ -292,7 +297,23 @@ KOREAN
     block="${block/__KOREAN_FALLBACK_DOMAINS__/$_KOREAN_FALLBACK_DOMAINS}"
 
     while IFS= read -r rc; do
-        _append_to_rc "# termux-xfce-korean" "$block" "$rc"
+        [ -f "$rc" ] || continue
+        # 이 블록의 끝은 단독 fi다. 경계가 손상됐으면 원본을 보존하고 실패한다.
+        local tmp
+        tmp=$(mktemp "${rc}.XXXXXX") || return 1
+        awk '
+            /^# termux-xfce-korean([[:space:]]|$)/ { if (managed) { bad=1; exit 1 }; managed=1; saved=$0 "\n"; next }
+            managed { saved=saved $0 "\n"; if ($0 == "fi") { managed=0; saved="" }; next }
+            { print }
+            END { if (managed || bad) exit 1 }
+        ' "$rc" > "$tmp" || {
+            rm -f "$tmp"
+            ui_error "한글 RC 블록의 경계를 확인할 수 없습니다: $rc"
+            return 1
+        }
+        cat "$tmp" > "$rc" || { rm -f "$tmp"; return 1; }
+        rm -f "$tmp"
+        printf '%s\n' "$block" >> "$rc" || return 1
     done < <(_rc_targets)
 }
 
@@ -484,6 +505,12 @@ _setup_kill_display() {
     mkdir -p "$PREFIX/share/applications"
     script_build_kill_display "$bin"
     chmod +x "$bin"
+    cat > "$PREFIX/bin/kill_termux_x11" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+exec kill_display_session "$@"
+EOF
+    chmod +x "$PREFIX/bin/kill_termux_x11"
+    rm -f "$PREFIX/share/applications/kill_termux_x11.desktop" "$HOME/Desktop/kill_termux_x11.desktop"
 
     cat > "$PREFIX/share/applications/kill_display_session.desktop" << 'EOF'
 [Desktop Entry]
@@ -515,10 +542,17 @@ _setup_prun() {
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
+_prun_error() {
+    echo "[ERROR] $1" >&2
+    if [ "${PRUN_GUI:-false}" = true ] && command -v zenity >/dev/null 2>&1; then
+        zenity --error --text="$1" 2>/dev/null || true
+    fi
+    exit 1
+}
+
 DISTRO="${PROOT_DISTRO:-}"
 if [ -z "$DISTRO" ]; then
-    echo "[ERROR] proot 환경이 설정되지 않았습니다. 설치기에 --distro를 지정하세요." >&2
-    exit 1
+    _prun_error "proot 환경이 설정되지 않았습니다. 설치기에 --distro를 지정하세요."
 fi
 ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
 if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
@@ -528,8 +562,7 @@ else
 fi
 
 if [ ! -d "$ROOTFS" ]; then
-    echo "[ERROR] proot rootfs를 찾을 수 없습니다: $ROOTFS" >&2
-    exit 1
+    _prun_error "proot rootfs를 찾을 수 없습니다: $ROOTFS"
 fi
 
 # config에 PROOT_USER 있으면 사용, 없으면 home/ 디렉토리에서 탐색 (alarm 제외)
@@ -583,6 +616,7 @@ fi
 NAME="$1"; shift
 [ "${1:-}" = "--" ] && shift
 [ $# -gt 0 ] || { echo "[ERROR] 실행할 명령이 없습니다." >&2; exit 2; }
+export PRUN_GUI=true
 
 if command -v notify-send >/dev/null 2>&1; then
     notify-send -t 30000 -i system-run \
@@ -604,29 +638,12 @@ EOF
 # 이 함수는 업그레이드 시 기존 파일만 패치
 _migrate_desktop_to_prun_gui() {
     local apps_dir="$PREFIX/share/applications"
-    local f app_name line content repl
+    local helper="${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh"
+    source "$helper" || return 1
+    local f
     for f in "$apps_dir"/*.desktop "$HOME/Desktop"/*.desktop; do
         [ -f "$f" ] || continue
-        # 이미 prun-gui 사용 중이면 건너뜀
-        grep -q "prun-gui" "$f" 2>/dev/null && continue
-        # prun을 사용하는 .desktop만 대상
-        grep -q "prun " "$f" 2>/dev/null || continue
-        # Name= 라인이 없으면 grep이 exit 1 → pipefail 하에서 전체 마이그레이션이
-        # 중단되므로 관대 처리(다음 줄이 이미 "App" 기본값으로 처리)
-        app_name=$(grep -m1 '^Name=' "$f" | cut -d= -f2-) || true
-        app_name="${app_name:-App}"
-        # 홑따옴표 안에 리터럴 작은따옴표를 넣기 위한 셸 이스케이프: ' → '\''
-        app_name="${app_name//\'/\'\\\'\'}"
-        # sed 대신 순수 bash 문자열 치환 사용 (sed 치환 문자열의 백슬래시 소비 방지).
-        # 치환 문자열을 사전 변수로 빌드 — ${line//..} 안에 ${app_name}를 직접 중첩하면
-        # bash가 확장하지 못하고 리터럴로 남으므로 반드시 분리한다.
-        repl="\"prun-gui '${app_name}' -- "
-        content=""
-        while IFS= read -r line || [ -n "$line" ]; do
-            line="${line/\"prun /$repl}"
-            content+="$line"$'\n'
-        done < "$f"
-        printf '%s' "$content" > "$f"
+        desktop_migrate_proot_launcher "$f" || ui_warn "기존 런처를 보존합니다: $f"
     done
 }
 
@@ -686,9 +703,7 @@ _setup_cp2menu() {
     local bin="$PREFIX/bin/cp2menu"
 
     mkdir -p "$PREFIX/share/applications"
-    mkdir -p "$PREFIX/libexec/termux-xfce"
-    cp "${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh" "$PREFIX/libexec/termux-xfce/desktop.sh" || return 1
-    script_build_cp2menu "$bin"
+    script_build_cp2menu "$bin" "${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh" || return 1
     chmod +x "$bin"
 
     cat > "$PREFIX/share/applications/cp2menu.desktop" << 'EOF'
@@ -770,11 +785,12 @@ _setup_conky_autostart() {
 [ -n "${PROOT_DISTRO:-}" ] || exit 0
 base="$PREFIX/var/lib/proot-distro"
 [ -d "$base/containers/$PROOT_DISTRO/rootfs" ] || [ -d "$base/installed-rootfs/$PROOT_DISTRO" ] || exit 0
-exec prun conky -c .config/conky/Alterf/Alterf.conf
+[ $# -gt 0 ] || set -- -c .config/conky/Alterf/Alterf.conf
+exec prun conky "$@"
 CONKY
     chmod +x "$bin"
     local desktop="$HOME/.config/autostart/conky.desktop"
     if [ -f "$desktop" ] && grep -q '^Exec=prun conky ' "$desktop"; then
-        sed -i 's|^Exec=prun conky .*|Exec=termux-xfce-conky|' "$desktop"
+        sed -i 's|^Exec=prun conky |Exec=termux-xfce-conky |' "$desktop"
     fi
 }

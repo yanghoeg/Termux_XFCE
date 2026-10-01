@@ -229,16 +229,13 @@ it "clang -shared로 force_gettext.so를 빌드한다" _test_force_gettext_build
 _test_force_gettext_idempotent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
+    _build_force_gettext
     reset_mock_calls
-
-    # 이미 빌드된 .so가 있음
-    printf 'shared library\n' > "${PREFIX}/lib/force_gettext.so"
-
-    _build_force_gettext 2>/dev/null || true
+    _build_force_gettext
     assert_not_called "clang"
     cleanup_sandbox "$sb"
 }
-it "멱등성 — force_gettext.so 이미 존재 시 빌드하지 않는다" _test_force_gettext_idempotent
+it "멱등성 — 같은 소스로 빌드된 force_gettext.so는 재빌드하지 않는다" _test_force_gettext_idempotent
 
 _test_force_gettext_warns_if_src_missing() {
     local sb; sb=$(make_sandbox)

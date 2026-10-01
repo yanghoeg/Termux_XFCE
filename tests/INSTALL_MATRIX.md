@@ -52,16 +52,35 @@ done
 | Wayland 순서 | `--display wayland --no-proot` | 하드웨어 사전 검사 → XFCE 패키지 → native 런타임 → 런처 → APK 순서 |
 | Wayland 거부 | 하드웨어 사전 검사 실패 | 패키지·런타임·APK 설치 시작 안 함 |
 
-정확한 개별 사례는 `test_install_matrix.sh`의 `it` 선언을 확인합니다. 특히 새 환경의
-`--no-proot` 검사는 기존 proot 설정 삭제를 보장하지 않습니다. 실제 설치기는 재실행 시
-저장된 배포판·사용자를 보존합니다. `--proot-only`도 native 디스플레이를 바꾸는 옵션이
-아닙니다.
+정확한 개별 사례는 `test_install_matrix.sh`의 `it` 선언을 확인합니다. 특히
+`--no-proot`는 기존 설정이 있어도 저장된 배포판·사용자를 비워 native 전용으로 전환하며,
+기존 컨테이너 파일은 유지합니다. `--proot-only`는 native 디스플레이 설정을 유지합니다.
 
 `modern_install`은 공통 입력기 선택·제거·마이그레이션, Wayland 입력 모듈 해제,
 GPU 설정 정리와 컨테이너 Turnip 검사, 생성된 GUI 런처의 인자 전달, 스크린샷 분기,
 native 전용 Conky 동작 등을 임시 환경에서 검사합니다.
 `display_wayland`는 APK 선택, 하드웨어 사전 검사, 해시·설치 실패 처리와 mock 자식
 프로세스를 이용한 세션 시작·종료를 다룹니다. 렌더링·키보드 입력 성공 여부는 별도입니다.
+
+## 2026-10-01 리뷰 회귀 검증
+
+24개 후보를 현재 코드와 대조했습니다. #14의 native 전용 전환은 의도된 동작으로,
+설정 보존이라는 오래된 설명과 설치 시 안내를 수정했습니다. #3의 롤백 스왑은 검증
+시점에 이미 수정되어 있어 열린 파일이 유지되는 회귀 테스트로 확인했습니다.
+나머지는 수정 후 임시 HOME/PREFIX와 패키지·다운로드 mock으로 검사합니다.
+
+| 후보 | 검증 스위트 | 확인 내용 |
+|------|-------------|-----------|
+| #1, #2, #23 | `desktop_review`, `review_regressions` | rootfs symlink, 실패 시 기존 런처 보존, 중복 래핑 방지, GUI 오류 표시 |
+| #3, #4 | App Installer `test_review_claude_code.sh`, 부모 `review_regressions` | 롤백 inode 보존, preload 해제, glibc 세션 환경 정리 |
+| #5, #6 | `review_regressions`, `domain_locale_ko`, `domain_xfce`, App Installer `test_cli.sh` | 소스 변경 시 훅 재빌드, ZIP 없이 한글 훅 업그레이드, 실제 폰트 파일명으로 재다운로드 방지 |
+| #7, #8, #9, #12 | App Installer `test_review_input_gpu.sh` | alarm 탐지 제외, 없는 IME 오선택 방지, Hidden 보존, 레거시 GPU 설치 오탐 제거 |
+| #10, #11, #13, #15, #20, #21, #24 | App Installer `test_review_removal_wine.sh` | 멱등 제거와 오류 전파, Python 빌드 의존, 컨테이너 Wine 경로, conffile 보존, login 훅 차단과 DISPLAY 보존, Sway 게이트, 소스 box64 제거 |
+| #14 | `install_matrix` | native 전용 전환 시 선택 해제와 컨테이너 파일 유지 |
+| #16, #17, #18, #19 | `review_regressions` | 서브모듈 조기 확인, 옛 종료 명령 전달, Conky 인자 유지, 옛 RC 뒤 사용자 설정 보존 |
+| #22 | App Installer `test_cli.sh`, `test_review_removal_wine.sh` | GUI/CLI의 은퇴 앱 표시·설치 정책 일치, 기존 설치 제거 가능 |
+
+App Installer에는 전체 러너가 없으므로 위 `test_review_*.sh` 파일은 `bash`로 각각 실행합니다.
 
 ## 실기기 설치 스크립트
 

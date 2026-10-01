@@ -84,6 +84,16 @@ source "$SCRIPT_DIR/adapters/output/script_builder_zenity.sh"
 source "$SCRIPT_DIR/adapters/input/cli.sh"
 parse_cli_args "$@"
 
+# Check runtime dependencies before prompting or modifying the installation.
+# CLI parsing handles --help even when the submodule has not been initialized.
+for _required_helper in lib/input_method.sh domain/desktop.sh; do
+    if [ ! -r "$SCRIPT_DIR/app-installer/$_required_helper" ]; then
+        echo "[ERROR] app-installer 서브모듈이 필요합니다: git submodule update --init --recursive" >&2
+        exit 1
+    fi
+done
+unset _required_helper
+
 # -----------------------------------------------------------------------------
 # 5. Input Adapter — 빠진 값 대화형으로 채우기
 # -----------------------------------------------------------------------------
@@ -203,8 +213,11 @@ else
     _cfg_display_server="${DISPLAY_SERVER}"
 fi
 
-# PROOT_DISTRO/PROOT_USER: 이번 실행 값이 있으면 사용, 없으면 기존 값 유지
+# native-only를 명시하면 선택을 비운다. 그 외에는 이번 값 또는 기존 값을 사용한다.
 if [ "${SKIP_PROOT:-false}" = true ]; then
+    if [ -n "$_existing_proot_distro" ]; then
+        ui_warn "native 전용으로 전환합니다. 기존 컨테이너는 유지되며 prun 대상 선택은 해제됩니다."
+    fi
     _cfg_proot_distro=""
     _cfg_proot_user=""
 else

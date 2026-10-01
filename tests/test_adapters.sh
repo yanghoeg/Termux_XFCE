@@ -372,7 +372,7 @@ _test_sb_cp2menu_uses_prun_gui() {
     local sb; sb=$(make_sandbox)
     local out="${sb}/cp2menu"
     script_build_cp2menu "$out"
-    assert_file_contains "$out" "desktop_rewrite_for_proot"
+    assert_file_contains "$out" "desktop_import_proot"
     cleanup_sandbox "$sb"
 }
 it "prun-gui로 Exec 라인을 변환한다" _test_sb_cp2menu_uses_prun_gui
