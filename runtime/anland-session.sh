@@ -152,10 +152,17 @@ _is_descendant() {
     return 1
 }
 _wait_plasma() {
-    local pid wd deadline=$((SECONDS + 90))
-    # Process discovery can be slow on Android; count elapsed time rather than
-    # assuming each iteration takes only the half-second sleep.
-    while [ "$SECONDS" -lt "$deadline" ]; do
+    local pid wd now deadline
+    printf -v now '%(%s)T' -1
+    # The launcher supplies its deadline so it cannot kill a healthy supervisor
+    # while Plasma is still allowed to initialize. Direct starts retain 90s here.
+    deadline="${ANLAND_STARTUP_DEADLINE:-$((now + 90))}"
+    case "$deadline" in
+        ''|*[!0-9]*) echo 'ERROR: 잘못된 Anland 시작 deadline' >&2; return 1 ;;
+    esac
+    # Process discovery can be slow on Android; inspect elapsed clock time rather
+    # than assuming each iteration takes only the half-second sleep.
+    while [ "$now" -lt "$deadline" ]; do
         _child_running "$_compositor_pid" || return 1
         # The name is matched loosely across the whole command line because a
         # process started through an interpreter reports the interpreter as
@@ -174,6 +181,7 @@ _wait_plasma() {
             fi
         done
         sleep 0.5
+        printf -v now '%(%s)T' -1
     done
     echo "ERROR: plasmashell 기동 확인 실패" >&2
     return 1

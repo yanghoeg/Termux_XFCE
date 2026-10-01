@@ -670,6 +670,63 @@ EOF
 }
 it "패널에서 actions 플러그인(plugin-20)을 제거한다" _test_remove_actions_plugin
 
+_test_remove_actions_preserves_other_plugin_ids() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
+    mkdir -p "${xml%/*}"
+    cat > "$xml" << 'EOF'
+<channel name="xfce4-panel">
+  <property name="panels" type="empty">
+    <property name="panel-1" type="empty">
+      <property name="plugin-ids" type="array">
+        <value type="int" value="20"/>
+        <value type="int" value="21"/>
+        <value value="32" type="int"/>
+      </property>
+      <property name="custom-values" type="array">
+        <value type="int" value="21"/>
+      </property>
+    </property>
+    <property name="panel-2" type="empty">
+      <property name="plugin-ids" type="array">
+        <value type="int" value="21"/>
+        <value type="int" value="20"/>
+      </property>
+    </property>
+  </property>
+  <property name="plugins" type="empty">
+    <property name="plugin-20" type="string" value="launcher"/>
+    <property name="plugin-21" type="string" value="actions">
+      <property name="items" type="array">
+        <value type="string" value="logout"/>
+      </property>
+      <property name="appearance" type="empty">
+        <property name="style" type="int" value="0"/>
+      </property>
+    </property>
+    <property value="actions" type="string" name="plugin-32"/>
+  </property>
+</channel>
+EOF
+    _migrate_remove_actions_plugin
+    python3 - "$xml" <<'PY'
+import sys
+import xml.etree.ElementTree as ET
+root = ET.parse(sys.argv[1]).getroot()
+for panel in root.find("property[@name='panels']"):
+    assert [v.get('value') for v in panel.find("property[@name='plugin-ids']")] == ['20']
+plugins = root.find("property[@name='plugins']")
+assert [(p.get('name'), p.get('value')) for p in plugins] == [('plugin-20', 'launcher')]
+assert root.find(".//property[@name='custom-values']/value").get('value') == '21'
+PY
+    local migrated; migrated=$(cat "$xml")
+    _migrate_remove_actions_plugin
+    assert_eq "$migrated" "$(cat "$xml")"
+    cleanup_sandbox "$sb"
+}
+it "실제 actions ID만 모든 패널에서 제거하고 plugin-20과 다른 정수 값은 보존한다" _test_remove_actions_preserves_other_plugin_ids
+
 _test_remove_actions_plugin_idempotent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
@@ -706,7 +763,8 @@ _test_remove_actions_plugin_awk_failure_preserves_xml() {
 </channel>
 EOF
 
-    # awk 실패를 시뮬레이션 (앞선 sed -i plugin-id 정리는 awk와 무관 — 별도 단계이므로 그대로 실행됨)
+    local original; original=$(cat "$xml")
+    # Both references and definitions must survive a failed staged rewrite.
     awk() { _record_call "awk $*"; return 1; }
     reset_ui_output
 
@@ -714,12 +772,12 @@ EOF
     _migrate_remove_actions_plugin 2>/dev/null || rc=$?
 
     assert_zero "$rc" "awk 실패해도 set -e 트립 없이 rc 0"
-    # awk가 실패해 mv가 일어나지 않았으므로 actions 블록은 (반쯤 잘리지 않고) 그대로 남아있어야 함
+    assert_eq "$original" "$(cat "$xml")"
     assert_file_contains "$xml" 'value="actions"'
     assert_file_contains "$xml" '<property name="items" type="array"/>'
     assert_file_contains "$xml" '</channel>'
     assert_ui_contains "WARN"
-    ! [ -f "${xml}.tmp" ]
+    [ -z "$(find "${xml%/*}" -name 'xfce4-panel.xml.tmp*' -print)" ]
     cleanup_sandbox "$sb"
 }
 it "awk 실패 시 actions 블록이 손상되지 않고 경고 후 반환 (set -e 트립 방지)" _test_remove_actions_plugin_awk_failure_preserves_xml

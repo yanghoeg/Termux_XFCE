@@ -113,6 +113,55 @@ _test_launcher() {
 }
 it 'Wayland launcher uses Anland and waits for Plasma readiness' _test_launcher
 
+_test_launcher_deadline_case() {
+    local ready_at="$1" expected_rc="$2" expected_clock="$3"
+    local sb; sb=$(make_sandbox)
+    TEST_LAUNCHER_SB="$sb"
+    trap 'if [ -r "$TEST_LAUNCHER_SB/state/session.pid" ]; then read -r _pid _name < "$TEST_LAUNCHER_SB/state/session.pid"; kill "$_pid" 2>/dev/null || true; fi; cleanup_sandbox "$TEST_LAUNCHER_SB"' EXIT
+    setup_fs_sandbox "$sb"
+    export SESSION_STATE_DIR="$sb/state" XDG_RUNTIME_DIR="$sb/run"
+    export TEST_SLEEP_BIN="$(command -v sleep)" TEST_READY_AT="$ready_at"
+    mkdir -p "$SESSION_STATE_DIR" "$XDG_RUNTIME_DIR"
+    # A socket inode is sufficient for the launcher's readiness check; no actual
+    # compositor or Android process is started by this test.
+    python3 - "$XDG_RUNTIME_DIR/wayland-test" <<'PY'
+import socket, sys
+s = socket.socket(socket.AF_UNIX)
+s.bind(sys.argv[1])
+PY
+    cat > "$sb/launcher" <<'CLOCK'
+_virtual_now=1000
+printf() {
+    if [ "${1:-}" = -v ] && [ "${3:-}" = '%(%s)T' ]; then
+        builtin printf -v "$2" '%s' "$_virtual_now"
+    else
+        builtin printf "$@"
+    fi
+}
+setsid() {
+    builtin printf '%s\n' "$ANLAND_STARTUP_DEADLINE" > "$SESSION_STATE_DIR/worker-deadline"
+    exec "$TEST_SLEEP_BIN" 120
+}
+sleep() {
+    _virtual_now=$((_virtual_now + 1))
+    builtin printf '%s\n' "$_virtual_now" > "$SESSION_STATE_DIR/clock"
+    if [ "$_virtual_now" -eq "$TEST_READY_AT" ]; then
+        builtin printf 'wayland-test\n' > "$SESSION_STATE_DIR/anland-ready"
+    fi
+}
+CLOCK
+    display_emit_session_launch >> "$sb/launcher"
+    local rc=0
+    bash "$sb/launcher" > "$sb/output" 2>&1 || rc=$?
+    assert_eq "$expected_rc" "$rc"
+    assert_eq "$expected_clock" "$(cat "$SESSION_STATE_DIR/clock")"
+    assert_eq 1090 "$(cat "$SESSION_STATE_DIR/worker-deadline")"
+}
+_test_launcher_slow_ready() { _test_launcher_deadline_case 1065 0 1065; }
+it 'a healthy supervisor becoming ready after 60 polls can complete within the shared 90s deadline' _test_launcher_slow_ready
+_test_launcher_startup_timeout() { _test_launcher_deadline_case 1100 1 1090; }
+it 'a supervisor that never becomes ready reaches the shared elapsed-time deadline' _test_launcher_startup_timeout
+
 _test_supervisor() {
     local sb; sb=$(make_sandbox)
     setup_fs_sandbox "$sb"

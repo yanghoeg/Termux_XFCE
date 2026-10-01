@@ -2,19 +2,31 @@
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/framework.sh"
 
-describe 'force_gettext — string boundaries'
-_test_normalize_sanitized() {
-    local sb compiler="${CC:-clang}"
+describe 'force_gettext — catalog boundaries and nullable GTK formats'
+_run_force_gettext() {
+    local mode="$1" sanitized="$2" sb compiler="${CC:-clang}"
+    local -a flags=(-O2)
+    if [ "$sanitized" = true ]; then
+        flags=(-g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer)
+    fi
     command -v "$compiler" >/dev/null || compiler=cc
     sb=$(make_sandbox)
-    "$compiler" -g -O1 -fsanitize=address,undefined -fno-omit-frame-pointer \
-        "$SCRIPT_DIR/test_force_gettext.c" -o "$sb/normalize" -ldl -pthread || {
+    "$compiler" "${flags[@]}" \
+        "$SCRIPT_DIR/test_force_gettext.c" -o "$sb/hook-tests" -ldl -pthread || {
         cleanup_sandbox "$sb"; return 1;
     }
     local rc=0
-    ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 "$sb/normalize" || rc=$?
+    ASAN_OPTIONS=detect_leaks=0 UBSAN_OPTIONS=halt_on_error=1 \
+        "$sb/hook-tests" "$mode" "$sb/catalog.mo" || rc=$?
     cleanup_sandbox "$sb"
     return "$rc"
 }
+_test_normalize_sanitized() { _run_force_gettext normalize true; }
+_test_catalogs_sanitized() { _run_force_gettext mo true; }
+_test_dialogs_sanitized() { _run_force_gettext gtk true; }
+_test_dialogs_optimized() { _run_force_gettext gtk false; }
 it 'Unicode punctuation preserves adjacent bytes and never reads past NUL (ASan/UBSan)' _test_normalize_sanitized
+it 'MO offsets, lengths, terminators and unaligned tables are safe in both byte orders (ASan/UBSan)' _test_catalogs_sanitized
+it 'GTK NULL formats reach originals while ordinary formatting and translation remain intact (ASan/UBSan)' _test_dialogs_sanitized
+it 'GTK constructors and secondary clearing accept NULL in an optimized build' _test_dialogs_optimized
 print_results

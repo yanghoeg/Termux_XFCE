@@ -123,10 +123,15 @@ display_emit_clipboard_sync() {
 display_emit_session_launch() {
     cat << 'FRAG'
 _WL_LOG="$HOME/.xfce-wayland.log"
+# Share one startup deadline with the supervisor, including daemon/audio setup.
+# Bash printf reads the clock without spawning date for every polling iteration.
+printf -v ANLAND_STARTUP_DEADLINE '%(%s)T' -1
+ANLAND_STARTUP_DEADLINE=$((ANLAND_STARTUP_DEADLINE + 90))
+export ANLAND_STARTUP_DEADLINE
 setsid nohup bash "$PREFIX/bin/termux-xfce-anland-session" >"$_WL_LOG" 2>&1 </dev/null &
 _ANLAND_PID=$!
 printf '%s\t%s\n' "$_ANLAND_PID" "termux-xfce-anland-session" > "$SESSION_STATE_DIR/session.pid"
-for _i in $(seq 1 60); do
+while :; do
     if ! kill -0 "$_ANLAND_PID" 2>/dev/null; then
         echo "ERROR: Anland 세션 시작 실패. 로그: $_WL_LOG" >&2
         tail -n 20 "$_WL_LOG" >&2
@@ -140,6 +145,8 @@ for _i in $(seq 1 60); do
             exit 0
         fi
     fi
+    printf -v _ANLAND_NOW '%(%s)T' -1
+    [ "$_ANLAND_NOW" -lt "$ANLAND_STARTUP_DEADLINE" ] || break
     sleep 0.5
 done
 echo "ERROR: Anland/Plasma 시작 대기 시간 초과. 로그: $_WL_LOG" >&2

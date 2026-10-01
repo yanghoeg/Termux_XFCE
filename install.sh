@@ -21,12 +21,32 @@ IFS=$'\n\t'
 # -----------------------------------------------------------------------------
 # 0. 경로 설정
 # -----------------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+_installer_source="${BASH_SOURCE[0]:-}"
+if [ -n "$_installer_source" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$_installer_source")")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
+unset _installer_source
 export SCRIPT_DIR
 ARCH=$(uname -m)
 
 # curl로 직접 실행 시 (파일이 없는 경우) 임시 디렉토리에 클론
-if [ ! -d "$SCRIPT_DIR/domain" ]; then
+if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR/domain" ]; then
+    # Git is not part of a fresh Termux bootstrap. Prepare it before cloning or
+    # replacing the checkout used by an existing app-installer command.
+    if ! command -v git >/dev/null 2>&1; then
+        case "${PREFIX:-}" in
+            /data/data/com.termux/files/usr) ;;
+            *) echo "[ERROR] Git 설치에는 Android Termux 환경이 필요합니다." >&2; exit 1 ;;
+        esac
+        echo "[INFO] 저장소 복제에 필요한 Git을 설치합니다..."
+        if ! pkg install -y -o Dpkg::Options::="--force-confold" git ||
+           ! command -v git >/dev/null 2>&1; then
+            echo "[ERROR] Git을 준비하지 못했습니다. 네트워크와 패키지 저장소를 확인하세요." >&2
+            exit 1
+        fi
+    fi
     echo "[INFO] 저장소를 클론합니다..."
     local_dir="$HOME/.termux-xfce-installer"
     rm -rf "$local_dir"

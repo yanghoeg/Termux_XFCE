@@ -730,11 +730,16 @@ PREV_ANDROID="" PREV_X11=""
 while true; do
     sleep 2
     ANDROID=$(termux-clipboard-get 2>/dev/null) || continue
-    X11=$(DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -o 2>/dev/null) || continue
+    # A fresh X11 session has no selection owner. Seed it from Android instead
+    # of waiting for an X11 application to copy something first.
+    if ! X11=$(DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -o 2>/dev/null); then
+        printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null || continue
+        X11="$ANDROID"
+    fi
     if [ "$ANDROID" != "$PREV_ANDROID" ] && [ "$ANDROID" != "$X11" ]; then
-        printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null
+        printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null || continue
     elif [ "$X11" != "$PREV_X11" ] && [ "$X11" != "$ANDROID" ]; then
-        termux-clipboard-set "$X11" 2>/dev/null
+        termux-clipboard-set "$X11" 2>/dev/null || continue
     fi
     PREV_ANDROID="$ANDROID" PREV_X11="$X11"
 done

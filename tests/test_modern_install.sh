@@ -223,16 +223,24 @@ _test_wine_native_current_loader() {
     unset _WINE_BACKEND_SH
     source "$_MODERN_ROOT/app-installer/lib/wine_backend.sh"
     source "$_MODERN_ROOT/app-installer/domain/installers/wine.sh"
-    mkdir -p "$HOME/.wine-staging/bin"
+    termux_pkg_enable_repo() { :; }
+    termux_pkg_install() { :; }
+    mkdir -p "$HOME/.wine-staging/bin" "$PREFIX/glibc/bin" "$PREFIX/glibc/lib"
     cat > "$HOME/.wine-staging/bin/wine" <<'STUB'
-#!/bin/sh
+#!/data/data/com.termux/files/usr/bin/bash
 printf '%s:%s\n' "$DISPLAY" "$*"
 STUB
-    cat > "$PREFIX/bin/grun" <<'STUB'
-#!/bin/sh
+    cat > "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" <<'STUB'
+#!/data/data/com.termux/files/usr/bin/bash
+[ "$1" = --library-path ] && [ "$2" = "$PREFIX/glibc/lib" ] || exit 1
+shift 2
 exec "$@"
 STUB
-    chmod +x "$HOME/.wine-staging/bin/wine" "$PREFIX/bin/grun"
+    cat > "$PREFIX/glibc/bin/box64" <<'STUB'
+#!/data/data/com.termux/files/usr/bin/bash
+exec "$@"
+STUB
+    chmod +x "$HOME/.wine-staging/bin/wine" "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" "$PREFIX/glibc/bin/box64"
     _wine_install_native >/dev/null
     export PATH="$PREFIX/bin:$PATH" DISPLAY=:91
     assert_eq ':91:winecfg' "$(bash "$PREFIX/bin/wine-box64" winecfg)"

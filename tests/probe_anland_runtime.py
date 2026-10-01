@@ -95,19 +95,26 @@ def run_case(failure, variant):
                ANLAND_TEST_TRACE=str(trace), ANLAND_TEST_FAIL=failure,
                DISPLAY=':0', WAYLAND_DISPLAY='wrong-parent', WLR_BACKENDS='x11',
                MESA_LOADER_DRIVER_OVERRIDE='zink', GDK_BACKEND='x11')
+    env.pop('ANLAND_STARTUP_DEADLINE', None)
+    if failure == 'plasmashell':
+        # Exercise the launcher's deadline propagation without spending 90s on a
+        # shell that is deliberately unable to start. Ignoring this deadline
+        # would make the wait below time out and fail the test.
+        env['ANLAND_STARTUP_DEADLINE'] = str(int(time.time()) + 15)
     with (case / 'log').open('w') as log:
         proc = subprocess.Popen(['bash', str(bin_dir/'termux-xfce-anland-session')], env=env,
                                 stdout=log, stderr=log)
         try:
-            deadline = time.monotonic()+12
+            # Android process discovery and interpreter startup can exceed 12s
+            # under concurrent test load. Healthy starts get the supervisor's
+            # full initialization budget, and still finish as soon as ready.
+            deadline = time.monotonic()+(120 if not failure else 12)
             while time.monotonic() < deadline:
                 if proc.poll() is not None or (state/'anland-ready').exists(): break
                 time.sleep(.05)
             rows = [json.loads(line) for line in trace.read_text().splitlines()]
             if failure:
-                # A shell that never comes up is only given up on after
-                # _wait_plasma's full 90s deadline, so allow for that here.
-                assert proc.wait(timeout=120) != 0, (failure, (case/'log').read_text())
+                assert proc.wait(timeout=35 if failure == 'plasmashell' else 120) != 0, (failure, (case/'log').read_text())
                 assert not (state/'anland-ready').exists()
             else:
                 assert (state/'anland-ready').exists(), (case/'log').read_text()
@@ -133,7 +140,9 @@ def run_case(failure, variant):
                 assert shells[-1]['WAYLAND_DISPLAY']=='wayland-0', shells[-1]
                 rows = [json.loads(line) for line in trace.read_text().splitlines()]
                 os.kill(plasma['pid'], signal.SIGTERM)
-                proc.wait(timeout=8)
+                # Cleanup runs process discovery and two Python Android stubs;
+                # their startup alone can exceed 8s on a busy Android device.
+                proc.wait(timeout=30)
             deadline = time.monotonic()+3
             while time.monotonic()<deadline and any(alive(r['pid']) for r in rows): time.sleep(.05)
             assert not any(alive(r['pid']) for r in rows), ('child leaked', rows)

@@ -194,7 +194,6 @@ static Dict* dict_new(size_t n){ Dict* d=calloc(1,sizeof(Dict)); d->n=n?n:1024; 
 static void dict_put(Dict* d,const char*k,const char*v){ if(!d||!k||!v) return; uint32_t h=djb2(k)%d->n; Entry* e=malloc(sizeof(*e)); e->key=strdup(k); e->val=strdup(v); e->next=d->b[h]; d->b[h]=e; }
 static const char* dict_get(Dict* d,const char*k){ if(!d||!k) return NULL; uint32_t h=djb2(k)%d->n; for(Entry* e=d->b[h]; e; e=e->next) if(strcmp(e->key,k)==0) return e->val; return NULL; }
 
-typedef struct { uint32_t magic,rev,n,offo,offt,hsz,hoff; } H;
 static uint32_t sw(uint32_t x){ return (x>>24)|((x>>8)&0xFF00)|((x<<8)&0xFF0000)|(x<<24); }
 typedef struct { Dict* d; char* blob; size_t len; int be; } Cat;
 static int rf(const char* p,char**o,size_t*L){
@@ -204,19 +203,22 @@ static int rf(const char* p,char**o,size_t*L){
   if(fread(b,1,(size_t)n,f)!=(size_t)n){ fclose(f); free(b); return -1; }
   fclose(f); *o=b; *L=(size_t)n; return 0;
 }
-static uint32_t rd32(const char*p,int be){ uint32_t v=*(const uint32_t*)p; return be?sw(v):v; }
+static uint32_t rd32(const char*p,int be){ uint32_t v; memcpy(&v,p,sizeof(v)); return be?sw(v):v; }
 static Cat* loadmo(const char* path){
   char* b=NULL; size_t L=0; if(rf(path,&b,&L)!=0) return NULL;
   if(L<28){ free(b); return NULL; }
-  H* h=(H*)b; int be=0;
-  if(h->magic==0x950412de) be=0; else if(h->magic==0xde120495) be=1; else { free(b); return NULL; }
-  uint32_t n=rd32((char*)&h->n,be), oo=rd32((char*)&h->offo,be), ot=rd32((char*)&h->offt,be);
-  if(n>1000000||oo>L||ot>L||oo+8ULL*n>L||ot+8ULL*n>L){ free(b); return NULL; }
+  uint32_t magic=rd32(b,0); int be=0;
+  if(magic==0x950412de) be=0; else if(magic==0xde120495) be=1; else { free(b); return NULL; }
+  uint32_t n=rd32(b+8,be), oo=rd32(b+12,be), ot=rd32(b+16,be);
+  if(n>1000000||oo>L||ot>L||n>(L-oo)/8||n>(L-ot)/8){ free(b); return NULL; }
   Dict* d=dict_new(n*2+1);
   for(uint32_t i=0;i<n;i++){
-    uint32_t olen=rd32(b+oo+i*8+0,be), ooff=rd32(b+oo+i*8+4,be);
-    uint32_t tlen=rd32(b+ot+i*8+0,be), toff=rd32(b+ot+i*8+4,be);
-    if(ooff>L||toff>L||ooff+olen>=L||toff+tlen>=L) continue;
+    uint32_t olen=rd32(b+(size_t)oo+(size_t)i*8,be), ooff=rd32(b+(size_t)oo+(size_t)i*8+4,be);
+    uint32_t tlen=rd32(b+(size_t)ot+(size_t)i*8,be), toff=rd32(b+(size_t)ot+(size_t)i*8+4,be);
+    /* Length excludes the final NUL, but may include plural-form separators.
+       Subtract before comparing so corrupt 32-bit lengths cannot wrap. */
+    if(ooff>=L||toff>=L||olen>=L-ooff||tlen>=L-toff) continue;
+    if(b[(size_t)ooff+olen]!='\0'||b[(size_t)toff+tlen]!='\0') continue;
     dict_put(d, b+ooff, b+toff);
   }
   Cat* c=calloc(1,sizeof(Cat)); c->d=d; c->blob=b; c->len=L; c->be=be; return c;
@@ -396,6 +398,7 @@ void gtk_window_set_title(void* win,const char* title){
 /* MessageDialog 생성: 항상 일반 생성자로 만들고, 마크업이면 set_markup로 강제 적용 */
 void* gtk_message_dialog_new(void* parent,int flags,int type,int buttons,const char* fmt,...){
   ensure_syms();
+  if(!fmt) return real_gtk_message_dialog_new(parent,flags,type,buttons,NULL);
   char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
   const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
 
@@ -410,6 +413,7 @@ void* gtk_message_dialog_new(void* parent,int flags,int type,int buttons,const c
 
 void* gtk_message_dialog_new_with_markup(void* parent,int flags,int type,int buttons,const char* fmt,...){
   ensure_syms();
+  if(!fmt) return real_gtk_message_dialog_new_with_markup(parent,flags,type,buttons,NULL);
   char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
   const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
 
@@ -431,6 +435,7 @@ static void (*real_gtk_message_dialog_format_secondary_text)(void*,const char*,.
 void gtk_message_dialog_format_secondary_text(void* dlg,const char* fmt,...){
   if(!real_gtk_message_dialog_format_secondary_text)
     real_gtk_message_dialog_format_secondary_text=(void(*)(void*,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_format_secondary_text");
+  if(!fmt){ real_gtk_message_dialog_format_secondary_text(dlg,NULL); return; }
   char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
   const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
   real_gtk_message_dialog_format_secondary_text(dlg,"%s",out);
@@ -439,6 +444,7 @@ static void (*real_gtk_message_dialog_format_secondary_markup)(void*,const char*
 void gtk_message_dialog_format_secondary_markup(void* dlg,const char* fmt,...){
   if(!real_gtk_message_dialog_format_secondary_markup)
     real_gtk_message_dialog_format_secondary_markup=(void(*)(void*,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_format_secondary_markup");
+  if(!fmt){ real_gtk_message_dialog_format_secondary_markup(dlg,NULL); return; }
   char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
   const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
   real_gtk_message_dialog_format_secondary_markup(dlg,"%s",out);

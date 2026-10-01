@@ -320,12 +320,32 @@ setup_proot_alias() {
     # 서브셸이라 config의 다른 변수는 사용자 셸로 새지 않는다.
     local _proot_alias="alias ${distro}='proot-distro login ${distro} --user ${user} --shared-tmp -- env -u LD_PRELOAD \"\$(. \"\$HOME/.config/termux-xfce/config\" 2>/dev/null; echo \"\${PROOT_SHELL:-bash}\")\" --login'"
 
-    local bashrc="$PREFIX/etc/bash.bashrc"
-    grep -q "alias ${distro}=" "$bashrc" 2>/dev/null || echo "$_proot_alias" >> "$bashrc"
-
-    if [ -f "$HOME/.zshrc" ]; then
-        grep -q "alias ${distro}=" "$HOME/.zshrc" 2>/dev/null || echo "$_proot_alias" >> "$HOME/.zshrc"
-    fi
+    local rc staged
+    for rc in "$PREFIX/etc/bash.bashrc" "$HOME/.zshrc"; do
+        if [ ! -f "$rc" ]; then
+            [ "$rc" != "$HOME/.zshrc" ] || continue
+            : > "$rc" || return 1
+        fi
+        staged=$(mktemp "${rc}.XXXXXX") || return 1
+        # Refresh installer-owned aliases when the configured user changes;
+        # preserve aliases the user replaced with their own command.
+        awk -v managed="$_proot_alias" '
+            BEGIN {
+                sub(/ --user [^[:space:]]+ /, " --user @managed@ ", managed)
+            }
+            {
+                normalized = $0
+                sub(/^[[:space:]]*/, "", normalized)
+                sub(/ --user [^[:space:]]+ /, " --user @managed@ ", normalized)
+                if (normalized != managed) print
+            }
+        ' "$rc" > "$staged" || { rm -f "$staged"; return 1; }
+        if ! grep -q "^[[:space:]]*alias ${distro}=" "$staged"; then
+            printf '%s\n' "$_proot_alias" >> "$staged" || { rm -f "$staged"; return 1; }
+        fi
+        cat "$staged" > "$rc" || { rm -f "$staged"; return 1; }
+        rm -f "$staged"
+    done
 }
 
 # -----------------------------------------------------------------------------
