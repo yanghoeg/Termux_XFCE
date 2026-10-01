@@ -1,11 +1,10 @@
 [Desktop Entry]
 Version=1.0
 Type=Application
-Name=Kill Termux X11
+Name=Kill Display Session
 Comment=
-Exec=kill_termux_x11
+Exec=kill_display_session
 Icon=system-shutdown
 Categories=System;
 Path=
 StartupNotify=false
-X-XFCE-Source=file:///data/data/com.termux/files/home/Desktop/kill_termux_x11.desktop

@@ -95,7 +95,7 @@ export FD_FORCE_KGSL=1 XWAYLAND_FORCE_KGSL_SURFACELESS=1
 export XDG_SESSION_TYPE=wayland XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE
 export GDK_BACKEND=wayland,x11 QT_QPA_PLATFORM=wayland MOZ_ENABLE_WAYLAND=1
 export GSK_RENDERER=cairo
-# KWin resolves the cursor theme before XFCE's settings daemon runs, so name the
+# KWin resolves the cursor theme at startup, so name the
 # theme the desktop installs instead of letting it fall back to a missing "default".
 export XCURSOR_THEME=dist-dark XCURSOR_SIZE=32
 export PULSE_SERVER=tcp:127.0.0.1:4713

@@ -206,14 +206,14 @@ _test_proot_env_written() {
     # export는 /etc/profile.d로 이동 — .bashrc는 마커 + source 라인만 갖는다
     local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
     assert_file_contains "$envfile" 'DISPLAY=${DISPLAY:-:0.0}'
-    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
+    assert_file_not_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE"
 
     local bashrc="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/home/testuser/.bashrc"
     assert_file_contains "$bashrc" "termux-xfce-proot-env"
     assert_file_contains "$bashrc" '\. /etc/profile\.d/termux-xfce-env\.sh'
     cleanup_sandbox "$sb"
 }
-it "profile.d에 DISPLAY/MESA를 쓰고 .bashrc는 마커+source 라인을 갖는다" _test_proot_env_written
+it "profile.d에 DISPLAY/runtime 설정을 쓰고 .bashrc는 마커+source 라인을 갖는다" _test_proot_env_written
 
 _test_proot_env_idempotent() {
     local sb; sb=$(make_sandbox)
@@ -241,8 +241,8 @@ _test_proot_env_profile_d_written() {
 
     local envfile="${PREFIX}/var/lib/proot-distro/installed-rootfs/ubuntu/etc/profile.d/termux-xfce-env.sh"
     assert_file_exists "$envfile"
-    assert_file_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE=zink"
-    assert_file_contains "$envfile" "VK_ICD_FILENAMES="
+    assert_file_not_contains "$envfile" "MESA_LOADER_DRIVER_OVERRIDE"
+    assert_file_not_contains "$envfile" "VK_ICD_FILENAMES="
     assert_file_contains "$envfile" 'XDG_RUNTIME_DIR=/run/user/$(id -u)'
     assert_file_not_contains "$envfile" "alias"
     cleanup_sandbox "$sb"
@@ -641,34 +641,6 @@ _test_timezone_uses_getprop_value() {
     cleanup_sandbox "$sb"
 }
 it "getprop 결과를 시간대로 사용한다" _test_timezone_uses_getprop_value
-
-# =============================================================================
-# setup_proot_hardware_accel — distro 분기 GPU 유틸 설치
-# =============================================================================
-
-describe "proot_env — setup_proot_hardware_accel"
-
-_test_hw_accel_ubuntu_pkgs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "ubuntu" "testuser"
-    reset_mock_calls
-
-    setup_proot_hardware_accel 2>/dev/null || true
-    assert_was_called "proot_pkg_install mesa-utils vulkan-tools"
-    cleanup_sandbox "$sb"
-}
-it "Ubuntu: mesa-utils, vulkan-tools를 설치한다" _test_hw_accel_ubuntu_pkgs
-
-_test_hw_accel_arch_pkgs() {
-    local sb; sb=$(make_sandbox)
-    _load_domain "$sb" "archlinux" "testuser"
-    reset_mock_calls
-
-    setup_proot_hardware_accel 2>/dev/null || true
-    assert_was_called "proot_pkg_install mesa vulkan-tools mesa-demos"
-    cleanup_sandbox "$sb"
-}
-it "Arch: mesa, vulkan-tools, mesa-demos를 설치한다" _test_hw_accel_arch_pkgs
 
 # =============================================================================
 # teardown_proot — 제거 흐름

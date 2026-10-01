@@ -4,7 +4,6 @@
 # -----------------------------------------------------------------------------
 # Termux 기본 환경 구성 도메인 로직
 # - pkg_install, ui_info 등은 어댑터에서 주입됨 (직접 호출 안 함)
-# - 기존: etc.sh 의 termux_base_setup(), termux_gpu_accel_install() 통합
 # =============================================================================
 
 # -----------------------------------------------------------------------------
@@ -24,9 +23,9 @@ setup_termux_base() {
     _setup_zsh_p10k
     _setup_aliases
     _setup_locale
-    _setup_korean_env
+    _setup_input_method
     _setup_xdg_runtime
-    _setup_gpu_env
+    _migrate_gpu_rc
 }
 
 setup_termux_shortcuts() {
@@ -39,6 +38,7 @@ setup_termux_shortcuts() {
     _setup_app_installer
     _setup_clipboard_sync
     _setup_screenshot
+    _setup_conky_autostart
 }
 
 termux_download_and_open_apk() {
@@ -262,11 +262,6 @@ export LANG=ko_KR.UTF-8
 export LC_ALL=
 export XDG_CONFIG_HOME="$HOME/.config"
 # XDG_RUNTIME_DIR은 _setup_xdg_runtime 블록에서 관리 (mode 700 user-private)
-if command -v nimf >/dev/null 2>&1; then
-    export XMODIFIERS="@im=nimf"
-    export GTK_IM_MODULE=nimf
-    export QT_IM_MODULE=nimf
-fi
 LOCALE
 )
 
@@ -329,31 +324,13 @@ XDGRT
     done < <(_rc_targets)
 }
 
-_setup_gpu_env() {
-    local block
-    block=$(cat << 'GPU'
-
-# termux-xfce-gpu — Adreno 감지 시 Zink 상시 활성화
-# Termux:X11 nightly APK: Zink+Turnip이 GLX 스왑체인 생성 실패
-#   → glmark2(GLX) 크래시, GTK4 앱(zenity 등) GLXBadCurrentWindow 크래시
-# 해결: GSK_RENDERER=cairo (GTK4 Cairo 렌더러), glmark2 → glmark2-es2 사용
-# glmark2-es2 는 EGL 사용으로 정상 동작, glmark2(GLX)는 --off-screen 에서만 동작
-if [ -f /sys/class/kgsl/kgsl-3d0/gpu_model ]; then
-    export MESA_LOADER_DRIVER_OVERRIDE=zink
-    export TU_DEBUG=noconform
-    export ZINK_DESCRIPTORS=lazy
-    export MESA_NO_ERROR=1
-    export MESA_GL_VERSION_OVERRIDE=4.6COMPAT
-    export MESA_GLES_VERSION_OVERRIDE=3.2
-    export MESA_VK_WSI_PRESENT_MODE=fifo
-    # GTK4 GLX 스왑체인 크래시 방지 — Cairo 소프트 렌더러 강제
-    export GSK_RENDERER=cairo
-fi
-GPU
-)
-
+# GPU policy belongs to the session launcher and the optional GPU installers.
+# Remove the exact managed block emitted by previous base installs.
+_migrate_gpu_rc() {
+    local rc
     while IFS= read -r rc; do
-        _append_to_rc "# termux-xfce-gpu" "$block" "$rc"
+        [ -f "$rc" ] || continue
+        sed -i '/^# termux-xfce-gpu /,/^fi$/d' "$rc" || return 1
     done < <(_rc_targets)
 }
 
@@ -468,52 +445,16 @@ P10KBLOCK
     fi
 }
 
-_setup_korean_env() {
-    _install_nimf_native || ui_warn "nimf 설치 실패 — autostart만 설정합니다"
-
-    local autostart_dir="$HOME/.config/autostart"
-    mkdir -p "$autostart_dir"
-
-    local nimf_desktop="$autostart_dir/nimf.desktop"
-    [ -f "$nimf_desktop" ] && return 0
-
-    cat > "$nimf_desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Nimf
-NotShowIn=KDE;
-Exec=bash -c "pgrep -x nimf >/dev/null 2>&1 || exec nimf"
-Hidden=false
-X-GNOME-Autostart-enabled=true
-EOF
-
-    # fcitx5 시스템 autostart가 있으면 사용자 오버라이드로 비활성화
-    local fcitx_sys="${PREFIX}/etc/xdg/autostart/org.fcitx.Fcitx5.desktop"
-    if [ -f "$fcitx_sys" ]; then
-        cat > "$autostart_dir/org.fcitx.Fcitx5.desktop" << 'EOF'
-[Desktop Entry]
-Type=Application
-Name=Fcitx5
-Exec=fcitx5 -d
-Hidden=true
-X-GNOME-Autostart-enabled=false
-EOF
+_setup_input_method() {
+    # App Installer owns IME packages and the selected input method. Base setup
+    # only imports an existing selection and installs the shared environment hook.
+    local helper="${BASH_SOURCE[0]%/*}/../app-installer/lib/input_method.sh"
+    if [ ! -r "$helper" ]; then
+        ui_error "app-installer 서브모듈이 필요합니다: git submodule update --init"
+        return 1
     fi
-}
-
-_install_nimf_native() {
-    command -v nimf &>/dev/null && return 0
-
-    local url="https://github.com/yanghoeg/Termux_XFCE/releases/download/nimf-termux-v1.4.19/nimf_1.4.19_aarch64.deb"
-    # nimf-termux-v1.4.19 태그 고정 릴리스 .deb의 sha256 (무결성 검증용)
-    local sha256="42e6f5a27ec99bc26b2492e08181d433caf26a3832867eef664bb935144c7fbe"
-
-    ui_info "nimf 한글 입력기 설치 중..."
-    pkg_install_deb_url "$url" "$sha256" || { ui_warn "nimf deb 다운로드/설치 실패"; return 1; }
-
-    # 마지막 명령 성공 여부가 아니라 실제 실행 가능 상태를 확인한다.
-    command -v nimf &>/dev/null || return 1
-    glib-compile-schemas "${PREFIX}/share/glib-2.0/schemas/" 2>/dev/null || true
+    source "$helper"
+    input_method_setup
 }
 
 _setup_start_xfce() {
@@ -554,6 +495,15 @@ Icon=system-shutdown
 Categories=System;
 StartupNotify=false
 EOF
+    local f
+    while IFS= read -r -d '' f; do
+        if grep -q '^Exec=kill_termux_x11$' "$f"; then
+            sed -i -e 's/^Exec=kill_termux_x11$/Exec=kill_display_session/' \
+                -e 's/^Name=Kill Termux X11$/Name=Kill Display Session/' \
+                -e '/^X-XFCE-Source=.*kill_termux_x11.desktop$/d' "$f" || return 1
+        fi
+    done < <(find "$HOME/.config/xfce4/panel" "$HOME/Desktop" "$PREFIX/share/applications" \
+        -type f -name '*.desktop' -print0 2>/dev/null)
 }
 
 _setup_prun() {
@@ -565,12 +515,21 @@ _setup_prun() {
 CONFIG="$HOME/.config/termux-xfce/config"
 [ -f "$CONFIG" ] && source "$CONFIG"
 
-DISTRO="${PROOT_DISTRO:-archlinux}"
+DISTRO="${PROOT_DISTRO:-}"
+if [ -z "$DISTRO" ]; then
+    echo "[ERROR] proot 환경이 설정되지 않았습니다. 설치기에 --distro를 지정하세요." >&2
+    exit 1
+fi
 ROOTFS_BASE="$PREFIX/var/lib/proot-distro"
 if [ -d "$ROOTFS_BASE/containers/$DISTRO/rootfs" ]; then
     ROOTFS="$ROOTFS_BASE/containers/$DISTRO/rootfs"
 else
     ROOTFS="$ROOTFS_BASE/installed-rootfs/$DISTRO"
+fi
+
+if [ ! -d "$ROOTFS" ]; then
+    echo "[ERROR] proot rootfs를 찾을 수 없습니다: $ROOTFS" >&2
+    exit 1
 fi
 
 # config에 PROOT_USER 있으면 사용, 없으면 home/ 디렉토리에서 탐색 (alarm 제외)
@@ -591,14 +550,16 @@ unset LD_PRELOAD
 # → dbus EXTERNAL auth에서 UID 불일치 → 인증 실패
 # dbus가 필요한 앱(flameshot 등)은 Termux native로 설치하여 해결
 
-# DISPLAY: 실행 환경(XFCE 세션) 값 우선, 없으면 :0.0 폴백
+# Inherit the active display, including KWin's dynamically assigned Xwayland.
+# A terminal outside a graphical session may still target Termux:X11's default.
+export DISPLAY="${DISPLAY:-:0.0}"
 # 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
 if [ $# -eq 0 ]; then
     exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" "${PROOT_SHELL:-bash}" --login
+        -- env -u LD_PRELOAD DISPLAY="$DISPLAY" "${PROOT_SHELL:-bash}" --login
 else
     exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
-        -- env -u LD_PRELOAD DISPLAY="${DISPLAY:-:0.0}" bash --login -c 'exec "$@"' prun "$@"
+        -- env -u LD_PRELOAD DISPLAY="$DISPLAY" bash --login -c 'exec "$@"' prun "$@"
 fi
 EOF
 
@@ -615,8 +576,13 @@ _setup_prun_gui() {
 #!/data/data/com.termux/files/usr/bin/bash
 # 사용: prun-gui "AppName" -- <proot 내부 명령...>
 # "--" 는 선택. 없으면 $1 이후 전부 명령으로 간주.
-NAME="${1:-App}"; shift
+if [ $# -eq 0 ]; then
+    echo '사용법: prun-gui "AppName" -- command [args...]' >&2
+    exit 2
+fi
+NAME="$1"; shift
 [ "${1:-}" = "--" ] && shift
+[ $# -gt 0 ] || { echo "[ERROR] 실행할 명령이 없습니다." >&2; exit 2; }
 
 if command -v notify-send >/dev/null 2>&1; then
     notify-send -t 30000 -i system-run \
@@ -639,7 +605,7 @@ EOF
 _migrate_desktop_to_prun_gui() {
     local apps_dir="$PREFIX/share/applications"
     local f app_name line content repl
-    for f in "$apps_dir"/*.desktop; do
+    for f in "$apps_dir"/*.desktop "$HOME/Desktop"/*.desktop; do
         [ -f "$f" ] || continue
         # 이미 prun-gui 사용 중이면 건너뜀
         grep -q "prun-gui" "$f" 2>/dev/null && continue
@@ -720,6 +686,8 @@ _setup_cp2menu() {
     local bin="$PREFIX/bin/cp2menu"
 
     mkdir -p "$PREFIX/share/applications"
+    mkdir -p "$PREFIX/libexec/termux-xfce"
+    cp "${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh" "$PREFIX/libexec/termux-xfce/desktop.sh" || return 1
     script_build_cp2menu "$bin"
     chmod +x "$bin"
 
@@ -760,33 +728,53 @@ SYNCEOF
 }
 
 _setup_screenshot() {
-    # 세션 인식 스크린샷 래퍼 — Print/Shift+Print/Alt+Print 키에서 호출.
-    # Wayland(labwc) 세션은 Termux:X11을 표시면으로 nested 실행하므로, X11 백엔드로
-    # 강제해 그 표시면(=합성된 데스크탑)을 xfce4-screenshooter로 캡처한다.
-    # (GTK가 wayland 백엔드를 고르면 labwc의 미완성 스크린샷 API로 캡처가 깨진다.
-    #  grim/slurp는 Termux 저장소에 없어 X11 도구를 표시면에 직접 사용한다.)
     local bin="$PREFIX/bin/screenshot"
-    mkdir -p "$(dirname "$bin")"
-
+    mkdir -p "${bin%/*}"
     cat > "$bin" << 'SHOTEOF'
 #!/data/data/com.termux/files/usr/bin/bash
-# 세션 인식 스크린샷 — Wayland(labwc nested on Termux:X11)에서도 X11 도구를 표시면에 사용
-# 사용: screenshot [full|region|window]
-set -u
-_mode="${1:-full}"
-
-case "$_mode" in
-    region) set -- -r ;;
-    window) set -- -w ;;
-    *)      set -- ;;
-esac
-
-if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = "wayland" ]; then
-    # 표시면(Termux:X11)을 X11 백엔드로 직접 캡처 — DISPLAY는 세션에서 이미 표시면을 가리킴
-    exec env GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb xfce4-screenshooter "$@"
+# Usage: screenshot [full|region|window]
+set -eu
+mode="${1:-full}"
+case "$mode" in full|region|window) ;; *) echo '사용법: screenshot [full|region|window]' >&2; exit 2 ;; esac
+if [ -n "${WAYLAND_DISPLAY:-}" ] || [ "${XDG_SESSION_TYPE:-}" = wayland ]; then
+    command -v spectacle >/dev/null 2>&1 || {
+        echo '[ERROR] Wayland 캡처에는 Spectacle이 필요합니다: pkg install spectacle' >&2
+        exit 1
+    }
+    case "$mode" in
+        full) set -- --fullscreen ;;
+        region) set -- --region ;;
+        window) set -- --activewindow ;;
+    esac
+    exec env QT_QPA_PLATFORM=wayland spectacle "$@"
 else
+    case "$mode" in
+        full) set -- -f ;;
+        region) set -- -r ;;
+        window) set -- -w ;;
+    esac
     exec xfce4-screenshooter "$@"
 fi
 SHOTEOF
     chmod +x "$bin"
+}
+
+# Only enable Conky when a configured container can run it. The preset uses
+# TryExec so native-only installs do not emit startup errors.
+_setup_conky_autostart() {
+    local bin="$PREFIX/bin/termux-xfce-conky"
+    mkdir -p "${bin%/*}"
+    cat > "$bin" << 'CONKY'
+#!/data/data/com.termux/files/usr/bin/bash
+[ ! -r "$HOME/.config/termux-xfce/config" ] || . "$HOME/.config/termux-xfce/config"
+[ -n "${PROOT_DISTRO:-}" ] || exit 0
+base="$PREFIX/var/lib/proot-distro"
+[ -d "$base/containers/$PROOT_DISTRO/rootfs" ] || [ -d "$base/installed-rootfs/$PROOT_DISTRO" ] || exit 0
+exec prun conky -c .config/conky/Alterf/Alterf.conf
+CONKY
+    chmod +x "$bin"
+    local desktop="$HOME/.config/autostart/conky.desktop"
+    if [ -f "$desktop" ] && grep -q '^Exec=prun conky ' "$desktop"; then
+        sed -i 's|^Exec=prun conky .*|Exec=termux-xfce-conky|' "$desktop"
+    fi
 }

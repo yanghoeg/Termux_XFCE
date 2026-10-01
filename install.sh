@@ -204,8 +204,13 @@ else
 fi
 
 # PROOT_DISTRO/PROOT_USER: 이번 실행 값이 있으면 사용, 없으면 기존 값 유지
-_cfg_proot_distro="${PROOT_DISTRO:-$_existing_proot_distro}"
-_cfg_proot_user="${PROOT_USER:-$_existing_proot_user}"
+if [ "${SKIP_PROOT:-false}" = true ]; then
+    _cfg_proot_distro=""
+    _cfg_proot_user=""
+else
+    _cfg_proot_distro="${PROOT_DISTRO:-$_existing_proot_distro}"
+    _cfg_proot_user="${PROOT_USER:-$_existing_proot_user}"
+fi
 
 cat > "$_cfg_file" << EOF
 # Termux XFCE 설치 설정 — 자동 생성 ($(date '+%Y-%m-%d'))
@@ -290,8 +295,6 @@ if [ "${SKIP_PROOT:-false}" != "true" ] && [ -n "${PROOT_DISTRO:-}" ]; then
     setup_proot_env
     setup_proot_timezone
     setup_proot_fancybash
-    ui_info "  GPU 설정..."
-    setup_proot_hardware_accel
     setup_proot_cursor_theme
     ui_info "  Conky 설정..."
     setup_proot_conky
