@@ -126,12 +126,12 @@ _test_ui_select_menu_redirected_to_stderr_static() {
     local body
     body=$(awk '/^ui_select\(\)/,/^\}/' "$file")
     # 메뉴 그룹 redirect '} >&2'가 있어야 한다
-    if ! echo "$body" | grep -q '} >&2'; then
+    if ! grep -q '} >&2' <<< "$body"; then
         echo "  ui_select에 '} >&2' 메뉴 그룹 redirect가 없다"
         return 1
     fi
     # 검증 실패 메시지도 stderr로 가야 한다
-    if ! echo "$body" | grep -q '올바른 번호를 입력하세요.*>&2'; then
+    if ! grep -q '올바른 번호를 입력하세요.*>&2' <<< "$body"; then
         echo "  검증 실패 echo가 stderr로 redirect되지 않음"
         return 1
     fi
@@ -403,7 +403,7 @@ _test_display_x11_emit_server_start_sets_xdisplay() {
     source "${ADAPTER_DIR}/display_x11.sh"
     local frag
     frag=$(display_emit_server_start)
-    echo "$frag" | grep -q 'XDISPLAY='
+    grep -q 'XDISPLAY=' <<< "$frag"
 }
 it "display_emit_server_start가 XDISPLAY를 설정한다" _test_display_x11_emit_server_start_sets_xdisplay
 
@@ -411,7 +411,7 @@ _test_display_x11_get_packages() {
     source "${ADAPTER_DIR}/display_x11.sh"
     local pkgs
     pkgs=$(display_get_packages)
-    echo "$pkgs" | grep -q 'termux-x11-nightly'
+    grep -q 'termux-x11-nightly' <<< "$pkgs"
 }
 it "display_get_packages가 termux-x11-nightly를 포함한다" _test_display_x11_get_packages
 
@@ -436,14 +436,14 @@ _test_display_common_sourced_by_both_adapters() {
 it "display_x11.sh와 display_wayland.sh가 display_common.sh를 source한다" _test_display_common_sourced_by_both_adapters
 
 _test_display_common_x11_emits_bare_kill_orphans() {
-    ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) \
-        | grep -qx '    _kill_orphans'
+    grep -qx '    _kill_orphans' \
+        <<< "$( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session )"
 }
 it "display_x11.sh가 방출하는 텍스트는 인자 없는 _kill_orphans를 호출한다" _test_display_common_x11_emits_bare_kill_orphans
 
 _test_display_common_wayland_emits_kill_orphans_labwc() {
-    ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) \
-        | grep -qx '    _kill_orphans labwc'
+    grep -qx '    _kill_orphans labwc' \
+        <<< "$( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session )"
 }
 it "Wayland 종료는 구버전 labwc를 -x 목록에 넣는다" _test_display_common_wayland_emits_kill_orphans_labwc
 
@@ -452,22 +452,22 @@ it "Wayland 종료는 구버전 labwc를 -x 목록에 넣는다" _test_display_c
 _test_display_common_wayland_cmdline_matched_names() {
     local frag
     frag=$( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session )
-    printf '%s\n' "$frag" \
-        | grep -qx '    local cmdline_names="kwin_wayland kwin_wayland_wrapper startplasma-wayland plasmashell kded6"' \
-    && printf '%s\n' "$frag" | grep -q 'pkill -TERM -f "(\^|/)\$_n( |\\\$)"' \
-    && ! printf '%s\n' "$frag" | grep -q '_kill_orphans .*startplasma-wayland'
+    grep -qx '    local cmdline_names="kwin_wayland kwin_wayland_wrapper startplasma-wayland plasmashell kded6"' \
+        <<< "$frag" \
+    && grep -q 'pkill -TERM -f "(\^|/)\$_n( |\\\$)"' <<< "$frag" \
+    && ! grep -q '_kill_orphans .*startplasma-wayland' <<< "$frag"
 }
 it "15자 초과/절대경로 프로세스는 -x가 아니라 커맨드라인으로 정리한다" _test_display_common_wayland_cmdline_matched_names
 
 _test_display_common_x11_has_empty_cmdline_names() {
-    ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) \
-        | grep -qx '    local cmdline_names=""'
+    grep -qx '    local cmdline_names=""' \
+        <<< "$( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session )"
 }
 it "X11은 커맨드라인 매칭 목록이 비어 있다(0회 순회)" _test_display_common_x11_has_empty_cmdline_names
 
 _test_display_common_emit_has_no_placeholder() {
-    ! ( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON' \
-    && ! ( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session ) | grep -q '__DISPLAY_COMMON'
+    ! grep -q '__DISPLAY_COMMON' <<< "$( source "${ADAPTER_DIR}/display_x11.sh"; display_emit_kill_session )" \
+    && ! grep -q '__DISPLAY_COMMON' <<< "$( source "${ADAPTER_DIR}/display_wayland.sh"; display_emit_kill_session )"
 }
 it "방출된 텍스트에 __DISPLAY_COMMON 플레이스홀더가 남지 않는다" _test_display_common_emit_has_no_placeholder
 

@@ -1094,7 +1094,7 @@ it "Termux:Boot APK를 내려받는다" _test_boot_downloads_apk
 _test_termux_services_in_base_packages() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
-    printf '%s\n' "${PKGS_TERMUX_BASE[@]}" | grep -qx "termux-services" || {
+    grep -qx "termux-services" <<< "$(printf '%s\n' "${PKGS_TERMUX_BASE[@]}")" || {
         echo "[ASSERT] termux-services가 PKGS_TERMUX_BASE에 없음" >&2; return 1
     }
     cleanup_sandbox "$sb"

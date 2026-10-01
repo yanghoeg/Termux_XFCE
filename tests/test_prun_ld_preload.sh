@@ -85,7 +85,7 @@ _test_prun_args_use_login_shell() {
         echo "[ASSERT] prun에 bash --login -c 분기가 없다" >&2
         cleanup_sandbox "$sb"; return 1
     fi
-    if ! sed -n "${line}p" "${PREFIX}/bin/prun" | grep -qF -- 'env -u LD_PRELOAD'; then
+    if ! grep -qF -- 'env -u LD_PRELOAD' <<< "$(sed -n "${line}p" "${PREFIX}/bin/prun")"; then
         echo "[ASSERT] bash --login 라인에 env -u LD_PRELOAD가 선행하지 않는다" >&2
         echo "[ASSERT] actual: $(sed -n "${line}p" "${PREFIX}/bin/prun")" >&2
         cleanup_sandbox "$sb"; return 1
@@ -303,12 +303,12 @@ _test_install_proot_alias_format() {
     alias_line=$(grep "_proot_alias=" "$proot_env" | head -1)
 
     # -- 구분자 뒤에 env -u LD_PRELOAD ${PROOT_SHELL:-bash} --login 순서 확인
-    if ! echo "$alias_line" | grep -qF -- '-- env -u LD_PRELOAD'; then
+    if ! grep -qF -- '-- env -u LD_PRELOAD' <<< "$alias_line"; then
         echo "[ASSERT] proot alias에 '-- env -u LD_PRELOAD' 패턴이 없다" >&2
         echo "[ASSERT] actual: ${alias_line}" >&2
         return 1
     fi
-    if ! echo "$alias_line" | grep -q 'PROOT_SHELL.*--login'; then
+    if ! grep -q 'PROOT_SHELL.*--login' <<< "$alias_line"; then
         echo "[ASSERT] proot alias에 'PROOT_SHELL ... --login' 패턴이 없다" >&2
         echo "[ASSERT] actual: ${alias_line}" >&2
         return 1
@@ -367,7 +367,7 @@ _test_prun_no_dbus_env_code() {
     _setup_prun
 
     # DBUS_ENV 변수 사용이 없어야 함 (주석 제외)
-    if grep -v '^\s*#' "${PREFIX}/bin/prun" | grep -q 'DBUS_ENV'; then
+    if grep -q 'DBUS_ENV' <<< "$(grep -v '^\s*#' "${PREFIX}/bin/prun")"; then
         echo "[ASSERT] prun에 작동 불가능한 DBUS_ENV 코드가 남아있다" >&2
         cleanup_sandbox "$sb"
         return 1

@@ -57,7 +57,7 @@ it "모든 installer 스크립트 — shebang 단일 #" _test_all_shebangs
 describe "app-installer — 명백한 타이포"
 
 _test_no_wget_wget() {
-    if grep -r "wget wget" "${APP_DIR}"/ 2>/dev/null | grep -q .; then
+    if [ -n "$(grep -r "wget wget" "${APP_DIR}"/ 2>/dev/null)" ]; then
         grep -r "wget wget" "${APP_DIR}"/ >&2
         echo "[ASSERT] 'wget wget' 이중 명령 발견" >&2
         return 1
@@ -66,7 +66,7 @@ _test_no_wget_wget() {
 it "miniforge.sh — 'wget wget' 이중 명령 없음" _test_no_wget_wget
 
 _test_no_home_dotdot() {
-    if grep -r 'HOME/../usr' "${APP_DIR}"/ 2>/dev/null | grep -q .; then
+    if [ -n "$(grep -r 'HOME/../usr' "${APP_DIR}"/ 2>/dev/null)" ]; then
         grep -r 'HOME/../usr' "${APP_DIR}"/ >&2
         echo "[ASSERT] '\$HOME/../usr/' 경로 발견 — \$PREFIX 사용 필요" >&2
         return 1
