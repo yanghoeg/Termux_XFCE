@@ -27,7 +27,7 @@ display_get_packages() {
     # dependency without pulling Termux's X11-only build.
     echo "pipewire util-linux xdotool xclip wmctrl \
           plasma-workspace plasma-desktop kscreen systemsettings \
-          plasma-integration plasma-pa milou"
+          plasma-integration plasma-pa milou spectacle"
 }
 
 display_emit_kill_session() {

@@ -16,7 +16,7 @@ LOG="${SCRIPT_DIR}/tests/result_${DISTRO}.log"
 # 한 호스트에서 distro별로 batch를 돌리면 다른 distro의 흔적 때문에 SKIP 처리됨.
 # PROOT_FRESH=1로 시작 시 proot 앱 desktop 흔적을 제거 → 현 distro에서 진짜 재설치 검증.
 PROOT_FRESH="${PROOT_FRESH:-0}"
-# INCLUDE_HEAVY=1: HEAVY_APPS(tor_browser/notion/teams/thorium/sasm)까지 포함.
+# INCLUDE_HEAVY=1: HEAVY_APPS(teams/thorium/sasm)까지 포함.
 # 기본 0 — 무거워서(각 5-15분) 별도 옵션으로 분리.
 INCLUDE_HEAVY="${INCLUDE_HEAVY:-0}"
 
@@ -45,7 +45,10 @@ run_test() {
     local id="$1"
     local result
     printf "  [%-15s] " "$id"
-    if app_is_installed "$id"; then
+    if ! app_can_install "$id"; then
+        result="SKIP (installer retired)"
+        (( SKIP++ )) || true
+    elif app_is_installed "$id"; then
         result="SKIP (already installed)"
         (( SKIP++ )) || true
     elif app_install "$id" >> "$LOG" 2>&1; then
@@ -71,9 +74,9 @@ echo "=============================="
 echo "" | tee -a "$LOG"
 echo "--- 설치 테스트 ---" | tee -a "$LOG"
 
-PROOT_APPS=(libreoffice miniforge nautilus dbeaver)
-HEAVY_APPS=(tor_browser notion teams thorium sasm)
-NATIVE_APPS=(thunderbird vlc vscode burpsuite)
+PROOT_APPS=(libreoffice miniforge nautilus dbeaver vscode burpsuite)
+HEAVY_APPS=(teams thorium sasm)
+NATIVE_APPS=(thunderbird vlc notion)
 
 # PROOT_FRESH=1: 현 distro에서 진짜 재설치 검증 위해 호스트 공유 desktop 흔적 제거
 if [ "$PROOT_FRESH" = "1" ]; then

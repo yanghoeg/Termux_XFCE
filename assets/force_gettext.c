@@ -26,17 +26,18 @@ static void normalize_into(const char* in_raw, char* out, size_t cap, int to_low
   size_t o=0; int tag=0, ws=0;
   for(const char* p=in; *p; ){
     unsigned char c=*p;
+    size_t width=1;
     if(c=='<'){ tag=1; p++; continue; }
     if(tag){ if(c=='>') tag=0; p++; continue; }
     if(c=='\n'||c=='\r'||c=='\t'||c==' '){ ws=1; p++; continue; }
     if(c=='_'){ p++; continue; }
-    if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x98 || u8(p,2)==0x99)){ c='\''; p+=3; }
-    else if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x9C || u8(p,2)==0x9D)){ c='"';  p+=3; }
-    else if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x93 || u8(p,2)==0x94)){ c='-';  p+=3; }
+    if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x98 || u8(p,2)==0x99)){ c='\''; width=3; }
+    else if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x9C || u8(p,2)==0x9D)){ c='"'; width=3; }
+    else if(c==0xE2 && u8(p,1)==0x80 && (u8(p,2)==0x93 || u8(p,2)==0x94)){ c='-'; width=3; }
     if(ws){ if(o+1<cap) out[o++]=' '; ws=0; }
     if(to_lower && c>='A'&&c<='Z') c=(char)(c-'A'+'a');
     if(o+1<cap) out[o++]=c;
-    p++;
+    p+=width;
   }
   if(ws && o+1<cap) out[o++]=' ';
   out[o]='\0'; while(o>0 && out[o-1]==' ') out[--o]='\0';

@@ -142,7 +142,8 @@ _test_theme_downloads_if_missing() {
         done
         [ -n "$out_path" ] && touch "$out_path"
     }
-    unzip() { _record_call "unzip $*"; mkdir -p WhiteSur-gtk-theme-2024-11-18/release; touch WhiteSur-gtk-theme-2024-11-18/release/WhiteSur-Dark.tar.xz; }
+    _download_verified_asset() { touch "$download_marker"; touch "$2"; }
+    unzip() { _record_call "unzip $*"; mkdir -p "WhiteSur-gtk-theme-${_WHITESUR_VER}/release"; touch "WhiteSur-gtk-theme-${_WHITESUR_VER}/release/WhiteSur-Dark.tar.xz"; }
     tar()   { _record_call "tar $*"; mkdir -p WhiteSur-Dark; }
     mv()    { _record_call "mv $*"; mkdir -p "${PREFIX}/share/themes/WhiteSur-Dark" 2>/dev/null || true; }
     rm()    { _record_call "rm $*"; }
@@ -152,6 +153,46 @@ _test_theme_downloads_if_missing() {
     cleanup_sandbox "$sb"
 }
 it "테마가 없으면 다운로드를 시도한다" _test_theme_downloads_if_missing
+
+_test_asset_pins_are_current_and_valid() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    local var value
+    for var in _WHITESUR_SHA256 _FLUENT_SHA256 _CASCADIA_SHA256 _MESLO_SHA256; do
+        value="${!var}"
+        [[ "$value" =~ ^[0-9a-f]{64}$ ]] || { cleanup_sandbox "$sb"; return 1; }
+    done
+    [[ "$_WHITESUR_URL" == *"${_WHITESUR_VER}.zip"* ]] || { cleanup_sandbox "$sb"; return 1; }
+    [[ "$_FLUENT_URL" == *"${_FLUENT_VER}.zip"* ]] || { cleanup_sandbox "$sb"; return 1; }
+    [[ "$_CASCADIA_URL" == *"v${_CASCADIA_VER}"* ]] || { cleanup_sandbox "$sb"; return 1; }
+    [[ "$_MESLO_URL" == *"v${_MESLO_VER}"* ]] || { cleanup_sandbox "$sb"; return 1; }
+    cleanup_sandbox "$sb"
+}
+it "테마·폰트 아카이브 URL과 SHA-256 핀이 유효하다" _test_asset_pins_are_current_and_valid
+
+_test_verified_asset_rejects_hash_mismatch() {
+    local sb; sb=$(make_sandbox)
+    _load_domain "$sb"
+    wget() {
+        local out_path="" arg
+        while [ "$#" -gt 0 ]; do
+            arg="$1"; shift
+            [ "$arg" = "-O" ] || continue
+            out_path="$1"; shift
+        done
+        printf 'unexpected content' > "$out_path"
+    }
+    rm() { command rm "$@"; }
+    local target="${sb}/asset.zip"
+    _download_verified_asset "https://example.invalid/asset.zip" "$target" \
+        "0000000000000000000000000000000000000000000000000000000000000000" && {
+        cleanup_sandbox "$sb"
+        return 1
+    }
+    [ ! -e "$target" ]
+    cleanup_sandbox "$sb"
+}
+it "무결성 불일치 아카이브를 삭제하고 실패한다" _test_verified_asset_rejects_hash_mismatch
 
 # =============================================================================
 # _install_fancybash — 사용자명/호스트명 치환
@@ -842,7 +883,7 @@ termserver"
     assert_eq "$expected" "$actual" "마이그레이션 호출 순서가 소스 코드와 일치해야 함"
     cleanup_sandbox "$sb"
 }
-it "_setup_autostart_config → 마이그레이션 10건 순서대로 호출" _test_xfce_autostart_calls_in_order
+it "_setup_autostart_config 뒤에 마이그레이션을 순서대로 호출" _test_xfce_autostart_calls_in_order
 
 # =============================================================================
 # _migrate_terminal_disable_server — 패널/단축키/Thunar 터미널 실행에 --disable-server

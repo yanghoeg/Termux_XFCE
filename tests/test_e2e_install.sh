@@ -94,7 +94,7 @@ _test_zshrc_has_locale_block_after_composition() {
     setup_termux_base
 
     assert_file_contains "${HOME}/.zshrc" "termux-xfce-locale"
-    assert_file_contains "${HOME}/.zshrc" "XMODIFIERS=\"@im=nimf\""
+    assert_file_contains "${HOME}/.zshrc" "termux-xfce-input-method"
 
     cleanup_sandbox "$sb"
 }
@@ -119,11 +119,11 @@ _test_zshrc_has_gpu_block_after_composition() {
 
     setup_termux_base
 
-    assert_file_contains "${HOME}/.zshrc" "termux-xfce-gpu"
+    assert_file_not_contains "${HOME}/.zshrc" "termux-xfce-gpu"
 
     cleanup_sandbox "$sb"
 }
-it "clean install composition — .zshrc에 GPU 블록이 존재한다" _test_zshrc_has_gpu_block_after_composition
+it "clean install composition — GPU overrides are scoped to sessions" _test_zshrc_has_gpu_block_after_composition
 
 _test_bashrc_still_has_aliases() {
     # 양쪽 RC 모두 반영되어야 함 (기본 쉘이 zsh가 아닐 때를 대비)
@@ -306,7 +306,7 @@ it "setup_termux_base()에서 _setup_zsh_p10k가 _setup_aliases보다 먼저 호
 # =============================================================================
 # Regression #4: nimf autostart + fcitx5 비활성화
 # -----------------------------------------------------------------------------
-# _setup_korean_env는 nimf.desktop을 생성하고, fcitx5 시스템 autostart가
+# Explicit Nimf selection creates its autostart and disables Fcitx when it
 # 있으면 Hidden=true 오버라이드로 비활성화한다.
 # =============================================================================
 
@@ -323,10 +323,11 @@ Name=Fcitx 5
 Exec=fcitx5
 EOF
 
-    _setup_korean_env
+    _setup_input_method
+    input_method_select nimf
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "pgrep -x nimf"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "^Exec=nimf$"
     assert_file_contains "$HOME/.config/autostart/org.fcitx.Fcitx5.desktop" "Hidden=true"
 
     cleanup_sandbox "$sb"
@@ -337,16 +338,16 @@ _test_nimf_autostart_without_fcitx5_system() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
 
-    _setup_korean_env
+    _setup_input_method
+    input_method_select nimf
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "pgrep -x nimf"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "^Exec=nimf$"
 
     cleanup_sandbox "$sb"
 }
 it "fcitx5 시스템 autostart 없어도 nimf autostart 생성" _test_nimf_autostart_without_fcitx5_system
 
-# (_cleanup_duplicate_fcitx_autostart: 삭제된 함수 — 테스트 제거)
 
 # =============================================================================
 # Regression #5: conky backend 설정

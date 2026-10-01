@@ -1,96 +1,97 @@
-# 설치 매트릭스 테스트 — 실행/유지 가이드
+# 설치 매트릭스와 검증 가이드
 
-이 문서는 `install.sh`의 모든 CLI 옵션 조합을 검증하는 매트릭스 테스트와,
-"설치 → 오류 → 수정 → push → 초기화 → 재설치" 자동화 루프를 다음 세션에서도
-재현 가능하도록 정리한 기록이다.
+메인 설치기의 분기와 설정 보존은 [test_install_matrix.sh](test_install_matrix.sh),
+새 설치·기존 설정 이전은 [test_modern_install.sh](test_modern_install.sh)에서 검사합니다.
+호스트 테스트는 실제 Android 설치와 구분합니다. 설치 옵션 설명은
+[한국어 README](../README.ko.md#설치)와 [English README](../README.md#installation)를
+기준으로 합니다.
 
----
+## 호스트에서 실행
 
-## 1. 빠른 실행
+Termux_XFCE 저장소 루트에서 서브모듈을 초기화한 상태로 실행합니다.
 
 ```bash
-cd ~/Termux_XFCE
-git checkout dev && git pull
-
-# 단위 + e2e 전체
 bash tests/run_tests.sh
 
-# 매트릭스만 (CLI 옵션 조합 dispatch 검증, mock 기반, 빠름)
-bash tests/test_install_matrix.sh
+# 필요한 스위트만 선택
+bash tests/run_tests.sh install_matrix
+bash tests/run_tests.sh display_wayland modern_install
+
+# App Installer 자체 스위트
+for suite in domain_apps adapters ports fetch proot_path cli; do
+    bash "app-installer/tests/test_${suite}.sh" || exit 1
+done
 ```
 
-매트릭스 테스트는 `_INSTALL_HOOK` 환경변수를 사용해 install.sh의 모든
-`setup_*` 도메인 함수를 트레이스 스텁으로 교체한다. **실제 설치는 일어나지 않는다.**
-훅 주입 지점: `install.sh` step 7 (도메인 로드 직후) 종료선.
+스위트 이름과 실행 목록은 [run_tests.sh](run_tests.sh)가 관리합니다. 통과·실패·건너뜀
+건수는 실행 결과를 확인하며 문서에 고정된 합계로 관리하지 않습니다.
+`force_gettext`는 ASan·UBSan을 지원하는 Clang 또는 GCC가 필요하고,
+`display_wayland`의 런타임 검사는 Python 3와 로컬 Unix 소켓을 사용합니다. 소켓 생성을
+막는 실행 환경에서는 이 검사를 실행할 수 있는 환경이 필요합니다.
 
----
+## 매트릭스가 검증하는 범위
 
-## 2. 테스트 케이스
+`_INSTALL_HOOK`은 모든 어댑터·도메인 로드와 계약 검사 이후, 하드웨어 사전 검사 및
+실제 설치 전에 실행됩니다. 테스트는 이 지점에서 설치 함수들을 호출 기록용 스텁으로
+바꾸고 임시 홈·PREFIX를 사용합니다. 패키지 다운로드, APK 설치, 실제 GPU 검사는
+수행하지 않습니다. 실제 배포판 이미지를 설치하는 모든 조합의 E2E 시험도 아닙니다.
 
-케이스 수는 `tests/test_install_matrix.sh`의 `it` 항목 수 그대로다 —
-정확한 통과/실패 건수는 `bash tests/test_install_matrix.sh` 실행 결과를 참고할 것
-(이 표의 건수는 스냅샷이며 테스트 추가/삭제 시 갱신 필요).
+| 범위 | 입력 또는 조건 | 검증 내용 |
+|------|----------------|-----------|
+| native | `--no-proot` | native 기본 구성·XFCE·자동 시작·단축키·APK 함수 호출, proot 설치 생략 |
+| 보조 셸 구성 | `setup_xfce_fancybash` 실패 | fancybash 실패가 전체 설치를 중단하지 않음 |
+| proot 전용 | Ubuntu / Arch의 `--proot-only --distro … --user …` | native·APK 단계를 생략하고 proot 설치·사용자·진입 명령 구성 |
+| 전체 설치 | Ubuntu / Arch의 `--distro … --user …` | native와 proot 구성 모두 호출 |
+| 환경변수 | `SKIP_PROOT=true`, `DISTRO=ubuntu USERNAME=testuser` | CLI 대응 환경변수의 설치 분기 |
+| 도움말 | `--help` | 성공 종료 |
+| 잘못된 입력 | 알 수 없는 플래그, `--distro freebsd`, 잘못된 사용자 이름, `PROOT_SHELL=fish` | 0이 아닌 종료 코드 |
+| 모드 충돌 | `--no-proot --proot-only`, `--no-proot --distro ubuntu` | 충돌 거부 |
+| 새 설정 | 배포판·사용자 지정, 또는 새 환경의 `--no-proot` | 설정 파일에 배포판·사용자 기록, 권한 600; 새 native 전용 설정의 배포판은 빈 값 |
+| 셸 설정 병합 | 기존 `zsh`, 키가 빠진 구형 설정, 명시적 `PROOT_SHELL=zsh` | 기존 값 보존, 누락 시 `bash`, 명시한 값 우선 |
+| 디스플레이 보존 | 기존 Wayland 설정에서 `--proot-only` | 저장된 `DISPLAY_SERVER` 유지 |
+| Wayland 순서 | `--display wayland --no-proot` | 하드웨어 사전 검사 → XFCE 패키지 → native 런타임 → 런처 → APK 순서 |
+| Wayland 거부 | 하드웨어 사전 검사 실패 | 패키지·런타임·APK 설치 시작 안 함 |
 
-| # | 카테고리 | CLI / 환경변수 | 검증 |
-|---|----------|----------------|------|
-| 1 | native | `--no-proot` | termux_base/xfce_packages/xfce_autostart/termux_shortcuts/display_setup_apk/termux_api_apk/termux_float_apk 호출, proot_install 없음 |
-| 2 | proot-only | `--proot-only --distro ubuntu --user testuser` | termux_base/xfce_packages/display_setup_apk/termux_api_apk/termux_float_apk 없음, proot_install/proot_user/proot_alias 호출 |
-| 3 | proot-only | `--proot-only --distro archlinux --user testuser` | termux_base 없음, proot_install/proot_alias 호출 |
-| 4 | full | `--distro ubuntu --user testuser` | termux_base/proot_install/proot_base_packages/proot_alias/display_setup_apk 모두 호출 |
-| 5 | full | `--distro archlinux --user testuser` | termux_base/proot_install/proot_alias 모두 호출 |
-| 6 | env vars | `SKIP_PROOT=true` | termux_base 호출, proot_install 없음 |
-| 7 | env vars | `DISTRO=ubuntu USERNAME=testuser` | termux_base/proot_install 모두 호출 |
-| 8 | CLI 검증 | `--help` | exit 0 |
-| 9 | CLI 검증 | `--not-a-real-flag` | non-zero exit |
-| 10 | CLI 검증 | `--distro freebsd --user testuser` | non-zero exit |
-| 11 | CLI 검증 | `--distro ubuntu --user 'bad;name'` | non-zero exit (위험 문자 사용자명 거부) |
-| 12 | CLI 검증 | `--no-proot --proot-only` | non-zero exit (모드 충돌) |
-| 13 | CLI 검증 | `--no-proot --distro ubuntu` | non-zero exit (no-proot에 distro 지정 불가) |
-| 14 | CLI 검증 | `PROOT_SHELL=fish --distro ubuntu --user testuser` | non-zero exit (지원하지 않는 shell) |
-| 15 | config | `--distro ubuntu --user lideok` | config에 `PROOT_DISTRO="ubuntu"`/`PROOT_USER="lideok"` 기록, 권한 600 |
-| 16 | config | `--no-proot` | config의 `PROOT_DISTRO=""` |
-| 17 | config | 기존 config `PROOT_SHELL="zsh"` + `--proot-only --distro ubuntu --user lideok` | 재실행해도 기존 `PROOT_SHELL="zsh"` 유지 (never reset) |
-| 18 | config | 구버전 config(키 누락, `DISPLAY_SERVER="x11"`만 존재) + `--proot-only --distro ubuntu --user testuser` | rc 0, 병합된 config에 `PROOT_SHELL="bash"`(기본값) 기록 |
-| 19 | config | `PROOT_SHELL=zsh` + `--distro ubuntu --user testuser` (신규 설치) | rc 0, config에 `PROOT_SHELL="zsh"` 기록 |
-| 20 | config | 기존 config `PROOT_SHELL="bash"` + `PROOT_SHELL=zsh` + `--proot-only --distro ubuntu --user testuser` | rc 0, config가 `PROOT_SHELL="zsh"`로 덮어써짐 |
-| 21 | config | 기존 config `DISPLAY_SERVER="wayland"` + `--proot-only --distro ubuntu --user lideok` (`--display` 미지정) | 재실행해도 기존 `DISPLAY_SERVER="wayland"` 유지 |
+정확한 개별 사례는 `test_install_matrix.sh`의 `it` 선언을 확인합니다. 특히 새 환경의
+`--no-proot` 검사는 기존 proot 설정 삭제를 보장하지 않습니다. 실제 설치기는 재실행 시
+저장된 배포판·사용자를 보존합니다. `--proot-only`도 native 디스플레이를 바꾸는 옵션이
+아닙니다.
 
----
+`modern_install`은 공통 입력기 선택·제거·마이그레이션, Wayland 입력 모듈 해제,
+GPU 설정 정리와 컨테이너 Turnip 검사, 생성된 GUI 런처의 인자 전달, 스크린샷 분기,
+native 전용 Conky 동작 등을 임시 환경에서 검사합니다.
+`display_wayland`는 APK 선택, 하드웨어 사전 검사, 해시·설치 실패 처리와 mock 자식
+프로세스를 이용한 세션 시작·종료를 다룹니다. 렌더링·키보드 입력 성공 여부는 별도입니다.
 
-## 3. 자동화 루프 워크플로우
+## 실기기 설치 스크립트
 
-사용자 요청: **모든 옵션 조합을 실제 설치 → 오류 시 수정 → dev push → 패키지만 제거 → 재설치 반복**
+아래 스크립트는 호스트 스위트에 포함되지 않으며 실제 Termux 환경을 변경합니다.
 
-```
-1. baseline:  bash tests/run_tests.sh
-2. matrix:    bash tests/test_install_matrix.sh
-3. for each combo in §2:
-     a) bash install.sh <options>      # 실제 설치 시도
-     b) 오류 발생 시:
-        - 근본 원인 파악 (스택 추적, 로그)
-        - domain/* 또는 adapter/* 수정
-        - 회귀 테스트 추가 (tests/test_*.sh)
-        - bash tests/run_tests.sh 통과 확인
-        - git add -p && git commit && git push origin dev
-     c) 패키지 제거(초기화):
-        - Termux native: pkg uninstall <목록>
-        - proot: bash tests/autopilot.sh 의 teardown_proot 패턴 참고
-4. matrix 다시 실행 → 모든 조합 통과까지 반복
-```
+| 스크립트 | 동작과 범위 |
+|----------|-------------|
+| [batch_test_appinstaller.sh](batch_test_appinstaller.sh) | 지정 배포판·사용자에 앱 설치. 기본 목록과 `INCLUDE_HEAVY` 목록만 검사하며 전체 레지스트리 검증은 아님. `PROOT_FRESH=1`은 공용 proot 런처를 정리함 |
+| [autopilot.sh](autopilot.sh) | 선택한 배포판을 사전 제거한 뒤 `--proot-only`와 앱 배치를 실행하고 마지막에 다시 제거. `SKIP_APPS=1`은 앱 배치만 생략하며 제거는 생략하지 않음 |
+| [test_nimf_ubuntu_real.sh](../app-installer/tests/test_nimf_ubuntu_real.sh), [test_nimf_arch_real.sh](../app-installer/tests/test_nimf_arch_real.sh) | Termux에서 실행해 실제 proot에 접속하고 입력기 패키지 설치·검사 |
 
-**주의**:
-- "초기화"는 **설치 패키지만** 제거 (`pkg uninstall`) — Termux 환경 자체나 홈 디렉토리는 보존.
-- proot 제거: `proot-distro remove <distro>` (autopilot.sh §단계4 참조).
-- gh 인증은 이미 완료 (`gh auth status`로 확인). HTTPS 토큰 사용.
+`proot-distro remove`는 컨테이너와 그 안의 데이터를 제거합니다. `autopilot.sh`의
+현재 사전 존재 검사는 구형 `installed-rootfs` 경로를 사용하므로 새 `containers` 구조의
+초기화까지 확인하는 도구로 간주하지 마세요. 배치의 heavy 목록에는 신규 설치가 중단된
+`tor_browser`도 포함되어 있어 현재 지원 앱 목록과 동일하지 않습니다. 배치의 GPU 진단도
+호스트 ICD 경로를 지정하는 구형 방식이므로 `gpu_proot`의 컨테이너 드라이버 검사를
+대신하지 않습니다.
 
----
+`batch_test_appinstaller.sh`는 실패 건수가 있어도 0으로 종료하므로 로그의
+`PASS`/`FAIL`/`SKIP`을 확인해야 합니다. `autopilot.sh`도 앱 배치·teardown 실패를
+최종 종료 코드에 반영하지 않으므로 종료 코드만으로 전체 성공을 판정하지 않습니다.
 
-## 4. 변경 이력
+실기기에서는 입력기 전환, X11·Wayland 스크린샷, 컨테이너 Turnip 지원, Wine GUI,
+APK 연동을 별도로 확인합니다. [App Installer 체크리스트](../app-installer/TEST_LOG.md)와
+[Anland의 알려진 제약](../docs/wayland-anland.md#known-blockers)을 함께 참고하세요.
+테스트 스크립트는 코드 수정·커밋·push를 자동으로 수행하지 않습니다.
 
-- **exit code 검증 실패 교훈**: `set -euo pipefail` 하의 서브셸에서 `bash install.sh ...`가
-  non-zero로 종료하면 `set -e`가 즉시 트립해 `local rc=$?` 라인에 도달하지 못하고 테스트가
-  단순 실패로 보고된다. 해결: `cmd ... || rc=$?` 패턴으로 exit code를 캡처 (`set -e` 면제됨).
-- **GPU 가속·한글 입력기 선택용 CLI 플래그 4종(및 대응 환경변수) 제거**: 이전 버전에서
-  선택적 구성요소 설치에 쓰이던 플래그들은 모두 사라졌다 — 해당 구성요소는 이제 설치 후
-  App Installer에서 선택한다. 매트릭스는 그 대신 `PROOT_SHELL`/`DISPLAY_SERVER`
-  config 보존 여부(§2의 17~21번)를 커버한다.
+## 테스트 유지
+
+설치 분기가 바뀌면 해당 입력의 호출 여부와 실패 코드를 검사하고, 런처 내용이 바뀌면
+생성된 스크립트를 실행하는 회귀 검사로 확인합니다. 실패가 예상되는 명령은
+`cmd … || rc=$?`처럼 종료 코드를 받아 `set -e` 때문에 검증 전에 끝나지 않게 합니다.
+호스트 검사와 실기기 확인 결과는 사용한 코드·환경 및 검증 범위와 함께 구분해서 보고합니다.
