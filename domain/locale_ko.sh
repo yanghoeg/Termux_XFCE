@@ -75,20 +75,51 @@ _deploy_locale_catalogs() {
         return 1
     fi
 
-    # 기존 locale 백업 (Termux 기본 locale은 비어있는 경우가 많지만 안전하게)
-    if [ -d "$dest" ] && ! compgen -G "${dest}.bak."* > /dev/null 2>&1; then
-        mv "$dest" "${dest}.bak.$(date +%s)" || { rm -rf "$tmp"; return 1; }
-    fi
-
-    # 병합 복사 (dest가 남아있는 재실행 — .bak이 이미 있어 백업을 건너뛴 경우 — 에서
-    # mv는 tmp를 dest 하위로 중첩시키므로 사용하지 않는다)
-    mkdir -p "$dest" || { rm -rf "$tmp"; return 1; }
-    if ! cp -a "$tmp"/. "$dest"/; then
-        rm -rf "$tmp"
-        ui_error "한글 로케일 카탈로그 배치 실패"
+    # Finish both copies beside the destination before touching the active tree.
+    # Existing catalogs are retained even on the first Korean locale deployment.
+    mkdir -p "${dest%/*}" || { rm -rf "$tmp"; return 1; }
+    local stage previous="" keep_previous=false
+    stage=$(mktemp -d "${dest}.stage.XXXXXX") || { rm -rf "$tmp"; return 1; }
+    if { [ -d "$dest" ] && ! cp -a "$dest"/. "$stage"/; } ||
+       ! cp -a "$tmp"/. "$stage"/; then
+        rm -rf "$stage" "$tmp"
+        ui_error "한글 로케일 카탈로그 배치 실패 — 기존 카탈로그를 보존합니다."
         return 1
     fi
+    if [ -d "$dest" ]; then
+        chmod --reference="$dest" "$stage" || { rm -rf "$stage" "$tmp"; return 1; }
+        if ! compgen -G "${dest}.bak.*" > /dev/null 2>&1; then
+            previous=$(mktemp -d "${dest}.bak.$(date +%s).XXXXXX") || {
+                rm -rf "$stage" "$tmp"; return 1;
+            }
+            keep_previous=true
+        else
+            previous=$(mktemp -d "${dest}.previous.XXXXXX") || {
+                rm -rf "$stage" "$tmp"; return 1;
+            }
+        fi
+        mv -T "$dest" "$previous" || {
+            rm -rf "$stage" "$previous" "$tmp"; return 1;
+        }
+    else
+        chmod 755 "$stage" || { rm -rf "$stage" "$tmp"; return 1; }
+    fi
+
+    # All renames stay on one filesystem. Restore the previous tree if publishing
+    # the completed stage fails; an older permanent backup remains untouched.
+    if ! mv -T "$stage" "$dest"; then
+        if [ -n "$previous" ] && ! mv -T "$previous" "$dest"; then
+            ui_error "한글 카탈로그 복원 실패 — 기존 카탈로그 백업: $previous"
+            rm -rf "$stage" "$tmp"
+            return 1
+        fi
+        rm -rf "$stage" "$tmp"
+        ui_error "한글 로케일 카탈로그 배치 실패 — 기존 카탈로그를 복원했습니다."
+        return 1
+    fi
+    [ -z "$previous" ] || [ "$keep_previous" = true ] || rm -rf "$previous"
     rm -rf "$tmp"
+    return 0
 }
 
 _build_force_gettext() {

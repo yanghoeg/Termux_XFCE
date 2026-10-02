@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 root = Path(sys.argv[1])
@@ -85,8 +86,8 @@ def run_case(failure, variant):
     _case_seq += 1
     case = base / f'c{_case_seq}'
     state = case / 'state'
-    runtime = case / 'run'
-    temp = case / 'tmp'
+    runtime = socket_base / f'r{_case_seq}'
+    temp = socket_base / f't{_case_seq}'
     for d in (state, runtime, temp): d.mkdir(parents=True)
     (Path(os.environ['HOME']) / '.config/termux-xfce/anland-variant').write_text(variant+'\n')
     trace = case / 'trace.jsonl'
@@ -158,9 +159,15 @@ def run_case(failure, variant):
                     try: os.kill(row['pid'], signal.SIGTERM)
                     except ProcessLookupError: pass
 
-run_case('', 'compatible')
-run_case('', 'standard')
-run_case('anland', 'compatible')
-run_case('anland-compatible', 'compatible')
-run_case('startplasma-wayland', 'compatible')
-run_case('plasmashell', 'compatible')
+# Keep socket paths independent of a caller's deeply nested TMPDIR/sandbox.
+socket_parent = '/data/data/com.termux/files/usr/tmp'
+if not Path(socket_parent).is_dir():
+    socket_parent = '/tmp'
+with tempfile.TemporaryDirectory(prefix='a.', dir=socket_parent) as socket_dir:
+    socket_base = Path(socket_dir)
+    run_case('', 'compatible')
+    run_case('', 'standard')
+    run_case('anland', 'compatible')
+    run_case('anland-compatible', 'compatible')
+    run_case('startplasma-wayland', 'compatible')
+    run_case('plasmashell', 'compatible')

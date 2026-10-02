@@ -225,7 +225,11 @@ _test_wine_native_current_loader() {
     source "$_MODERN_ROOT/app-installer/domain/installers/wine.sh"
     termux_pkg_enable_repo() { :; }
     termux_pkg_install() { :; }
-    mkdir -p "$HOME/.wine-staging/bin" "$PREFIX/glibc/bin" "$PREFIX/glibc/lib"
+    mkdir -p "$HOME/.wine-staging/bin" "$HOME/.wine-staging/lib/wine/x86_64-unix" \
+        "$HOME/.wine-staging/lib/wine/x86_64-windows" "$PREFIX/glibc/bin" "$PREFIX/glibc/lib"
+    printf '#!/data/data/com.termux/files/usr/bin/bash\nexit 0\n' > "$HOME/.wine-staging/bin/wineserver"
+    printf fixture > "$HOME/.wine-staging/lib/wine/x86_64-unix/ntdll.so"
+    printf fixture > "$HOME/.wine-staging/lib/wine/x86_64-windows/kernel32.dll"
     cat > "$HOME/.wine-staging/bin/wine" <<'STUB'
 #!/data/data/com.termux/files/usr/bin/bash
 printf '%s:%s\n' "$DISPLAY" "$*"
@@ -240,7 +244,8 @@ STUB
 #!/data/data/com.termux/files/usr/bin/bash
 exec "$@"
 STUB
-    chmod +x "$HOME/.wine-staging/bin/wine" "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" "$PREFIX/glibc/bin/box64"
+    chmod +x "$HOME/.wine-staging/bin/wine" "$HOME/.wine-staging/bin/wineserver" \
+        "$PREFIX/glibc/lib/ld-linux-aarch64.so.1" "$PREFIX/glibc/bin/box64"
     _wine_install_native >/dev/null
     export PATH="$PREFIX/bin:$PATH" DISPLAY=:91
     assert_eq ':91:winecfg' "$(bash "$PREFIX/bin/wine-box64" winecfg)"
@@ -254,14 +259,18 @@ _test_wine_proot_wrapper() {
     unset _WINE_BACKEND_SH
     source "$_MODERN_ROOT/app-installer/lib/wine_backend.sh"
     source "$_MODERN_ROOT/app-installer/domain/installers/wine.sh"
+    export PROOT_DISTRO=ubuntu PROOT_USER=testuser
     mkdir -p "$HOME/.config/termux-xfce" "$HOME/.wine" "$sb/container-bin"
     printf 'PROOT_DISTRO=ubuntu\n' > "$HOME/.config/termux-xfce/config"
     printf '"LogPixels"=dword:00000060\n' > "$HOME/.wine/user.reg"
     has_proot_distro() { return 0; }
     _wine_create_launchers
-    cat > "$PREFIX/bin/prun" <<'STUB'
+    cat > "$PREFIX/bin/proot-distro" <<'STUB'
 #!/data/data/com.termux/files/usr/bin/bash
 # The mock container maps its /opt Wine path into the temporary filesystem.
+[ "$1" = login ] && [ "$2" = ubuntu ] && [ "$3" = --user ] && [ "$4" = testuser ] || exit 41
+while [ "$1" != -- ]; do shift; done
+shift
 args=()
 for arg in "$@"; do
     args+=("${arg//\/opt\/wine-staging\/bin\/wine/$CONTAINER_STUB_BIN/wine}")
@@ -270,19 +279,20 @@ export PATH="$CONTAINER_STUB_BIN:$PATH"
 exec "${args[@]}"
 STUB
     cat > "$sb/container-bin/wine" <<'STUB'
-#!/bin/sh
+#!/data/data/com.termux/files/usr/bin/bash
 printf '%s:%s\n' "$DISPLAY" "$*"
 STUB
-    chmod +x "$PREFIX/bin/prun" "$sb/container-bin/wine"
+    chmod +x "$PREFIX/bin/proot-distro" "$sb/container-bin/wine"
     export PATH="$PREFIX/bin:$PATH" DISPLAY=:91 WINE_DPI=240 CONTAINER_STUB_BIN="$sb/container-bin"
     unset WINEPREFIX
     assert_eq ':91:argument with spaces' "$(bash "$PREFIX/bin/wine-box64" 'argument with spaces')"
     assert_file_contains "$HOME/.wine/user.reg" '^"LogPixels"=dword:000000f0$'
     printf 'PROOT_DISTRO=""\n' > "$HOME/.config/termux-xfce/config"
-    if bash "$PREFIX/bin/wine-box64" winecfg >/dev/null 2>&1; then return 1; fi
+    export PROOT_DISTRO=archlinux PROOT_USER=anotheruser
+    assert_eq ':91:winecfg' "$(bash "$PREFIX/bin/wine-box64" winecfg)"
     cleanup_sandbox "$sb"
 }
-it 'proot Wine preserves display, arguments and DPI, and rejects native-only config' _test_wine_proot_wrapper
+it 'proot Wine preserves display, arguments and DPI and keeps its saved target after config changes' _test_wine_proot_wrapper
 
 _test_retired_browser_and_notion() {
     local sb; sb=$(make_sandbox); _modern_setup "$sb"

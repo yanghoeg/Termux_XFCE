@@ -30,6 +30,55 @@ static void check_normalization(void) {
     check("\xe2\x80", "\xe2\x80");
 }
 
+
+static const char *expected_context, *expected_message;
+static const char *mock_dpgettext2(const char *domain, const char *context,
+                                   const char *message) {
+    assert(domain && !strcmp(domain, "thunar"));
+    assert(context == expected_context && message == expected_message);
+    return message;
+}
+
+static void check_overrides(const char *catalog_root) {
+    static const struct { const char *message, *translation; } labels[] = {
+        {"File", "파일"}, {"_File", "파일(_F)"},
+        {"Edit", "편집"}, {"_Edit", "편집(_E)"},
+        {"View", "보기"}, {"_View", "보기(_V)"},
+        {"Go", "이동"}, {"_Go", "이동(_G)"},
+        {"Bookmarks", "북마크"}, {"_Bookmarks", "북마크(_B)"},
+        {"Help", "도움말"}, {"_Help", "도움말(_H)"},
+        {"Save", "저장"}, {"_Save", "저장(_S)"}
+    };
+    assert(!setenv("FORCE_OVR_ALLOW", "thunar mousepad", 1));
+    assert(!setenv("FORCE_TEXTDOMAINDIR", catalog_root, 1));
+    unsetenv("FALLBACK_DOMAINS");
+    for (size_t i = 0; i < sizeof(labels)/sizeof(labels[0]); ++i) {
+        assert(!strcmp(dgettext("thunar", labels[i].message), labels[i].translation));
+        assert(!strcmp(g_dpgettext2("thunar", "Menu", labels[i].message),
+                       labels[i].translation));
+    }
+
+    /* Exercise both sides of the former 1200-byte buffer boundary. */
+    static const size_t context_lengths[] = {1193, 1194, 1195, 1299};
+    char context[1300];
+    for (size_t i = 0; i < sizeof(context_lengths)/sizeof(context_lengths[0]); ++i) {
+        memset(context, 'c', context_lengths[i]);
+        context[context_lengths[i]] = '\0';
+        assert(!strcmp(g_dpgettext2("thunar", context, "File"), "파일"));
+    }
+    /* Untranslated long inputs still reach the original hook without truncation. */
+    char message[1300];
+    memset(message, 'm', sizeof(message)-1);
+    message[sizeof(message)-1] = '\0';
+    rgdp2 = mock_dpgettext2;
+    expected_context = context;
+    expected_message = "review untranslated message";
+    assert(g_dpgettext2("thunar", expected_context, expected_message) == expected_message);
+    expected_context = "Menu";
+    expected_message = message;
+    assert(g_dpgettext2("thunar", expected_context, expected_message) == message);
+}
+
 enum { MO_SIZE = 160, ORIGINAL_TABLE = 29, TRANSLATION_TABLE = 37,
        ORIGINAL_STRING = 64, TRANSLATION_STRING = 100 };
 
@@ -282,6 +331,22 @@ static void check_dialogs(void) {
     assert(!strcmp(new_call.text, "<b>value</b> 42%"));
     assert(set_markup_calls == 1 && !strcmp(primary_markup, "<b>value</b> 42%"));
 
+    /* Ordinary constructors must not reinterpret file names or literal tags. */
+    gtk_message_dialog_new(&parent_object, 1, 2, 3, "Could not read %s or %s",
+                           "<missing>", "<other> & more");
+    assert(!strcmp(new_call.text, "Could not read <missing> or <other> & more"));
+    assert(set_markup_calls == 1);
+    gtk_message_dialog_new(&parent_object, 1, 2, 3, "<b>%s</b>", "literal");
+    assert(!strcmp(new_call.text, "<b>literal</b>"));
+    assert(set_markup_calls == 1);
+
+    /* Keep the intentional heading, including when gettext translated it first. */
+    gtk_message_dialog_new(&parent_object, 1, 2, 3, "%s",
+                           "Do you want to save the changes before closing?");
+    assert(set_markup_calls == 2 && !strcmp(primary_markup, SAVE_CHANGES_MARKUP));
+    gtk_message_dialog_new(&parent_object, 1, 2, 3, "%s", SAVE_CHANGES_MARKUP);
+    assert(set_markup_calls == 3 && !strcmp(primary_markup, SAVE_CHANGES_MARKUP));
+
     gtk_message_dialog_format_secondary_text(&dialog_object, "Item %s: %d%%", "value", 42);
     assert(!secondary_text_call.null_format && !strcmp(secondary_text_call.format, "%s"));
     assert(!strcmp(secondary_text_call.text, "Item value: 42%"));
@@ -306,7 +371,10 @@ static void check_dialogs(void) {
 int main(int argc, char **argv) {
     const char *mode = argc > 1 ? argv[1] : "normalize";
     if (!strcmp(mode, "normalize")) check_normalization();
-    else if (!strcmp(mode, "mo")) {
+    else if (!strcmp(mode, "overrides")) {
+        assert(argc == 3);
+        check_overrides(argv[2]);
+    } else if (!strcmp(mode, "mo")) {
         assert(argc == 3);
         check_catalogs(argv[2]);
     } else if (!strcmp(mode, "gtk")) check_dialogs();

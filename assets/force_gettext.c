@@ -69,6 +69,8 @@ static int override_allowed_for(const char* domain){
 
 /* ------------ hard overrides ------------ */
 typedef struct { const char* k; const char* v; } KV;
+static const char SAVE_CHANGES_MARKUP[] =
+  "<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>";
 static const KV EXACT[]={
   {"File","파일"},{"_File","파일(_F)"},{"Edit","편집"},{"_Edit","편집(_E)"},
   {"View","보기"},{"_View","보기(_V)"},{"Go","이동"},{"_Go","이동(_G)"},
@@ -79,8 +81,7 @@ static const KV EXACT[]={
   {"Save Changes","변경 사항 저장"},
 
   /* Mousepad 헤드라인: 굵게+큰 글씨 */
-  {"Do you want to save the changes before closing?",
-   "<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>"},
+  {"Do you want to save the changes before closing?", SAVE_CHANGES_MARKUP},
   {"If you don't save the document, all the changes will be lost.","문서를 저장하지 않으면 모든 변경 사항이 사라집니다."},
 
   {"Stock label|_Save","저장(_S)"},{"Stock label|Save","저장"},
@@ -137,7 +138,7 @@ typedef struct { const char* needle; const char* trans; } SUB;
 static const SUB SUBSTR[]={
   {"It seems that the previous session did not end normally. Do you want to restore the available data?","이전 세션이 정상적으로 종료되지 않은 것 같습니다. 사용 가능한 데이터를 복구하시겠습니까?"},
   {"If not, all this data will be lost.","복구하지 않으면 이 데이터는 모두 손실됩니다."},
-  {"Do you want to save the changes before closing?","<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>"},
+  {"Do you want to save the changes before closing?", SAVE_CHANGES_MARKUP},
   {"If you don't save the document, all the changes will be lost.","문서를 저장하지 않으면 모든 변경 사항이 사라집니다."},
   {"Open Terminal Here","여기서 터미널 열기"},
   {"Find in this folder","이 폴더에서 찾기"},
@@ -172,7 +173,13 @@ static const char* hard_override_core(const char* raw){
      strstr(pr,"timed out") || strstr(pr,"connection timed out"))
     return "시간 제한에 도달했습니다";
 
-  /* EXACT 완전일치 */
+  /* Preserve mnemonic-bearing labels before normalization removes underscores. */
+  const char* literal=ctx_tail(raw);
+  for(size_t i=0;i<sizeof(EXACT)/sizeof(EXACT[0]); ++i){
+    if(strcmp(literal,EXACT[i].k)==0) return EXACT[i].v;
+  }
+
+  /* Normalized fallback still handles punctuation and formatting variants. */
   char body[1024]; normalize_key(raw, body, sizeof(body));
   for(size_t i=0;i<sizeof(EXACT)/sizeof(EXACT[0]); ++i){
     char keyn[1024]; normalize_key(EXACT[i].k, keyn, sizeof(keyn));
@@ -344,12 +351,8 @@ const char* g_dcgettext(const char* domain,const char* msgid,int category){
 const char* g_dpgettext2(const char* domain,const char* context,const char* msgid){
   ensure_syms(); if(!msgid) return msgid;
   if(override_allowed_for(domain)){
-    char combo[1200];
-    if(context&&*context){
-      size_t lc=strlen(context), lm=strlen(msgid);
-      if(lc+1+lm+1<sizeof(combo)){ memcpy(combo,context,lc); combo[lc]='\004'; memcpy(combo+lc+1,msgid,lm+1); }
-      const char* hv=hard_override_core(combo[0]?combo:msgid); if(hv) return hv;
-    }else{ const char* hv=hard_override_core(msgid); if(hv) return hv; }
+    /* Hard overrides match the message body; context belongs to catalog lookup. */
+    const char* hv=hard_override_core(msgid); if(hv) return hv;
   }
   const char* D=dom_of(domain);
   if(context&&*context){
@@ -395,7 +398,7 @@ void gtk_window_set_title(void* win,const char* title){
   real_gtk_window_set_title(win,out);
 }
 
-/* MessageDialog 생성: 항상 일반 생성자로 만들고, 마크업이면 set_markup로 강제 적용 */
+/* Plain dialogs retain literal text; only our known headline opts into markup. */
 void* gtk_message_dialog_new(void* parent,int flags,int type,int buttons,const char* fmt,...){
   ensure_syms();
   if(!fmt) return real_gtk_message_dialog_new(parent,flags,type,buttons,NULL);
@@ -404,7 +407,8 @@ void* gtk_message_dialog_new(void* parent,int flags,int type,int buttons,const c
 
   void* dlg = real_gtk_message_dialog_new(parent,flags,type,buttons,"%s",out);
 
-  if (strchr(out,'<') && strchr(out,'>')) {
+  /* gettext may already have supplied this controlled translation to the caller. */
+  if (strcmp(out,SAVE_CHANGES_MARKUP)==0) {
     gtk_message_dialog_set_markup(dlg, out);
   }
   widen_if_launcher(dlg);

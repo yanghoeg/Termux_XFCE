@@ -49,17 +49,44 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR/domain" ]; then
     fi
     echo "[INFO] 저장소를 클론합니다..."
     local_dir="$HOME/.termux-xfce-installer"
-    rm -rf "$local_dir"
+    _bootstrap_stage=$(mktemp -d "${local_dir}.new.XXXXXX")
+    _bootstrap_backup=""
+    _bootstrap_cleanup() {
+        local code=$?
+        if [ -n "$_bootstrap_backup" ] && { [ -e "$_bootstrap_backup" ] || [ -L "$_bootstrap_backup" ]; } &&
+           [ ! -e "$local_dir" ] && [ ! -L "$local_dir" ]; then
+            mv -T -- "$_bootstrap_backup" "$local_dir" || \
+                echo "[ERROR] 이전 저장소 복원 실패: $_bootstrap_backup" >&2
+        fi
+        if [ -n "$_bootstrap_stage" ]; then
+            rm -rf -- "$_bootstrap_stage" || \
+                echo "[WARN] 임시 저장소를 정리하지 못했습니다: $_bootstrap_stage" >&2
+        fi
+        return "$code"
+    }
+    trap _bootstrap_cleanup EXIT
     git clone --depth=1 -b "${INSTALL_BRANCH:-main}" \
-        https://github.com/yanghoeg/Termux_XFCE.git "$local_dir"
+        https://github.com/yanghoeg/Termux_XFCE.git "$_bootstrap_stage"
 
     # 서브모듈은 핀이 깨져도(고아 커밋 등) main HEAD로 fallback
-    if ! git -C "$local_dir" submodule update --init --depth=1 2>/dev/null; then
+    if ! git -C "$_bootstrap_stage" submodule update --init --depth=1 2>/dev/null; then
         echo "[WARN] 서브모듈 핀이 원격에 없습니다 — App-Installer main HEAD로 fallback합니다."
-        rm -rf "$local_dir/app-installer" "$local_dir/.git/modules/app-installer"
-        sub_url=$(git -C "$local_dir" config --file .gitmodules submodule.app-installer.url)
-        git clone --depth=1 "$sub_url" "$local_dir/app-installer"
+        rm -rf "$_bootstrap_stage/app-installer" "$_bootstrap_stage/.git/modules/app-installer"
+        sub_url=$(git -C "$_bootstrap_stage" config --file .gitmodules submodule.app-installer.url)
+        git clone --depth=1 "$sub_url" "$_bootstrap_stage/app-installer"
     fi
+    if [ -e "$local_dir" ] || [ -L "$local_dir" ]; then
+        _bootstrap_backup=$(mktemp -d "${local_dir}.old.XXXXXX")
+        rmdir -- "$_bootstrap_backup"
+        mv -T -- "$local_dir" "$_bootstrap_backup"
+    fi
+    mv -T -- "$_bootstrap_stage" "$local_dir"
+    _bootstrap_stage=""
+    if [ -n "$_bootstrap_backup" ]; then
+        rm -rf -- "$_bootstrap_backup" || \
+            echo "[WARN] 이전 저장소를 정리하지 못했습니다: $_bootstrap_backup" >&2
+    fi
+    trap - EXIT
     exec bash "$local_dir/install.sh" "$@"
 fi
 

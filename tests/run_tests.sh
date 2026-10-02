@@ -33,13 +33,14 @@ declare -A SUITES=(
     [modern_install]="${SCRIPT_DIR}/test_modern_install.sh"
     [review_regressions]="${SCRIPT_DIR}/test_review_regressions.sh"
     [review_install_fixes]="${SCRIPT_DIR}/test_review_install_fixes.sh"
+    [review_all_parent]="${SCRIPT_DIR}/test_review_all_parent.sh"
     [desktop_review]="${SCRIPT_DIR}/test_desktop_review.sh"
     [e2e_install]="${SCRIPT_DIR}/test_e2e_install.sh"
 )
 
 # 실행할 스위트 결정
 if [ $# -eq 0 ]; then
-    selected_suites=("ports" "adapters" "adapters_deb" "display_wayland" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "force_gettext" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install" "modern_install" "review_regressions" "review_install_fixes" "desktop_review")
+    selected_suites=("ports" "adapters" "adapters_deb" "display_wayland" "input_interactive" "domain_termux" "domain_xfce" "domain_proot" "domain_locale_ko" "force_gettext" "app_installer" "prun_ld_preload" "install_matrix" "e2e_install" "modern_install" "review_regressions" "review_install_fixes" "review_all_parent" "desktop_review")
 else
     selected_suites=("$@")
 fi

@@ -416,7 +416,7 @@ _setup_proot_sudoers() {
     sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL) NOPASSWD:/' "$sudoers"
 
     # 유저 직접 항목 (wheel 그룹 설정 없을 때 폴백)
-    grep -q "^${username}" "$sudoers" || \
+    awk -v user="$username" '$1 == user && $2 ~ /^ALL=/ { found=1 } END { exit !found }' "$sudoers" || \
         echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
 
     chmod 440 "$sudoers"

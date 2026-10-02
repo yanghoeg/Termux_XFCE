@@ -40,8 +40,17 @@ proot_pkg_is_installed() {
 
 proot_pkg_autoremove() {
     # Arch: 고아 패키지 제거
-    proot_exec bash -c 'pacman -Qtdq | pacman -Rns --noconfirm - 2>/dev/null || true'
+    proot_exec sudo bash -c '
+        pacman -Qq >/dev/null || exit $?
+        orphans=$(pacman -Qtdq) || {
+            status=$?
+            [ "$status" -eq 1 ] && [ -z "$orphans" ] || exit "$status"
+        }
+        if [ -n "$orphans" ]; then
+            mapfile -t targets <<< "$orphans"
+            pacman -Rns --noconfirm -- "${targets[@]}" || exit $?
+        fi
+    ' || return $?
     # 캐시 정리
     proot_exec sudo pacman -Sc --noconfirm
 }
-

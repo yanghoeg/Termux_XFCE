@@ -202,6 +202,93 @@ _test_deploy_catalogs_merges_when_bak_exists() {
 }
 it ".bak 존재 재실행 시 tmp가 dest 하위로 중첩되지 않고 병합된다" _test_deploy_catalogs_merges_when_bak_exists
 
+
+_locale_original_fixture() {
+    mkdir -p "$PREFIX/share/locale/en/LC_MESSAGES"
+    printf 'original English catalog\n' > "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo"
+    printf 'original marker\n' > "$PREFIX/share/locale/marker.txt"
+}
+_assert_locale_transaction_clean() {
+    [ -z "$(find "$PREFIX/share" -maxdepth 1 \( -name 'locale.stage.*' -o -name 'locale.previous.*' \) -print)" ]
+}
+_test_deploy_catalogs_preserves_existing_catalogs() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    chmod 750 "$PREFIX/share/locale"
+    _deploy_locale_catalogs "$sb/locale.zip"
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_file_exists "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo"
+    assert_eq 750 "$(stat -c %a "$PREFIX/share/locale")"
+    compgen -G "$PREFIX/share/locale.bak.*/marker.txt" >/dev/null
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "첫 한글 배치는 기존 언어와 권한을 보존하고 원본 백업을 남긴다" _test_deploy_catalogs_preserves_existing_catalogs
+
+_test_deploy_catalogs_copy_failure_preserves_original() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    cp() {
+        case "$2" in
+            */locale_ko.*/*)
+                command cp "$@" || return 1
+                return 1 ;;
+        esac
+        command cp "$@"
+    }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    [ ! -e "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo" ]
+    ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "부분 복사 실패는 활성 카탈로그를 바꾸거나 백업으로 옮기지 않는다" _test_deploy_catalogs_copy_failure_preserves_original
+
+_locale_commit_failure_case() {
+    local existing_backup="$1" sb
+    sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    if [ "$existing_backup" = true ]; then
+        mkdir -p "$PREFIX/share/locale.bak.saved"
+        printf 'saved backup\n' > "$PREFIX/share/locale.bak.saved/marker.txt"
+    fi
+    mv() {
+        case "$2" in *.stage.*) return 1 ;; esac
+        command mv "$@"
+    }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    [ ! -e "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo" ]
+    if [ "$existing_backup" = true ]; then
+        assert_eq 'saved backup' "$(cat "$PREFIX/share/locale.bak.saved/marker.txt")"
+        assert_eq 1 "$(find "$PREFIX/share" -maxdepth 1 -name 'locale.bak.*' | wc -l | tr -d ' ')"
+    else
+        ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+    fi
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+_test_deploy_catalogs_commit_failure_restores_original() { _locale_commit_failure_case false; }
+_test_deploy_catalogs_commit_failure_keeps_backup() { _locale_commit_failure_case true; }
+it "최종 rename 실패는 기존 카탈로그를 원래 위치로 복원한다" _test_deploy_catalogs_commit_failure_restores_original
+it "재배치 rename 실패는 활성 카탈로그와 이전 영구 백업을 모두 보존한다" _test_deploy_catalogs_commit_failure_keeps_backup
+
+_test_deploy_catalogs_backup_move_failure_preserves_original() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    mv() { return 1; }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "기존 카탈로그 rename 실패는 원본과 활성 경로를 그대로 보존한다" _test_deploy_catalogs_backup_move_failure_preserves_original
+
 # =============================================================================
 # _build_force_gettext — clang 빌드
 # =============================================================================
