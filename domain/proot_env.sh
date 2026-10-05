@@ -160,21 +160,27 @@ EOF
     # 2) 삭제 범위는 설치기가 생성한 줄로 한정한다. code()가 없는 구버전도
     #    사용자 프롬프트와 conda 설정을 보존한다.
     if [ -f "$bashrc" ] && grep -q '^# termux-xfce-proot-env$' "$bashrc"; then
-        local cleaned
-        cleaned=$(mktemp "${bashrc}.XXXXXX") || return 1
+        local cleaned target
+        # 완성된 사본을 rename으로 교체한다 — 쓰기 실패가 원본을 자르지 않고,
+        # 심볼릭 링크로 관리되는 .bashrc는 링크 대상이 갱신된다.
+        target=$(readlink -f -- "$bashrc") || return 1
+        cleaned=$(mktemp "${target}.XXXXXX") || return 1
         awk '
             /^# termux-xfce-proot-env$/ { managed=1; next }
             /^# termux-xfce-proot-env-end$/ { managed=0; next }
             managed && (/^$/ || /^# aliases$/ || /^# Termux Turnip Vulkan ICD/ ||
                 /^export (DISPLAY|LD_PRELOAD|XDG_RUNTIME_DIR|MESA_[A-Z_]+|TU_DEBUG|ZINK_DESCRIPTORS|vblank_mode|VK_ICD_FILENAMES|VK_DRIVER_FILES)=/ ||
+                /^mkdir -p "\$XDG_RUNTIME_DIR" 2>\/dev\/null$/ ||
                 /^\[ -f \/etc\/profile.d\/termux-xfce-env.sh \]/ ||
                 /^alias (hud|ls|ll|shutdown|cat|python|pip|start)=/ ||
                 /^command -v (eza|bat) .*alias (ls|cat)=/) { next }
             managed && /^code\(\) \{/ { managed=0; next }
             { managed=0; print }
-        ' "$bashrc" > "$cleaned" || { rm -f "$cleaned"; return 1; }
-        cat "$cleaned" > "$bashrc" || { rm -f "$cleaned"; return 1; }
-        rm -f "$cleaned"
+        ' "$target" > "$cleaned" || { rm -f "$cleaned"; return 1; }
+        chmod --reference="$target" "$cleaned" && mv -f -- "$cleaned" "$target" || {
+            rm -f -- "$cleaned"
+            return 1
+        }
     fi
 
     cat >> "$bashrc" << 'EOF'
@@ -319,32 +325,47 @@ setup_proot_alias() {
     # (bash|zsh, 기본 bash). 설치 후 사용자가 config의 PROOT_SHELL을 바꾸면 즉시 반영되고,
     # 서브셸이라 config의 다른 변수는 사용자 셸로 새지 않는다.
     local _proot_alias="alias ${distro}='proot-distro login ${distro} --user ${user} --shared-tmp -- env -u LD_PRELOAD \"\$(. \"\$HOME/.config/termux-xfce/config\" 2>/dev/null; echo \"\${PROOT_SHELL:-bash}\")\" --login'"
+    # Shapes written by earlier installers, refreshed like the current one.
+    local _legacy_aliases="alias ${distro}='proot-distro login ${distro} --user @user@ --shared-tmp'
+alias ${distro}='proot-distro login ${distro} --user @user@ --shared-tmp -- env -u LD_PRELOAD \${PROOT_SHELL:-bash} --login'"
 
-    local rc staged
+    local rc target staged
     for rc in "$PREFIX/etc/bash.bashrc" "$HOME/.zshrc"; do
         if [ ! -f "$rc" ]; then
             [ "$rc" != "$HOME/.zshrc" ] || continue
             : > "$rc" || return 1
         fi
-        staged=$(mktemp "${rc}.XXXXXX") || return 1
-        # Refresh installer-owned aliases when the configured user changes;
-        # preserve aliases the user replaced with their own command.
-        awk -v managed="$_proot_alias" '
+        target=$(readlink -f -- "$rc") || return 1
+        staged=$(mktemp "${target}.XXXXXX") || return 1
+        # The installer writes its alias at column 0 in one of the shapes above;
+        # refresh it in place for the configured user. Any other active alias for
+        # this distro (indented in a guard, or after `cond &&`) is the user's own
+        # and suppresses the managed one.
+        PROOT_ALIAS="$_proot_alias" PROOT_LEGACY_ALIASES="$_legacy_aliases" awk -v distro="$distro" '
+            function shape(line) {
+                sub(/ --user [^[:space:]]+ /, " --user @user@ ", line)
+                return line
+            }
             BEGIN {
-                sub(/ --user [^[:space:]]+ /, " --user @managed@ ", managed)
+                current = ENVIRON["PROOT_ALIAS"]
+                managed[shape(current)] = 1
+                n = split(ENVIRON["PROOT_LEGACY_ALIASES"], legacy, "\n")
+                for (i = 1; i <= n; i++) managed[legacy[i]] = 1
+                defines = "(^|[^[:alnum:]_-])alias[[:space:]]+" distro "="
             }
-            {
-                normalized = $0
-                sub(/^[[:space:]]*/, "", normalized)
-                sub(/ --user [^[:space:]]+ /, " --user @managed@ ", normalized)
-                if (normalized != managed) print
-            }
-        ' "$rc" > "$staged" || { rm -f "$staged"; return 1; }
-        if ! grep -q "^[[:space:]]*alias ${distro}=" "$staged"; then
-            printf '%s\n' "$_proot_alias" >> "$staged" || { rm -f "$staged"; return 1; }
+            (shape($0) in managed) { if (!refreshed) print current; refreshed = 1; next }
+            $0 !~ /^[[:space:]]*#/ && $0 ~ defines { custom = 1 }
+            { print }
+            END { if (!refreshed && !custom) print current }
+        ' "$target" > "$staged" || { rm -f "$staged"; return 1; }
+        if cmp -s "$staged" "$target"; then
+            rm -f -- "$staged"
+            continue
         fi
-        cat "$staged" > "$rc" || { rm -f "$staged"; return 1; }
-        rm -f "$staged"
+        chmod --reference="$target" "$staged" && mv -f -- "$staged" "$target" || {
+            rm -f -- "$staged"
+            return 1
+        }
     done
 }
 

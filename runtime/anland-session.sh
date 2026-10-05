@@ -2,8 +2,13 @@
 # Installed as termux-xfce-anland-session. Owns only the children started here.
 set -euo pipefail
 if [ "${1:-}" != --dbus ]; then
-    exec dbus-run-session -- bash "$0" --dbus
+    # Pass the launcher's startup deadline as an argument so it stays out of
+    # the session bus and Plasma environments.
+    _deadline="${ANLAND_STARTUP_DEADLINE:-}"
+    unset ANLAND_STARTUP_DEADLINE
+    exec dbus-run-session -- bash "$0" --dbus "$_deadline"
 fi
+_startup_deadline="${2:-}"
 
 : "${PREFIX:?}" "${TMPDIR:?}" "${XDG_RUNTIME_DIR:?}" "${SESSION_STATE_DIR:?}"
 printf '%s\t%s\n' "$$" termux-xfce-anland-session > "$SESSION_STATE_DIR/anland-worker.pid"
@@ -156,13 +161,15 @@ _wait_plasma() {
     printf -v now '%(%s)T' -1
     # The launcher supplies its deadline so it cannot kill a healthy supervisor
     # while Plasma is still allowed to initialize. Direct starts retain 90s here.
-    deadline="${ANLAND_STARTUP_DEADLINE:-$((now + 90))}"
+    deadline="${_startup_deadline:-$((now + 90))}"
     case "$deadline" in
         ''|*[!0-9]*) echo 'ERROR: 잘못된 Anland 시작 deadline' >&2; return 1 ;;
     esac
     # Process discovery can be slow on Android; inspect elapsed clock time rather
-    # than assuming each iteration takes only the half-second sleep.
-    while [ "$now" -lt "$deadline" ]; do
+    # than assuming each iteration takes only the half-second sleep. Each scan
+    # runs before the clock check, so a shell that came up during the last
+    # sleep is still found.
+    while :; do
         _child_running "$_compositor_pid" || return 1
         # The name is matched loosely across the whole command line because a
         # process started through an interpreter reports the interpreter as
@@ -180,8 +187,9 @@ _wait_plasma() {
                 return 0
             fi
         done
-        sleep 0.5
         printf -v now '%(%s)T' -1
+        [ "$now" -lt "$deadline" ] || break
+        sleep 0.5
     done
     echo "ERROR: plasmashell 기동 확인 실패" >&2
     return 1

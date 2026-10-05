@@ -77,6 +77,17 @@ static void check_overrides(const char *catalog_root) {
     expected_context = "Menu";
     expected_message = message;
     assert(g_dpgettext2("thunar", expected_context, expected_message) == message);
+
+    /* Only Thunar's untrusted-launcher warning becomes the launcher text. */
+    static const char checkbox[] = "Allow this file to _run as a .desktop file";
+    assert(!strcmp(dgettext("thunar", checkbox), checkbox));
+    assert(!strcmp(dgettext("thunar", "Invalid desktop file"), "Invalid desktop file"));
+    assert(TLS_IS_LAUNCHER == 0);
+    const char *warning = dgettext("thunar", "The desktop file %s is in an insecure location "
+        "and not marked as secure%s. If you do not trust this program, click Cancel.");
+    assert(!strncmp(warning, "이 실행 아이콘은", strlen("이 실행 아이콘은")));
+    assert(TLS_IS_LAUNCHER == 1);
+    TLS_IS_LAUNCHER = 0;
 }
 
 enum { MO_SIZE = 160, ORIGINAL_TABLE = 29, TRANSLATION_TABLE = 37,
@@ -249,12 +260,12 @@ typedef struct {
     unsigned calls;
     int null_format;
     char format[16];
-    char text[2048];
+    char text[8192];
 } DialogCall;
 
 static DialogCall new_call, markup_new_call, secondary_text_call, secondary_markup_call;
 static unsigned set_markup_calls;
-static char primary_markup[2048];
+static char primary_markup[8192];
 static int dialog_object, parent_object;
 
 static void record_dialog_call(DialogCall *call, const char *format, va_list args) {
@@ -307,6 +318,71 @@ static void mock_secondary_markup(void *dialog, const char *format, ...) {
     va_start(args, format);
     record_dialog_call(&secondary_markup_call, format, args);
     va_end(args);
+}
+
+static char window_title[256];
+static void mock_set_title(void *window, const char *title) {
+    assert(window == &dialog_object && title);
+    snprintf(window_title, sizeof(window_title), "%s", title);
+}
+
+/* Stand-in for g_markup_vprintf_escaped with one string argument. */
+static unsigned markup_escape_calls;
+static char *mock_markup_vprintf_escaped(const char *format, va_list args) {
+    ++markup_escape_calls;
+    assert(!strcmp(format, "<b>%s</b>"));
+    const char *arg = va_arg(args, const char *);
+    char *out = malloc(strlen(arg) * 5 + 8), *o = out;
+    assert(out);
+    o += sprintf(o, "<b>");
+    for (; *arg; ++arg) {
+        if (*arg == '<') o += sprintf(o, "&lt;");
+        else if (*arg == '>') o += sprintf(o, "&gt;");
+        else if (*arg == '&') o += sprintf(o, "&amp;");
+        else *o++ = *arg;
+    }
+    sprintf(o, "</b>");
+    return out;
+}
+
+static void check_whole_string_overrides(void) {
+    real_gtk_window_set_title = mock_set_title;
+    /* Titles and file names that merely contain a key keep their text. */
+    static const char *const kept[] = {
+        "user@phone: ~/scripts", "build_scripts.sh - Mousepad",
+        "Request timed out - Mozilla Firefox", "Perl Scripts", "Python Scripts",
+        "Open Terminal Here as Root",
+    };
+    for (size_t i = 0; i < sizeof(kept)/sizeof(kept[0]); ++i) {
+        gtk_window_set_title(&dialog_object, kept[i]);
+        assert(!strcmp(window_title, kept[i]));
+    }
+    gtk_window_set_title(&dialog_object, "Scripts");
+    assert(!strcmp(window_title, "스크립트"));
+    gtk_window_set_title(&dialog_object, "Timeout was reached");
+    assert(!strcmp(window_title, "시간 제한에 도달했습니다"));
+}
+
+static void check_long_and_escaped_dialogs(void) {
+    /* Longer than the former 2048-byte buffer, ending in multibyte text. */
+    char long_text[3100];
+    memset(long_text, 'a', 3000);
+    strcpy(long_text + 3000, "끝까지 보존");
+    gtk_message_dialog_new(&parent_object, 1, 2, 3, "%s", long_text);
+    assert(!strcmp(new_call.text, long_text));
+    gtk_message_dialog_format_secondary_text(&dialog_object, "%s", long_text);
+    assert(!strcmp(secondary_text_call.text, long_text));
+    gtk_message_dialog_format_secondary_markup(&dialog_object, "%s", long_text);
+    assert(!strcmp(secondary_markup_call.text, long_text));
+
+    /* The markup constructor escapes its arguments like GTK. */
+    unsigned before = set_markup_calls;
+    r_markup_vprintf_escaped = mock_markup_vprintf_escaped;
+    gtk_message_dialog_new_with_markup(&parent_object, 1, 2, 3, "<b>%s</b>", "a<b>&c");
+    r_markup_vprintf_escaped = NULL;
+    assert(markup_escape_calls == 1);
+    assert(!strcmp(new_call.text, "<b>a&lt;b&gt;&amp;c</b>"));
+    assert(set_markup_calls == before + 1 && !strcmp(primary_markup, "<b>a&lt;b&gt;&amp;c</b>"));
 }
 
 static void check_dialogs(void) {
@@ -366,6 +442,9 @@ static void check_dialogs(void) {
     assert(secondary_markup_call.null_format && !secondary_markup_call.text[0]);
     gtk_message_dialog_format_secondary_markup(&dialog_object, "");
     assert(!secondary_markup_call.null_format && !secondary_markup_call.text[0]);
+
+    check_long_and_escaped_dialogs();
+    check_whole_string_overrides();
 }
 
 int main(int argc, char **argv) {

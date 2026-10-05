@@ -72,10 +72,21 @@ it 'base reruns rebuild an existing Korean hook while keeping first installation
 
 _test_korean_rc_glibc_guard() {
     local sb; sb=$(make_sandbox); _review_setup "$sb"
+    # The block as the first installer version (2026-05-08) wrote it.
     cat > "$PREFIX/etc/bash.bashrc" <<'RC'
-# termux-xfce-korean — old installer block
+# termux-xfce-korean — force_gettext.so 한글 UI 자동 적용
 if [ -f "$PREFIX/lib/force_gettext.so" ]; then
-    export LD_PRELOAD="$PREFIX/lib/force_gettext.so"
+    export LANGUAGE="ko_KR:ko:en_US:en"
+    export FORCE_TEXTDOMAINDIR="$PREFIX/share/locale"
+    export FALLBACK_DOMAINS="mousepad xfce4-terminal thunar ristretto \
+gtk30 glib20 gdk-pixbuf libxfce4ui-2 libxfce4util exo garcon \
+knotifications6 kservice6 solid6 kguiaddons6 kcolorscheme6"
+    export XDG_DATA_DIRS="$PREFIX/share${XDG_DATA_DIRS:+:$XDG_DATA_DIRS}"
+    QT_TRANSLATIONS_PATH="$PREFIX/share/qt6/translations:$PREFIX/share/qt/translations${QT_TRANSLATIONS_PATH:+:$QT_TRANSLATIONS_PATH}"
+    export QT_TRANSLATIONS_PATH
+    export KDE_LANG=ko QT_LOCALE_OVERRIDE=ko_KR
+    case ":${LD_PRELOAD-}:" in *:"$PREFIX/lib/force_gettext.so":*) ;; *)
+        export LD_PRELOAD="$PREFIX/lib/force_gettext.so${LD_PRELOAD:+:$LD_PRELOAD}";; esac
 fi
 export KEEP_USER_SETTING=yes
 RC
@@ -83,6 +94,8 @@ RC
     setup_korean_rc
     assert_eq 1 "$(grep -c '^# termux-xfce-korean' "$PREFIX/etc/bash.bashrc")"
     assert_file_contains "$PREFIX/etc/bash.bashrc" KEEP_USER_SETTING
+    # The block is replaced where it was, so the user line still follows it.
+    assert_eq 'export KEEP_USER_SETTING=yes' "$(tail -n 1 "$PREFIX/etc/bash.bashrc")"
     echo 'library fixture' > "$PREFIX/lib/force_gettext.so"
     unset LD_PRELOAD
     RUNNING_IN_GLIBC_RUNNER=true
@@ -100,12 +113,14 @@ _test_korean_rc_broken_boundary_is_preserved() {
     local sb; sb=$(make_sandbox); _review_setup "$sb"
     printf '# termux-xfce-korean — malformed\nexport USER_SETTING=yes\n' > "$PREFIX/etc/bash.bashrc"
     local original; original=$(cat "$PREFIX/etc/bash.bashrc")
-    if setup_korean_rc; then return 1; fi
-    if setup_korean_rc; then return 1; fi
+    # Base reruns must not stop on a block the installer cannot recognize.
+    setup_korean_rc
+    setup_korean_rc
     assert_eq "$original" "$(cat "$PREFIX/etc/bash.bashrc")"
+    assert_ui_contains '직접 수정된 한글 RC 블록'
     cleanup_sandbox "$sb"
 }
-it 'a malformed Korean RC boundary fails repeatedly without deleting user lines (#4)' _test_korean_rc_broken_boundary_is_preserved
+it 'a malformed Korean RC block is left unchanged with a warning on every run (#4)' _test_korean_rc_broken_boundary_is_preserved
 
 _test_locale_upgrade_without_catalog_zip() {
     local sb; sb=$(make_sandbox); _review_setup "$sb"; _review_compiler
@@ -183,17 +198,19 @@ it 'a missing App Installer fails before changes while CLI help remains availabl
 _test_old_kill_command_forwards() {
     local sb; sb=$(make_sandbox); _review_setup "$sb"
     script_build_kill_display() { printf '#!/bin/sh\nprintf "%%s\\n" "$@"\n' > "$1"; }
-    echo 'Exec=kill_termux_x11' > "$PREFIX/share/applications/kill_termux_x11.desktop"
+    printf 'Name=Kill Termux X11\nExec=kill_termux_x11\n' > "$PREFIX/share/applications/kill_termux_x11.desktop"
     cp "$PREFIX/share/applications/kill_termux_x11.desktop" "$HOME/Desktop/kill_termux_x11.desktop"
     _setup_kill_display
     [ ! -e "$PREFIX/share/applications/kill_termux_x11.desktop" ]
-    [ ! -e "$HOME/Desktop/kill_termux_x11.desktop" ]
     assert_file_exists "$PREFIX/share/applications/kill_display_session.desktop"
+    # A desktop icon is not a duplicate menu entry; it keeps working.
+    assert_file_contains "$HOME/Desktop/kill_termux_x11.desktop" '^Exec=kill_display_session$'
+    assert_file_contains "$HOME/Desktop/kill_termux_x11.desktop" '^Name=Kill Display Session$'
     PATH="$PREFIX/bin:$PATH" assert_eq 'argument with spaces' \
         "$(PATH="$PREFIX/bin:$PATH" bash "$PREFIX/bin/kill_termux_x11" 'argument with spaces')"
     cleanup_sandbox "$sb"
 }
-it 'the old kill command forwards arguments and duplicate menu entries are removed (#17)' _test_old_kill_command_forwards
+it 'the old kill command forwards arguments, removes its duplicate menu entry and migrates desktop icons (#17)' _test_old_kill_command_forwards
 
 _test_conky_keeps_user_arguments() {
     local sb; sb=$(make_sandbox); _review_setup "$sb"

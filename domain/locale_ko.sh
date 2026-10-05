@@ -55,6 +55,10 @@ setup_korean_locale_native() {
 _deploy_locale_catalogs() {
     local zip="$1"
     local dest="$PREFIX/share/locale"
+    # A linked catalog tree is replaced at its target so the link itself stays.
+    if [ -L "$dest" ]; then
+        dest=$(readlink -f -- "$dest") || return 1
+    fi
 
     # 멱등성: ko 카탈로그가 이미 배치돼 있으면 스킵 (100개 이상이면 성공 설치로 간주)
     if [ -d "$dest/ko/LC_MESSAGES" ] && \
@@ -122,6 +126,7 @@ _deploy_locale_catalogs() {
     return 0
 }
 
+# --no-compiler-install: clang이 없으면 설치하지 않고 실패한다 (기본 설치 재실행용).
 _build_force_gettext() {
     local src="${SCRIPT_DIR}/assets/force_gettext.c"
     local dst="$PREFIX/lib/force_gettext.so"
@@ -138,6 +143,7 @@ _build_force_gettext() {
         return 0
     fi
     if ! command -v clang >/dev/null 2>&1; then
+        [ "${1:-}" != --no-compiler-install ] || return 1
         pkg_install clang || return 1
     fi
 

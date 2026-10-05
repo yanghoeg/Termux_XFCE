@@ -158,7 +158,7 @@ _test_deploy_catalogs_unzip_failure_preserves_original() {
 
     assert_nonzero "$rc" "unzip 실패를 호출자에 전파"
     assert_file_exists "${dest}/marker.txt"
-    ! compgen -G "${dest}.bak."* > /dev/null 2>&1
+    if compgen -G "${dest}.bak.*" > /dev/null 2>&1; then return 1; fi
     cleanup_sandbox "$sb"
 }
 it "unzip 실패 시 기존 locale 보존 + .bak 생성 안 함" _test_deploy_catalogs_unzip_failure_preserves_original
@@ -197,7 +197,7 @@ _test_deploy_catalogs_merges_when_bak_exists() {
 
     assert_file_exists "${dest}/ko/LC_MESSAGES/x.mo"
     assert_file_exists "${dest}/old.txt"
-    ! compgen -G "${dest}/locale_ko.*" > /dev/null 2>&1
+    if compgen -G "${dest}/locale_ko.*" > /dev/null 2>&1; then return 1; fi
     cleanup_sandbox "$sb"
 }
 it ".bak 존재 재실행 시 tmp가 dest 하위로 중첩되지 않고 병합된다" _test_deploy_catalogs_merges_when_bak_exists
@@ -240,7 +240,7 @@ _test_deploy_catalogs_copy_failure_preserves_original() {
     assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
     assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
     [ ! -e "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo" ]
-    ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+    if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
     _assert_locale_transaction_clean
     cleanup_sandbox "$sb"
 }
@@ -266,7 +266,7 @@ _locale_commit_failure_case() {
         assert_eq 'saved backup' "$(cat "$PREFIX/share/locale.bak.saved/marker.txt")"
         assert_eq 1 "$(find "$PREFIX/share" -maxdepth 1 -name 'locale.bak.*' | wc -l | tr -d ' ')"
     else
-        ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+        if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
     fi
     _assert_locale_transaction_clean
     cleanup_sandbox "$sb"
@@ -283,7 +283,7 @@ _test_deploy_catalogs_backup_move_failure_preserves_original() {
     if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
     assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
     assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
-    ! compgen -G "$PREFIX/share/locale.bak.*" >/dev/null
+    if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
     _assert_locale_transaction_clean
     cleanup_sandbox "$sb"
 }

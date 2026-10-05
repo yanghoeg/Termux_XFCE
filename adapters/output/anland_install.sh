@@ -26,13 +26,15 @@ _anland_load_fetch() {
 
 _anland_deb() {
     local name="$1" version="$2" url="$3" sha="$4" deb="$5" installed
+    # The first Status word is the selection; it reads "hold" after apt-mark
+    # below, so compare only the installed state and version.
     installed=$(dpkg-query -W -f='${Status} ${Version}' "$name" 2>/dev/null) || installed=""
-    if [ "$installed" != "install ok installed $version" ]; then
+    if [ "${installed#* }" != "ok installed $version" ]; then
         fetch_verified "$url" "$deb" "$sha" || return 1
         apt install -y --allow-downgrades --allow-change-held-packages \
             -o Dpkg::Options::="--force-confold" "$deb" || return 1
         installed=$(dpkg-query -W -f='${Status} ${Version}' "$name" 2>/dev/null) || return 1
-        [ "$installed" = "install ok installed $version" ] || {
+        [ "${installed#* }" = "ok installed $version" ] || {
             ui_error "$name $version 설치 확인 실패: $installed"; return 1;
         }
     fi

@@ -44,7 +44,7 @@ _test_desktop_absolute_and_relative_links() {
     ln -s ../../lib/libreoffice/share/xdg/base.desktop "$TEST_ROOTFS/usr/share/applications/libreoffice-base.desktop"
     desktop_copy_from_proot libreoffice
     for name in writer base; do
-        rg -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$PREFIX/share/applications/libreoffice-$name.desktop"
+        grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$PREFIX/share/applications/libreoffice-$name.desktop"
     done
     [ -L "$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop" ]
     ln -s /usr/lib/libreoffice "$TEST_ROOTFS/usr/share/linked-directory"
@@ -108,9 +108,9 @@ _test_desktop_rewrite_idempotent() {
     before=$(cat "$sb/source.desktop")
     desktop_rewrite_for_proot "$sb/source.desktop"
     assert_eq "$before" "$(cat "$sb/source.desktop")"
-    rg -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --draw %F$' "$sb/source.desktop"
-    rg -q '^DBusActivatable=false$' "$sb/source.desktop"
-    if rg -q '^(TryExec|Path)=' "$sb/source.desktop"; then return 1; fi
+    grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --draw %F$' "$sb/source.desktop"
+    grep -q '^DBusActivatable=false$' "$sb/source.desktop"
+    if grep -Eq '^(TryExec|Path)=' "$sb/source.desktop"; then return 1; fi
     desktop_import_proot "$sb/source.desktop" "$TEST_ROOTFS" "$sb/source.desktop"
     assert_eq "$before" "$(cat "$sb/source.desktop")"
 }
@@ -122,11 +122,15 @@ _test_desktop_legacy_migration() {
     _desktop_review_fixture "$sb/legacy.desktop"
     sed -i 's|^Exec=.*|Exec=bash -c "prun libreoffice --writer %U </dev/null >/dev/null 2>\&1 \&"|' "$sb/legacy.desktop"
     desktop_migrate_proot_launcher "$sb/legacy.desktop"
-    rg -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$sb/legacy.desktop"
-    if rg -q '^(TryExec|Path)=' "$sb/legacy.desktop"; then return 1; fi
+    grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$sb/legacy.desktop"
+    if grep -Eq '^(TryExec|Path)=' "$sb/legacy.desktop"; then return 1; fi
     printf '[Desktop Entry]\nName=Legacy GUI\nExec=bash -c "prun-gui '\''Legacy GUI'\'' -- libreoffice %%U &"\n' > "$sb/legacy-gui.desktop"
+    # Migration leaves prun-gui launchers alone; an explicit rewrite still unwraps them.
+    before=$(cat "$sb/legacy-gui.desktop")
     desktop_migrate_proot_launcher "$sb/legacy-gui.desktop"
-    rg -q '^Exec=prun-gui "Legacy GUI" -- libreoffice %U$' "$sb/legacy-gui.desktop"
+    assert_eq "$before" "$(cat "$sb/legacy-gui.desktop")"
+    desktop_rewrite_for_proot "$sb/legacy-gui.desktop"
+    grep -q '^Exec=prun-gui "Legacy GUI" -- libreoffice %U$' "$sb/legacy-gui.desktop"
     _desktop_review_fixture "$sb/native.desktop"
     before=$(cat "$sb/native.desktop")
     desktop_migrate_proot_launcher "$sb/native.desktop"
@@ -136,7 +140,7 @@ _test_desktop_legacy_migration() {
     if desktop_migrate_proot_launcher "$sb/complex.desktop"; then return 1; fi
     assert_eq "$before" "$(cat "$sb/complex.desktop")"
 }
-it 'migration unwraps known legacy forms and preserves native or complex launchers' _test_desktop_legacy_migration
+it 'migration unwraps legacy prun forms and preserves prun-gui, native or complex launchers' _test_desktop_legacy_migration
 
 _test_desktop_parent_migration() {
     local sb before; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
@@ -147,11 +151,81 @@ _test_desktop_parent_migration() {
     _desktop_review_fixture "$PREFIX/share/applications/native.desktop"
     before=$(cat "$PREFIX/share/applications/native.desktop")
     _migrate_desktop_to_prun_gui
-    rg -q '^Exec=prun-gui "Legacy" -- libreoffice %U$' "$HOME/Desktop/legacy.desktop"
-    rg -q '^DBusActivatable=false$' "$HOME/Desktop/legacy.desktop"
+    grep -q '^Exec=prun-gui "Legacy" -- libreoffice %U$' "$HOME/Desktop/legacy.desktop"
+    grep -q '^DBusActivatable=false$' "$HOME/Desktop/legacy.desktop"
     assert_eq "$before" "$(cat "$PREFIX/share/applications/native.desktop")"
 }
 it 'parent upgrade migration uses the common helper and preserves native menu entries' _test_desktop_parent_migration
+
+_test_desktop_migration_keeps_prun_gui_launchers() {
+    local sb inode before; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
+    _desktop_review_setup "$sb"
+    source "$_DESKTOP_REVIEW_ROOT/domain/termux_env.sh"
+    ui_warn() { printf '%s\n' "$*" >> "$sb/warnings"; }
+    _desktop_review_fixture "$TEST_ROOTFS/usr/share/applications/libreoffice-calc.desktop"
+    desktop_import_proot "$TEST_ROOTFS/usr/share/applications/libreoffice-calc.desktop" \
+        "$TEST_ROOTFS" "$PREFIX/share/applications/libreoffice-calc.desktop"
+    ln -s "$PREFIX/share/applications/libreoffice-calc.desktop" "$HOME/Desktop/Calc.desktop"
+    # The escaped-quote form older App Installer versions wrote (Teams, Tor).
+    printf '[Desktop Entry]\nName=Microsoft Teams\nExec=bash -c "prun-gui \\"Microsoft Teams\\" -- teams-for-linux --no-sandbox </dev/null >/dev/null 2>&1 &"\n' \
+        > "$HOME/Desktop/teams.desktop"
+    before=$(cat "$HOME/Desktop/teams.desktop")
+    inode=$(stat -c %i "$PREFIX/share/applications/libreoffice-calc.desktop")
+    _migrate_desktop_to_prun_gui
+    _migrate_desktop_to_prun_gui
+    [ -L "$HOME/Desktop/Calc.desktop" ]
+    assert_eq "$inode" "$(stat -c %i "$PREFIX/share/applications/libreoffice-calc.desktop")"
+    assert_eq "$before" "$(cat "$HOME/Desktop/teams.desktop")"
+    [ ! -s "$sb/warnings" ]
+}
+it 'reruns leave prun-gui launchers, their links and escaped-quote legacy forms untouched' _test_desktop_migration_keeps_prun_gui_launchers
+
+_test_desktop_rewrite_keeps_linked_icon() {
+    local sb; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
+    _desktop_review_setup "$sb"
+    mkdir -p "$sb/launchers"
+    printf '[Desktop Entry]\nName=Legacy\nExec=prun libreoffice %%U\n' > "$sb/launchers/legacy.desktop"
+    chmod 755 "$sb/launchers/legacy.desktop"
+    ln -s "$sb/launchers/legacy.desktop" "$HOME/Desktop/legacy.desktop"
+    desktop_migrate_proot_launcher "$HOME/Desktop/legacy.desktop"
+    [ -L "$HOME/Desktop/legacy.desktop" ]
+    grep -q '^Exec=prun-gui "Legacy" -- libreoffice %U$' "$sb/launchers/legacy.desktop"
+    assert_eq 755 "$(stat -c %a "$sb/launchers/legacy.desktop")"
+}
+it 'migrating a linked legacy launcher rewrites its target and keeps the link' _test_desktop_rewrite_keeps_linked_icon
+
+_test_desktop_copy_skips_bad_entries() {
+    local sb; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
+    _desktop_review_setup "$sb"
+    _desktop_review_fixture "$TEST_ROOTFS/usr/share/applications/libreoffice-base.desktop"
+    ln -s /missing.desktop "$TEST_ROOTFS/usr/share/applications/libreoffice-calc.desktop"
+    printf '[Desktop Entry]\nName=Empty\nExec=\n' > "$TEST_ROOTFS/usr/share/applications/libreoffice-empty.desktop"
+    _desktop_review_fixture "$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop"
+    desktop_copy_from_proot libreoffice 2> "$sb/warnings"
+    assert_file_exists "$PREFIX/share/applications/libreoffice-base.desktop"
+    assert_file_exists "$PREFIX/share/applications/libreoffice-writer.desktop"
+    [ ! -e "$PREFIX/share/applications/libreoffice-calc.desktop" ]
+    [ ! -e "$PREFIX/share/applications/libreoffice-empty.desktop" ]
+    grep -q '/usr/share/applications/libreoffice-calc.desktop$' "$sb/warnings"
+    grep -q '/usr/share/applications/libreoffice-empty.desktop$' "$sb/warnings"
+    if grep -q 'desktop-import' "$sb/warnings"; then return 1; fi
+    [ -z "$(find "$PREFIX/share/applications" -name '.desktop-import.*' -print)" ]
+}
+it 'unusable container entries are skipped, named in warnings, and the rest are imported' _test_desktop_copy_skips_bad_entries
+
+_test_desktop_resolves_link2symlink_paths() {
+    local sb; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
+    _desktop_review_setup "$sb"
+    # proot's link2symlink turns a hard link into an absolute host path.
+    mkdir -p "$TEST_ROOTFS/.l2s"
+    _desktop_review_fixture "$TEST_ROOTFS/.l2s/.l2s.writer.desktop0001"
+    ln -s "$TEST_ROOTFS/.l2s/.l2s.writer.desktop0001" "$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop"
+    assert_eq "$TEST_ROOTFS/.l2s/.l2s.writer.desktop0001" \
+        "$(desktop_resolve_proot_source "$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop" "$TEST_ROOTFS")"
+    desktop_copy_from_proot libreoffice
+    grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$PREFIX/share/applications/libreoffice-writer.desktop"
+}
+it 'link2symlink entries pointing at host paths inside the rootfs are imported' _test_desktop_resolves_link2symlink_paths
 
 _test_cp2menu_gui_preflight_errors() {
     local sb; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
@@ -160,15 +234,15 @@ _test_cp2menu_gui_preflight_errors() {
     script_build_cp2menu "$PREFIX/bin/cp2menu"
     printf 'PROOT_DISTRO=""\n' > "$HOME/.config/termux-xfce/config"
     if bash "$PREFIX/bin/cp2menu" > "$sb/errors" 2>&1; then return 1; fi
-    rg -q -- '--error.*proot 환경이 설정되지' "$TEST_DIALOG_LOG"
+    grep -q -- '--error.*proot 환경이 설정되지' "$TEST_DIALOG_LOG"
     printf 'PROOT_DISTRO=missing\n' > "$HOME/.config/termux-xfce/config"
     if bash "$PREFIX/bin/cp2menu" >> "$sb/errors" 2>&1; then return 1; fi
-    rg -q -- '--error.*rootfs를 찾을 수' "$TEST_DIALOG_LOG"
+    grep -q -- '--error.*rootfs를 찾을 수' "$TEST_DIALOG_LOG"
     printf 'PROOT_DISTRO=archlinux\n' > "$HOME/.config/termux-xfce/config"
     script_build_cp2menu "$PREFIX/bin/cp2menu" "$sb/missing-helper.sh"
     if bash "$PREFIX/bin/cp2menu" >> "$sb/errors" 2>&1; then return 1; fi
-    rg -q -- '--error.*데스크톱 관리 스크립트를 읽을 수' "$TEST_DIALOG_LOG"
-    if rg -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
+    grep -q -- '--error.*데스크톱 관리 스크립트를 읽을 수' "$TEST_DIALOG_LOG"
+    if grep -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
 }
 it 'cp2menu shows GUI errors for missing configuration, rootfs and runtime helper' _test_cp2menu_gui_preflight_errors
 
@@ -182,7 +256,7 @@ _test_cp2menu_import_and_failed_copy() {
     script_build_cp2menu "$PREFIX/bin/cp2menu"
     bash "$PREFIX/bin/cp2menu"
     destination="$PREFIX/share/applications/libreoffice-writer.desktop"
-    rg -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$destination"
+    grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$destination"
     before=$(cat "$destination")
     TEST_SELECTED="$destination" bash "$PREFIX/bin/cp2menu"
     assert_eq "$before" "$(cat "$destination")"
@@ -191,8 +265,8 @@ _test_cp2menu_import_and_failed_copy() {
     export TEST_SELECTED
     if bash "$PREFIX/bin/cp2menu" > "$sb/errors" 2>&1; then return 1; fi
     assert_eq "$before" "$(cat "$destination")"
-    rg -q -- '--error.*복사 실패' "$TEST_DIALOG_LOG"
-    if rg -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
+    grep -q -- '--error.*복사 실패' "$TEST_DIALOG_LOG"
+    if grep -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
 }
 it 'generated cp2menu imports absolute links and keeps existing launchers after a failed copy' _test_cp2menu_import_and_failed_copy
 
@@ -211,10 +285,30 @@ desktop_import_proot() {
 }
 UPDATED
     bash "$PREFIX/bin/cp2menu"
-    rg -q '^Exec=updated-command$' "$PREFIX/share/applications/live.desktop"
-    rg -q -- '--info.*복사 완료' "$TEST_DIALOG_LOG"
+    grep -q '^Exec=updated-command$' "$PREFIX/share/applications/live.desktop"
+    grep -q -- '--info.*복사 완료' "$TEST_DIALOG_LOG"
 }
 it 'cp2menu sources its live checkout path safely after the helper is updated' _test_cp2menu_live_helper
+
+_test_cp2menu_falls_back_to_installed_helper() {
+    local sb selected; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
+    _desktop_review_setup "$sb"
+    source "$_DESKTOP_REVIEW_ROOT/domain/termux_env.sh"
+    _setup_cp2menu
+    assert_file_exists "$PREFIX/libexec/termux-xfce/desktop.sh"
+    # Generate for a checkout, then move that checkout away.
+    mkdir -p "$sb/checkout"
+    cp "$_DESKTOP_REVIEW_ROOT/app-installer/domain/desktop.sh" "$sb/checkout/"
+    script_build_cp2menu "$PREFIX/bin/cp2menu" "$sb/checkout/desktop.sh"
+    mv "$sb/checkout" "$sb/moved-checkout"
+    _desktop_review_fixture "$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop"
+    selected="$TEST_ROOTFS/usr/share/applications/libreoffice-writer.desktop"
+    _desktop_review_gui "$selected"
+    bash "$PREFIX/bin/cp2menu"
+    grep -q '^Exec=prun-gui "Writer 100%%" -- libreoffice --writer %U$' "$PREFIX/share/applications/libreoffice-writer.desktop"
+    grep -q -- '--info.*복사 완료' "$TEST_DIALOG_LOG"
+}
+it 'cp2menu uses the helper installed by setup when the checkout is gone' _test_cp2menu_falls_back_to_installed_helper
 
 _test_cp2menu_remove_failure() {
     local sb; sb=$(make_sandbox); trap 'cleanup_sandbox "$_DESKTOP_REVIEW_SB"' EXIT
@@ -222,8 +316,8 @@ _test_cp2menu_remove_failure() {
     _desktop_review_gui "$PREFIX/share/applications/missing.desktop" 'Remove .desktop file'
     script_build_cp2menu "$PREFIX/bin/cp2menu"
     if bash "$PREFIX/bin/cp2menu" > "$sb/errors" 2>&1; then return 1; fi
-    rg -q -- '--error.*제거 실패' "$TEST_DIALOG_LOG"
-    if rg -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
+    grep -q -- '--error.*제거 실패' "$TEST_DIALOG_LOG"
+    if grep -q -- '--info' "$TEST_DIALOG_LOG"; then return 1; fi
 }
 it 'cp2menu reports failed removals through its GUI without a completion message' _test_cp2menu_remove_failure
 

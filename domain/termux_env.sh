@@ -255,9 +255,11 @@ ALIASES
 
 _setup_locale() {
     # 기존 한글 UI 설치에도 수정된 gettext 훅을 배포한다. 새 설치는 선택 항목이다.
+    # 기본 설치는 컴파일러를 새로 받지 않고, 갱신에 실패해도 기존 훅으로 계속한다.
     if [ -s "$PREFIX/lib/force_gettext.so" ] && declare -F _build_force_gettext >/dev/null; then
-        _build_force_gettext || return 1
-        setup_korean_rc || return 1
+        _build_force_gettext --no-compiler-install ||
+            ui_warn "한글 UI 훅을 갱신하지 못해 기존 force_gettext.so를 유지합니다. App Installer의 한글 로케일 업그레이드로 다시 시도할 수 있습니다."
+        setup_korean_rc || ui_warn "한글 RC 블록을 갱신하지 못했습니다."
     fi
     local block
     block=$(cat << 'LOCALE'
@@ -295,25 +297,63 @@ fi
 KOREAN
 )
     block="${block/__KOREAN_FALLBACK_DOMAINS__/$_KOREAN_FALLBACK_DOMAINS}"
+    # A line earlier installers wrote that the current block no longer has.
+    # FALLBACK_DOMAINS changed over time, so it is matched by its shape.
+    local legacy='    case ":${LD_PRELOAD-}:" in *:"$PREFIX/lib/force_gettext.so":*) ;; *)'
 
+    local rc target staged status
     while IFS= read -r rc; do
         [ -f "$rc" ] || continue
-        # 이 블록의 끝은 단독 fi다. 경계가 손상됐으면 원본을 보존하고 실패한다.
-        local tmp
-        tmp=$(mktemp "${rc}.XXXXXX") || return 1
-        awk '
-            /^# termux-xfce-korean([[:space:]]|$)/ { if (managed) { bad=1; exit 1 }; managed=1; saved=$0 "\n"; next }
-            managed { saved=saved $0 "\n"; if ($0 == "fi") { managed=0; saved="" }; next }
+        if ! grep -qF '# termux-xfce-korean' "$rc"; then
+            printf '%s\n' "$block" >> "$rc" || return 1
+            continue
+        fi
+        # Replace in place only blocks made entirely of installer lines, so the
+        # lines around them keep their order. A block the user edited is left
+        # as it is; exit status 3 reports one.
+        target=$(readlink -f -- "$rc") || return 1
+        staged=$(mktemp "${target}.XXXXXX") || return 1
+        status=0
+        KOREAN_BLOCK="${block#$'\n'}" KOREAN_LEGACY="$legacy" awk '
+            function reject() { printf "%s", held; held = ""; state = 0; unknown = 1 }
+            BEGIN {
+                n = split(ENVIRON["KOREAN_BLOCK"], current, "\n")
+                opener = current[2]
+                for (i = 3; i < n; i++) known[current[i]] = 1
+                known[ENVIRON["KOREAN_LEGACY"]] = 1
+            }
+            # 1: after the marker, 2: in the body, 3: in a continued FALLBACK_DOMAINS value
+            state == 1 { held = held $0 "\n"; if ($0 == opener) state = 2; else reject(); next }
+            state == 3 {
+                held = held $0 "\n"
+                if ($0 !~ /^[A-Za-z0-9._+ -]*("| \\)$/) reject()
+                else if ($0 ~ /"$/) state = 2
+                next
+            }
+            state == 2 {
+                held = held $0 "\n"
+                if ($0 == "fi") { print ENVIRON["KOREAN_BLOCK"]; held = ""; state = 0; replaced = 1 }
+                else if ($0 ~ /^    export FALLBACK_DOMAINS="[A-Za-z0-9._+ -]*("| \\)$/) { if ($0 ~ / \\$/) state = 3 }
+                else if (!($0 in known)) reject()
+                next
+            }
+            /^# termux-xfce-korean([[:space:]]|$)/ { held = $0 "\n"; state = 1; next }
             { print }
-            END { if (managed || bad) exit 1 }
-        ' "$rc" > "$tmp" || {
-            rm -f "$tmp"
-            ui_error "한글 RC 블록의 경계를 확인할 수 없습니다: $rc"
+            END { if (state) reject(); exit (unknown || !replaced) ? 3 : 0 }
+        ' "$target" > "$staged" || status=$?
+        case "$status" in
+            0) ;;
+            3) ui_warn "직접 수정된 한글 RC 블록은 그대로 둡니다: $rc" ;;
+            *) rm -f -- "$staged"; return 1 ;;
+        esac
+        if cmp -s "$staged" "$target"; then
+            rm -f -- "$staged"
+            continue
+        fi
+        chmod --reference="$target" "$staged" && mv -f -- "$staged" "$target" || {
+            rm -f -- "$staged"
             return 1
         }
-        cat "$tmp" > "$rc" || { rm -f "$tmp"; return 1; }
-        rm -f "$tmp"
-        printf '%s\n' "$block" >> "$rc" || return 1
     done < <(_rc_targets)
 }
 
@@ -510,7 +550,9 @@ _setup_kill_display() {
 exec kill_display_session "$@"
 EOF
     chmod +x "$PREFIX/bin/kill_termux_x11"
-    rm -f "$PREFIX/share/applications/kill_termux_x11.desktop" "$HOME/Desktop/kill_termux_x11.desktop"
+    # The old menu entry duplicates kill_display_session.desktop. A desktop icon
+    # is the user's and is migrated by the loop below instead.
+    rm -f "$PREFIX/share/applications/kill_termux_x11.desktop"
 
     cat > "$PREFIX/share/applications/kill_display_session.desktop" << 'EOF'
 [Desktop Entry]
@@ -701,9 +743,13 @@ EOF
 
 _setup_cp2menu() {
     local bin="$PREFIX/bin/cp2menu"
+    local helper="${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh"
 
-    mkdir -p "$PREFIX/share/applications"
-    script_build_cp2menu "$bin" "${BASH_SOURCE[0]%/*}/../app-installer/domain/desktop.sh" || return 1
+    mkdir -p "$PREFIX/share/applications" "$PREFIX/libexec/termux-xfce"
+    # cp2menu reads the checkout's helper and falls back to this copy, refreshed
+    # on every run, when the checkout has been moved or deleted.
+    cp -- "$helper" "$PREFIX/libexec/termux-xfce/desktop.sh" || return 1
+    script_build_cp2menu "$bin" "$helper" || return 1
     chmod +x "$bin"
 
     cat > "$PREFIX/share/applications/cp2menu.desktop" << 'EOF'
@@ -730,11 +776,17 @@ PREV_ANDROID="" PREV_X11=""
 while true; do
     sleep 2
     ANDROID=$(termux-clipboard-get 2>/dev/null) || continue
-    # A fresh X11 session has no selection owner. Seed it from Android instead
-    # of waiting for an X11 application to copy something first.
     if ! X11=$(DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -o 2>/dev/null); then
-        printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null || continue
-        X11="$ANDROID"
+        if DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -t TARGETS -o >/dev/null 2>&1; then
+            # The owner offers no text (a copied image, for example). Keep it
+            # until Android receives a newer copy.
+            X11="$PREV_X11"
+        else
+            # A fresh X11 session has no selection owner. Seed it from Android
+            # instead of waiting for an X11 application to copy something first.
+            printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null || continue
+            X11="$ANDROID"
+        fi
     fi
     if [ "$ANDROID" != "$PREV_ANDROID" ] && [ "$ANDROID" != "$X11" ]; then
         printf '%s' "$ANDROID" | DISPLAY="${DISPLAY:-:0}" xclip -selection clipboard -i 2>/dev/null || continue

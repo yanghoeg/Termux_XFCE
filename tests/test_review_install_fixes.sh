@@ -24,6 +24,7 @@ _bootstrap_mocks() {
     }
     pkg() {
         { printf 'pkg'; printf ' %s' "$@"; printf '\n'; } >> "$REVIEW_BOOT_TRACE"
+        printf '%s\n' "${TERMUX_PKG_NO_MIRROR_SELECT-unset}" > "$REVIEW_BOOT_TRACE.mirror"
         [ "${REVIEW_BOOT_FAIL:-false}" != true ] || return 42
         touch "$REVIEW_BOOT_INSTALLED"
     }
@@ -50,6 +51,8 @@ _test_bootstrap_installs_git_first() {
     _bootstrap_mocks
     PREFIX=/data/data/com.termux/files/usr bash -s -- --no-proot < "$_FIXES_ROOT/install.sh"
     assert_eq 'pkg install -y -o Dpkg::Options::=--force-confold git' "$(head -1 "$REVIEW_BOOT_TRACE")"
+    # The package adapter is not loaded yet, so the bootstrap skips pkg's mirror test itself.
+    assert_eq 1 "$(cat "$REVIEW_BOOT_TRACE.mirror")"
     assert_file_contains "$REVIEW_BOOT_TRACE" '^git clone '
     assert_file_contains "$REVIEW_BOOT_TRACE" '^installer args: --no-proot$'
 }
@@ -84,13 +87,18 @@ _clipboard_mocks() {
     printf 'Android copy' > "$REVIEW_CLIP_STATE/android"
     sleep() {
         REVIEW_CLIP_ITER=$(( ${REVIEW_CLIP_ITER:-0} + 1 ))
-        [ "$REVIEW_CLIP_ITER" -le 3 ] || exit 0
+        [ "$REVIEW_CLIP_ITER" -le "${REVIEW_CLIP_ITERATIONS:-3}" ] || exit 0
         if [ "$REVIEW_CLIP_ITER" -eq 2 ]; then
             case "${REVIEW_CLIP_CHANGE:-}" in
                 x11) printf 'Desktop copy' > "$REVIEW_CLIP_STATE/x11" ;;
                 android) printf 'Second Android copy' > "$REVIEW_CLIP_STATE/android" ;;
                 drop) rm -f "$REVIEW_CLIP_STATE/x11" ;;
+                # An owner that offers only image targets.
+                image) rm -f "$REVIEW_CLIP_STATE/x11"; touch "$REVIEW_CLIP_STATE/x11-image" ;;
             esac
+        fi
+        if [ "$REVIEW_CLIP_ITER" -eq "${REVIEW_CLIP_ANDROID_AT:-0}" ]; then
+            printf 'Later Android copy' > "$REVIEW_CLIP_STATE/android"
         fi
     }
     termux-clipboard-get() { cat "$REVIEW_CLIP_STATE/android"; }
@@ -100,9 +108,16 @@ _clipboard_mocks() {
     }
     xclip() {
         case "${!#}" in
-            -o) [ -f "$REVIEW_CLIP_STATE/x11" ] || return 1; cat "$REVIEW_CLIP_STATE/x11" ;;
+            -o)
+                if [ "${3:-}" = -t ] && [ "${4:-}" = TARGETS ]; then
+                    [ -f "$REVIEW_CLIP_STATE/x11" ] || [ -f "$REVIEW_CLIP_STATE/x11-image" ] || return 1
+                    printf 'TARGETS\n'
+                    return 0
+                fi
+                [ -f "$REVIEW_CLIP_STATE/x11" ] || return 1; cat "$REVIEW_CLIP_STATE/x11" ;;
             -i)
                 printf 'write X11\n' >> "$REVIEW_CLIP_STATE/trace"
+                rm -f "$REVIEW_CLIP_STATE/x11-image"
                 if [ "${REVIEW_CLIP_FAIL_ONCE:-false}" = true ] &&
                    [ ! -f "$REVIEW_CLIP_STATE/failed" ]; then
                     touch "$REVIEW_CLIP_STATE/failed"
@@ -158,6 +173,29 @@ _test_clipboard_owner_loss_preserves_android() {
     if grep -q '^set Android$' "$REVIEW_CLIP_STATE/trace"; then return 1; fi
 }
 it 'losing the X11 owner does not clear the Android clipboard' _test_clipboard_owner_loss_preserves_android
+
+_test_clipboard_keeps_image_owner() {
+    _fixes_sandbox
+    _clipboard_mocks
+    export REVIEW_CLIP_CHANGE=image REVIEW_CLIP_ITERATIONS=4
+    bash "$PREFIX/bin/termux-clipboard-sync"
+    # Only the initial seed writes X11; the copied image keeps its owner.
+    assert_eq 1 "$(grep -c '^write X11$' "$REVIEW_CLIP_STATE/trace")"
+    assert_file_exists "$REVIEW_CLIP_STATE/x11-image"
+    assert_eq 'Android copy' "$(cat "$REVIEW_CLIP_STATE/android")"
+    if grep -q '^set Android$' "$REVIEW_CLIP_STATE/trace"; then return 1; fi
+}
+it 'an X11 owner offering only an image is not overwritten by Android text' _test_clipboard_keeps_image_owner
+
+_test_clipboard_newer_android_replaces_image() {
+    _fixes_sandbox
+    _clipboard_mocks
+    export REVIEW_CLIP_CHANGE=image REVIEW_CLIP_ANDROID_AT=3 REVIEW_CLIP_ITERATIONS=4
+    bash "$PREFIX/bin/termux-clipboard-sync"
+    assert_eq 'Later Android copy' "$(cat "$REVIEW_CLIP_STATE/x11")"
+    [ ! -e "$REVIEW_CLIP_STATE/x11-image" ]
+}
+it 'a newer Android copy still replaces an X11 image' _test_clipboard_newer_android_replaces_image
 
 _test_alias_changes_user() {
     _fixes_sandbox

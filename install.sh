@@ -41,7 +41,9 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR/domain" ]; then
             *) echo "[ERROR] Git 설치에는 Android Termux 환경이 필요합니다." >&2; exit 1 ;;
         esac
         echo "[INFO] 저장소 복제에 필요한 Git을 설치합니다..."
-        if ! pkg install -y -o Dpkg::Options::="--force-confold" git ||
+        # The package adapter is not loaded yet; skip pkg's mirror test here too
+        # (see adapters/output/pkg_common_termux.sh).
+        if ! TERMUX_PKG_NO_MIRROR_SELECT=1 pkg install -y -o Dpkg::Options::="--force-confold" git ||
            ! command -v git >/dev/null 2>&1; then
             echo "[ERROR] Git을 준비하지 못했습니다. 네트워크와 패키지 저장소를 확인하세요." >&2
             exit 1
@@ -133,13 +135,16 @@ parse_cli_args "$@"
 
 # Check runtime dependencies before prompting or modifying the installation.
 # CLI parsing handles --help even when the submodule has not been initialized.
-for _required_helper in lib/input_method.sh domain/desktop.sh; do
-    if [ ! -r "$SCRIPT_DIR/app-installer/$_required_helper" ]; then
-        echo "[ERROR] app-installer 서브모듈이 필요합니다: git submodule update --init --recursive" >&2
-        exit 1
-    fi
-done
-unset _required_helper
+# A stale checkout can be readable yet lack functions this installer calls, so
+# load the helpers in a subshell and require those functions.
+if ! (
+    source "$SCRIPT_DIR/app-installer/lib/input_method.sh" &&
+        source "$SCRIPT_DIR/app-installer/domain/desktop.sh" &&
+        declare -F input_method_setup desktop_migrate_proot_launcher desktop_import_proot
+) >/dev/null 2>&1; then
+    echo "[ERROR] app-installer 서브모듈이 없거나 이 설치기와 버전이 맞지 않습니다: git submodule update --init --recursive" >&2
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # 5. Input Adapter — 빠진 값 대화형으로 채우기

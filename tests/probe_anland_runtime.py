@@ -27,7 +27,8 @@ with open(os.environ['ANLAND_TEST_TRACE'], 'a') as f:
         'DISPLAY': os.getenv('DISPLAY'), 'WAYLAND_DISPLAY': os.getenv('WAYLAND_DISPLAY'),
         'ANLAND_SOCKET': os.getenv('ANLAND_SOCKET'),
         'MESA': os.getenv('MESA_LOADER_DRIVER_OVERRIDE'),
-        'GDK': os.getenv('GDK_BACKEND')})+'\n')
+        'GDK': os.getenv('GDK_BACKEND'),
+        'DEADLINE': os.getenv('ANLAND_STARTUP_DEADLINE')})+'\n')
 if name in ('am', 'termux-wake-unlock', 'dbus-update-activation-environment'):
     sys.exit(0)
 if os.getenv('ANLAND_TEST_FAIL') == name:
@@ -114,6 +115,8 @@ def run_case(failure, variant):
                 if proc.poll() is not None or (state/'anland-ready').exists(): break
                 time.sleep(.05)
             rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            # The startup deadline is the supervisor's; no session process inherits it.
+            assert all(r['DEADLINE'] is None for r in rows), rows
             if failure:
                 assert proc.wait(timeout=35 if failure == 'plasmashell' else 120) != 0, (failure, (case/'log').read_text())
                 assert not (state/'anland-ready').exists()

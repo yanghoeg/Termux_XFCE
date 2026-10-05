@@ -221,6 +221,7 @@ if [ -z "$DISTRO" ]; then
     _cp2menu_error 'proot 환경이 설정되지 않았습니다.'
     exit 1
 fi
+[ -r "$DESKTOP_HELPER" ] || DESKTOP_HELPER="$PREFIX/libexec/termux-xfce/desktop.sh"
 if ! source "$DESKTOP_HELPER"; then
     _cp2menu_error "데스크톱 관리 스크립트를 읽을 수 없습니다: $DESKTOP_HELPER"
     exit 1
