@@ -123,10 +123,17 @@ display_emit_clipboard_sync() {
 display_emit_session_launch() {
     cat << 'FRAG'
 _WL_LOG="$HOME/.xfce-wayland.log"
-setsid nohup bash "$PREFIX/bin/termux-xfce-anland-session" >"$_WL_LOG" 2>&1 </dev/null &
+# The supervisor owns one startup deadline, daemon/audio setup included, and
+# exits when it passes. Waiting a little longer here keeps a session found by
+# its last check from being killed by this launcher.
+# Bash printf reads the clock without spawning date for every polling iteration.
+printf -v _ANLAND_DEADLINE '%(%s)T' -1
+_ANLAND_DEADLINE=$((_ANLAND_DEADLINE + 90))
+ANLAND_STARTUP_DEADLINE=$_ANLAND_DEADLINE \
+    setsid nohup bash "$PREFIX/bin/termux-xfce-anland-session" >"$_WL_LOG" 2>&1 </dev/null &
 _ANLAND_PID=$!
 printf '%s\t%s\n' "$_ANLAND_PID" "termux-xfce-anland-session" > "$SESSION_STATE_DIR/session.pid"
-for _i in $(seq 1 60); do
+while :; do
     if ! kill -0 "$_ANLAND_PID" 2>/dev/null; then
         echo "ERROR: Anland 세션 시작 실패. 로그: $_WL_LOG" >&2
         tail -n 20 "$_WL_LOG" >&2
@@ -140,6 +147,8 @@ for _i in $(seq 1 60); do
             exit 0
         fi
     fi
+    printf -v _ANLAND_NOW '%(%s)T' -1
+    [ "$_ANLAND_NOW" -lt "$((_ANLAND_DEADLINE + 15))" ] || break
     sleep 0.5
 done
 echo "ERROR: Anland/Plasma 시작 대기 시간 초과. 로그: $_WL_LOG" >&2

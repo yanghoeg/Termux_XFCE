@@ -52,7 +52,9 @@ pkg_remove() {
 }
 
 pkg_is_installed() {
-    dpkg -s "$1" 2>/dev/null | grep -q "^Status: install ok installed"
+    local status
+    status=$(dpkg-query -W -f='${Status}' "$1" 2>/dev/null) || return 1
+    [ "${status#* }" = 'ok installed' ]
 }
 
 pkg_autoremove() {
@@ -67,25 +69,46 @@ pkg_autoremove() {
 pkg_install_deb_url() {
     local url="$1"
     local expected_sha256="${2:-}"
-    local deb="${TMPDIR:-/tmp}/$(basename "$url")"
+    local work deb package version architecture installed expected
+    work=$(mktemp -d "${TMPDIR:-/tmp}/termux-deb.XXXXXX") || return 1
+    deb="$work/package.deb"
 
-    wget -q "$url" -O "$deb" || { rm -f "$deb"; return 1; }
+    wget -q "$url" -O "$deb" || { rm -rf "$work"; return 1; }
 
     if [ -n "$expected_sha256" ]; then
         local actual_sha256
-        actual_sha256=$(sha256sum "$deb" | cut -d' ' -f1)
+        actual_sha256=$(sha256sum "$deb") || { rm -rf "$work"; return 1; }
+        actual_sha256=${actual_sha256%% *}
         if [ "$actual_sha256" != "$expected_sha256" ]; then
             echo "[ERROR] $(basename "$deb") sha256 불일치 (기대: ${expected_sha256}, 실제: ${actual_sha256}) — 설치 중단" >&2
-            rm -f "$deb"
+            rm -rf "$work"
             return 1
         fi
+    fi
+
+    package=$(dpkg-deb -f "$deb" Package) &&
+        version=$(dpkg-deb -f "$deb" Version) &&
+        architecture=$(dpkg-deb -f "$deb" Architecture) || {
+        rm -rf "$work"
+        return 1
+    }
+    if [ -z "$package" ] || [ -z "$version" ] || [ -z "$architecture" ]; then
+        rm -rf "$work"
+        return 1
     fi
 
     if ! dpkg -i --force-overwrite "$deb" 2>/dev/null; then
         if ! apt --fix-broken install -y 2>/dev/null; then
-            rm -f "$deb"
+            rm -rf "$work"
             return 1
         fi
     fi
-    rm -f "$deb"
+    expected=$(printf 'ok installed\t%s\t%s' "$version" "$architecture")
+    installed=$(dpkg-query -W -f='${Status}\t${Version}\t${Architecture}' "$package" 2>/dev/null) || installed=""
+    if [ "${installed#* }" != "$expected" ]; then
+        echo "[ERROR] ${package} ${version} (${architecture}) 설치 상태 확인 실패" >&2
+        rm -rf "$work"
+        return 1
+    fi
+    rm -rf "$work"
 }

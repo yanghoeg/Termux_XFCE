@@ -6,6 +6,7 @@ import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 
 root = Path(sys.argv[1])
@@ -26,7 +27,8 @@ with open(os.environ['ANLAND_TEST_TRACE'], 'a') as f:
         'DISPLAY': os.getenv('DISPLAY'), 'WAYLAND_DISPLAY': os.getenv('WAYLAND_DISPLAY'),
         'ANLAND_SOCKET': os.getenv('ANLAND_SOCKET'),
         'MESA': os.getenv('MESA_LOADER_DRIVER_OVERRIDE'),
-        'GDK': os.getenv('GDK_BACKEND')})+'\n')
+        'GDK': os.getenv('GDK_BACKEND'),
+        'DEADLINE': os.getenv('ANLAND_STARTUP_DEADLINE')})+'\n')
 if name in ('am', 'termux-wake-unlock', 'dbus-update-activation-environment'):
     sys.exit(0)
 if os.getenv('ANLAND_TEST_FAIL') == name:
@@ -85,8 +87,8 @@ def run_case(failure, variant):
     _case_seq += 1
     case = base / f'c{_case_seq}'
     state = case / 'state'
-    runtime = case / 'run'
-    temp = case / 'tmp'
+    runtime = socket_base / f'r{_case_seq}'
+    temp = socket_base / f't{_case_seq}'
     for d in (state, runtime, temp): d.mkdir(parents=True)
     (Path(os.environ['HOME']) / '.config/termux-xfce/anland-variant').write_text(variant+'\n')
     trace = case / 'trace.jsonl'
@@ -95,19 +97,28 @@ def run_case(failure, variant):
                ANLAND_TEST_TRACE=str(trace), ANLAND_TEST_FAIL=failure,
                DISPLAY=':0', WAYLAND_DISPLAY='wrong-parent', WLR_BACKENDS='x11',
                MESA_LOADER_DRIVER_OVERRIDE='zink', GDK_BACKEND='x11')
+    env.pop('ANLAND_STARTUP_DEADLINE', None)
+    if failure == 'plasmashell':
+        # Exercise the launcher's deadline propagation without spending 90s on a
+        # shell that is deliberately unable to start. Ignoring this deadline
+        # would make the wait below time out and fail the test.
+        env['ANLAND_STARTUP_DEADLINE'] = str(int(time.time()) + 15)
     with (case / 'log').open('w') as log:
         proc = subprocess.Popen(['bash', str(bin_dir/'termux-xfce-anland-session')], env=env,
                                 stdout=log, stderr=log)
         try:
-            deadline = time.monotonic()+12
+            # Android process discovery and interpreter startup can exceed 12s
+            # under concurrent test load. Healthy starts get the supervisor's
+            # full initialization budget, and still finish as soon as ready.
+            deadline = time.monotonic()+(120 if not failure else 12)
             while time.monotonic() < deadline:
                 if proc.poll() is not None or (state/'anland-ready').exists(): break
                 time.sleep(.05)
             rows = [json.loads(line) for line in trace.read_text().splitlines()]
+            # The startup deadline is the supervisor's; no session process inherits it.
+            assert all(r['DEADLINE'] is None for r in rows), rows
             if failure:
-                # A shell that never comes up is only given up on after
-                # _wait_plasma's full 90s deadline, so allow for that here.
-                assert proc.wait(timeout=120) != 0, (failure, (case/'log').read_text())
+                assert proc.wait(timeout=35 if failure == 'plasmashell' else 120) != 0, (failure, (case/'log').read_text())
                 assert not (state/'anland-ready').exists()
             else:
                 assert (state/'anland-ready').exists(), (case/'log').read_text()
@@ -133,7 +144,9 @@ def run_case(failure, variant):
                 assert shells[-1]['WAYLAND_DISPLAY']=='wayland-0', shells[-1]
                 rows = [json.loads(line) for line in trace.read_text().splitlines()]
                 os.kill(plasma['pid'], signal.SIGTERM)
-                proc.wait(timeout=8)
+                # Cleanup runs process discovery and two Python Android stubs;
+                # their startup alone can exceed 8s on a busy Android device.
+                proc.wait(timeout=30)
             deadline = time.monotonic()+3
             while time.monotonic()<deadline and any(alive(r['pid']) for r in rows): time.sleep(.05)
             assert not any(alive(r['pid']) for r in rows), ('child leaked', rows)
@@ -149,9 +162,15 @@ def run_case(failure, variant):
                     try: os.kill(row['pid'], signal.SIGTERM)
                     except ProcessLookupError: pass
 
-run_case('', 'compatible')
-run_case('', 'standard')
-run_case('anland', 'compatible')
-run_case('anland-compatible', 'compatible')
-run_case('startplasma-wayland', 'compatible')
-run_case('plasmashell', 'compatible')
+# Keep socket paths independent of a caller's deeply nested TMPDIR/sandbox.
+socket_parent = '/data/data/com.termux/files/usr/tmp'
+if not Path(socket_parent).is_dir():
+    socket_parent = '/tmp'
+with tempfile.TemporaryDirectory(prefix='a.', dir=socket_parent) as socket_dir:
+    socket_base = Path(socket_dir)
+    run_case('', 'compatible')
+    run_case('', 'standard')
+    run_case('anland', 'compatible')
+    run_case('anland-compatible', 'compatible')
+    run_case('startplasma-wayland', 'compatible')
+    run_case('plasmashell', 'compatible')

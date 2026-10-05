@@ -69,6 +69,8 @@ static int override_allowed_for(const char* domain){
 
 /* ------------ hard overrides ------------ */
 typedef struct { const char* k; const char* v; } KV;
+static const char SAVE_CHANGES_MARKUP[] =
+  "<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>";
 static const KV EXACT[]={
   {"File","파일"},{"_File","파일(_F)"},{"Edit","편집"},{"_Edit","편집(_E)"},
   {"View","보기"},{"_View","보기(_V)"},{"Go","이동"},{"_Go","이동(_G)"},
@@ -79,8 +81,7 @@ static const KV EXACT[]={
   {"Save Changes","변경 사항 저장"},
 
   /* Mousepad 헤드라인: 굵게+큰 글씨 */
-  {"Do you want to save the changes before closing?",
-   "<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>"},
+  {"Do you want to save the changes before closing?", SAVE_CHANGES_MARKUP},
   {"If you don't save the document, all the changes will be lost.","문서를 저장하지 않으면 모든 변경 사항이 사라집니다."},
 
   {"Stock label|_Save","저장(_S)"},{"Stock label|Save","저장"},
@@ -133,23 +134,14 @@ static const KV EXACT[]={
   {"Memory","메모리"},
 };
 
-typedef struct { const char* needle; const char* trans; } SUB;
-static const SUB SUBSTR[]={
-  {"It seems that the previous session did not end normally. Do you want to restore the available data?","이전 세션이 정상적으로 종료되지 않은 것 같습니다. 사용 가능한 데이터를 복구하시겠습니까?"},
-  {"If not, all this data will be lost.","복구하지 않으면 이 데이터는 모두 손실됩니다."},
-  {"Do you want to save the changes before closing?","<span weight='bold' size='larger'>닫기 전에 변경 사항을 저장하시겠습니까?</span>"},
-  {"If you don't save the document, all the changes will be lost.","문서를 저장하지 않으면 모든 변경 사항이 사라집니다."},
-  {"Open Terminal Here","여기서 터미널 열기"},
-  {"Find in this folder","이 폴더에서 찾기"},
-  {"Search in this folder","이 폴더에서 검색"},
-  {"Scripts","스크립트"},
-};
-
 /* ===== Launcher: 정확히 2줄 + 빈 줄 ===== */
 static __thread int TLS_IS_LAUNCHER = 0;
+/* Only Thunar's untrusted-launcher warning ("The desktop file %s is in an
+   insecure location ..."); other texts that mention desktop files keep theirs. */
 static const char* dyn_launcher_detail(const char* raw){
   if(!raw) return NULL;
-  if(strstr(raw,"The desktop file") || strstr(raw,"desktop file")){
+  raw=ctx_tail(raw);
+  if(strncmp(raw,"The desktop file ",17)==0 && strstr(raw," is in an insecure location")){
     static char buf[256];
     snprintf(buf,sizeof(buf),
       "이 실행 아이콘은 안전하지 않은 위치에 있거나 신뢰/실행 가능한 파일로 표시되어 있지 않습니다. 이 프로그램을 신뢰하지 않으면 취소를 누르세요.\n\n");
@@ -159,29 +151,25 @@ static const char* dyn_launcher_detail(const char* raw){
   return NULL;
 }
 
-/* 핵심 오버라이드 */
+/* 핵심 오버라이드 — 문자열 전체가 키와 같을 때만 바꾼다. GTK setter 훅은 창
+   제목이나 파일 이름 같은 임의의 텍스트도 받으므로 부분 일치로 바꾸지 않는다. */
 static const char* hard_override_core(const char* raw){
   if(!raw) return NULL;
 
   /* 런처 본문(2줄 고정) */
   const char* d = dyn_launcher_detail(raw); if(d) return d;
 
-  /* Timeout 계열 느슨 매칭 */
-  char pr[256]; normalize_key(raw, pr, sizeof(pr));
-  if(strstr(pr,"timeout was reached") || strstr(pr,"operation timed out") ||
-     strstr(pr,"timed out") || strstr(pr,"connection timed out"))
-    return "시간 제한에 도달했습니다";
+  /* Preserve mnemonic-bearing labels before normalization removes underscores. */
+  const char* literal=ctx_tail(raw);
+  for(size_t i=0;i<sizeof(EXACT)/sizeof(EXACT[0]); ++i){
+    if(strcmp(literal,EXACT[i].k)==0) return EXACT[i].v;
+  }
 
-  /* EXACT 완전일치 */
+  /* Normalized fallback still handles punctuation and formatting variants. */
   char body[1024]; normalize_key(raw, body, sizeof(body));
   for(size_t i=0;i<sizeof(EXACT)/sizeof(EXACT[0]); ++i){
     char keyn[1024]; normalize_key(EXACT[i].k, keyn, sizeof(keyn));
     if(strcmp(body,keyn)==0) return EXACT[i].v;
-  }
-  /* SUBSTR 부분일치 */
-  for(size_t i=0;i<sizeof(SUBSTR)/sizeof(SUBSTR[0]); ++i){
-    char needn[1024]; normalize_key(SUBSTR[i].needle, needn, sizeof(needn));
-    if(strstr(body,needn)) return SUBSTR[i].trans;
   }
   return NULL;
 }
@@ -194,7 +182,6 @@ static Dict* dict_new(size_t n){ Dict* d=calloc(1,sizeof(Dict)); d->n=n?n:1024; 
 static void dict_put(Dict* d,const char*k,const char*v){ if(!d||!k||!v) return; uint32_t h=djb2(k)%d->n; Entry* e=malloc(sizeof(*e)); e->key=strdup(k); e->val=strdup(v); e->next=d->b[h]; d->b[h]=e; }
 static const char* dict_get(Dict* d,const char*k){ if(!d||!k) return NULL; uint32_t h=djb2(k)%d->n; for(Entry* e=d->b[h]; e; e=e->next) if(strcmp(e->key,k)==0) return e->val; return NULL; }
 
-typedef struct { uint32_t magic,rev,n,offo,offt,hsz,hoff; } H;
 static uint32_t sw(uint32_t x){ return (x>>24)|((x>>8)&0xFF00)|((x<<8)&0xFF0000)|(x<<24); }
 typedef struct { Dict* d; char* blob; size_t len; int be; } Cat;
 static int rf(const char* p,char**o,size_t*L){
@@ -204,19 +191,22 @@ static int rf(const char* p,char**o,size_t*L){
   if(fread(b,1,(size_t)n,f)!=(size_t)n){ fclose(f); free(b); return -1; }
   fclose(f); *o=b; *L=(size_t)n; return 0;
 }
-static uint32_t rd32(const char*p,int be){ uint32_t v=*(const uint32_t*)p; return be?sw(v):v; }
+static uint32_t rd32(const char*p,int be){ uint32_t v; memcpy(&v,p,sizeof(v)); return be?sw(v):v; }
 static Cat* loadmo(const char* path){
   char* b=NULL; size_t L=0; if(rf(path,&b,&L)!=0) return NULL;
   if(L<28){ free(b); return NULL; }
-  H* h=(H*)b; int be=0;
-  if(h->magic==0x950412de) be=0; else if(h->magic==0xde120495) be=1; else { free(b); return NULL; }
-  uint32_t n=rd32((char*)&h->n,be), oo=rd32((char*)&h->offo,be), ot=rd32((char*)&h->offt,be);
-  if(n>1000000||oo>L||ot>L||oo+8ULL*n>L||ot+8ULL*n>L){ free(b); return NULL; }
+  uint32_t magic=rd32(b,0); int be=0;
+  if(magic==0x950412de) be=0; else if(magic==0xde120495) be=1; else { free(b); return NULL; }
+  uint32_t n=rd32(b+8,be), oo=rd32(b+12,be), ot=rd32(b+16,be);
+  if(n>1000000||oo>L||ot>L||n>(L-oo)/8||n>(L-ot)/8){ free(b); return NULL; }
   Dict* d=dict_new(n*2+1);
   for(uint32_t i=0;i<n;i++){
-    uint32_t olen=rd32(b+oo+i*8+0,be), ooff=rd32(b+oo+i*8+4,be);
-    uint32_t tlen=rd32(b+ot+i*8+0,be), toff=rd32(b+ot+i*8+4,be);
-    if(ooff>L||toff>L||ooff+olen>=L||toff+tlen>=L) continue;
+    uint32_t olen=rd32(b+(size_t)oo+(size_t)i*8,be), ooff=rd32(b+(size_t)oo+(size_t)i*8+4,be);
+    uint32_t tlen=rd32(b+(size_t)ot+(size_t)i*8,be), toff=rd32(b+(size_t)ot+(size_t)i*8+4,be);
+    /* Length excludes the final NUL, but may include plural-form separators.
+       Subtract before comparing so corrupt 32-bit lengths cannot wrap. */
+    if(ooff>=L||toff>=L||olen>=L-ooff||tlen>=L-toff) continue;
+    if(b[(size_t)ooff+olen]!='\0'||b[(size_t)toff+tlen]!='\0') continue;
     dict_put(d, b+ooff, b+toff);
   }
   Cat* c=calloc(1,sizeof(Cat)); c->d=d; c->blob=b; c->len=L; c->be=be; return c;
@@ -311,6 +301,9 @@ static const char* (*r_dcngettext)(const char*,const char*,const char*,unsigned 
 /* GTK message dialog constructors */
 static void* (*real_gtk_message_dialog_new)(void*,int,int,int,const char*,...)=NULL;
 static void* (*real_gtk_message_dialog_new_with_markup)(void*,int,int,int,const char*,...)=NULL;
+/* GLib escapes the arguments of gtk_message_dialog_new_with_markup the same way. */
+static char* (*r_markup_vprintf_escaped)(const char*,va_list)=NULL;
+static void (*r_g_free)(void*)=NULL;
 
 static void ensure_syms(void){
   if(!rgd)   rgd   = dlsym(RTLD_NEXT,"g_dgettext");
@@ -326,6 +319,20 @@ static void ensure_syms(void){
     real_gtk_message_dialog_new=(void*(*)(void*,int,int,int,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_new");
   if(!real_gtk_message_dialog_new_with_markup)
     real_gtk_message_dialog_new_with_markup=(void*(*)(void*,int,int,int,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_new_with_markup");
+  if(!r_markup_vprintf_escaped)
+    r_markup_vprintf_escaped=(char*(*)(const char*,va_list))dlsym(RTLD_DEFAULT,"g_markup_vprintf_escaped");
+  if(!r_g_free) r_g_free=(void(*)(void*))dlsym(RTLD_DEFAULT,"g_free");
+}
+
+/* Format without a fixed limit so long text is neither cut short nor split
+   inside a UTF-8 character. NULL only when memory runs out. */
+static char* format_alloc(const char* fmt, va_list ap){
+  va_list cp; va_copy(cp,ap);
+  int n=vsnprintf(NULL,0,fmt,cp); va_end(cp);
+  if(n<0) return NULL;
+  char* s=malloc((size_t)n+1);
+  if(s) vsnprintf(s,(size_t)n+1,fmt,ap);
+  return s;
 }
 
 /* ------------ gettext hooks ------------ */
@@ -342,12 +349,8 @@ const char* g_dcgettext(const char* domain,const char* msgid,int category){
 const char* g_dpgettext2(const char* domain,const char* context,const char* msgid){
   ensure_syms(); if(!msgid) return msgid;
   if(override_allowed_for(domain)){
-    char combo[1200];
-    if(context&&*context){
-      size_t lc=strlen(context), lm=strlen(msgid);
-      if(lc+1+lm+1<sizeof(combo)){ memcpy(combo,context,lc); combo[lc]='\004'; memcpy(combo+lc+1,msgid,lm+1); }
-      const char* hv=hard_override_core(combo[0]?combo:msgid); if(hv) return hv;
-    }else{ const char* hv=hard_override_core(msgid); if(hv) return hv; }
+    /* Hard overrides match the message body; context belongs to catalog lookup. */
+    const char* hv=hard_override_core(msgid); if(hv) return hv;
   }
   const char* D=dom_of(domain);
   if(context&&*context){
@@ -393,30 +396,40 @@ void gtk_window_set_title(void* win,const char* title){
   real_gtk_window_set_title(win,out);
 }
 
-/* MessageDialog 생성: 항상 일반 생성자로 만들고, 마크업이면 set_markup로 강제 적용 */
+/* Plain dialogs retain literal text; only our known headline opts into markup. */
 void* gtk_message_dialog_new(void* parent,int flags,int type,int buttons,const char* fmt,...){
   ensure_syms();
-  char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
-  const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
+  if(!fmt) return real_gtk_message_dialog_new(parent,flags,type,buttons,NULL);
+  va_list ap; va_start(ap,fmt); char* buf=format_alloc(fmt,ap); va_end(ap);
+  const char* out=buf?buf:""; const char* hv=hard_override_core(out); if(hv) out=hv;
 
   void* dlg = real_gtk_message_dialog_new(parent,flags,type,buttons,"%s",out);
 
-  if (strchr(out,'<') && strchr(out,'>')) {
+  /* gettext may already have supplied this controlled translation to the caller. */
+  if (strcmp(out,SAVE_CHANGES_MARKUP)==0) {
     gtk_message_dialog_set_markup(dlg, out);
   }
   widen_if_launcher(dlg);
+  free(buf);
   return dlg;
 }
 
 void* gtk_message_dialog_new_with_markup(void* parent,int flags,int type,int buttons,const char* fmt,...){
   ensure_syms();
-  char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
-  const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
+  if(!fmt) return real_gtk_message_dialog_new_with_markup(parent,flags,type,buttons,NULL);
+  /* Arguments are escaped like GTK does, so a file name holding '<' or '&'
+     stays text instead of breaking the markup. */
+  int escaped=r_markup_vprintf_escaped!=NULL;
+  va_list ap; va_start(ap,fmt);
+  char* buf=escaped? r_markup_vprintf_escaped(fmt,ap) : format_alloc(fmt,ap);
+  va_end(ap);
+  const char* out=buf?buf:""; const char* hv=hard_override_core(out); if(hv) out=hv;
 
   void* dlg = real_gtk_message_dialog_new(parent,flags,type,buttons,"%s",out);
   gtk_message_dialog_set_markup(dlg, out);
 
   widen_if_launcher(dlg);
+  if(escaped && r_g_free) r_g_free(buf); else free(buf);
   return dlg;
 }
 
@@ -431,17 +444,21 @@ static void (*real_gtk_message_dialog_format_secondary_text)(void*,const char*,.
 void gtk_message_dialog_format_secondary_text(void* dlg,const char* fmt,...){
   if(!real_gtk_message_dialog_format_secondary_text)
     real_gtk_message_dialog_format_secondary_text=(void(*)(void*,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_format_secondary_text");
-  char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
-  const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
+  if(!fmt){ real_gtk_message_dialog_format_secondary_text(dlg,NULL); return; }
+  va_list ap; va_start(ap,fmt); char* buf=format_alloc(fmt,ap); va_end(ap);
+  const char* out=buf?buf:""; const char* hv=hard_override_core(out); if(hv) out=hv;
   real_gtk_message_dialog_format_secondary_text(dlg,"%s",out);
+  free(buf);
 }
 static void (*real_gtk_message_dialog_format_secondary_markup)(void*,const char*,...)=NULL;
 void gtk_message_dialog_format_secondary_markup(void* dlg,const char* fmt,...){
   if(!real_gtk_message_dialog_format_secondary_markup)
     real_gtk_message_dialog_format_secondary_markup=(void(*)(void*,const char*,...))dlsym(RTLD_NEXT,"gtk_message_dialog_format_secondary_markup");
-  char buf[2048]; va_list ap; va_start(ap,fmt); vsnprintf(buf,sizeof(buf),fmt,ap); va_end(ap);
-  const char* out=buf; const char* hv=hard_override_core(buf); if(hv) out=hv;
+  if(!fmt){ real_gtk_message_dialog_format_secondary_markup(dlg,NULL); return; }
+  va_list ap; va_start(ap,fmt); char* buf=format_alloc(fmt,ap); va_end(ap);
+  const char* out=buf?buf:""; const char* hv=hard_override_core(out); if(hv) out=hv;
   real_gtk_message_dialog_format_secondary_markup(dlg,"%s",out);
+  free(buf);
 }
 
 /* dialog buttons & labels/menus */

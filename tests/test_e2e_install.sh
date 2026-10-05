@@ -191,7 +191,7 @@ _test_startxfce_dbus_count_is_integer_safe() {
     result=$(bash "$tmp" 2>&1)
     assert_output_contains "$result" "branch_ok"
 
-    if echo "$result" | grep -q "integer expected"; then
+    if grep -q "integer expected" <<< "$result"; then
         echo "[ASSERT] DBUS_COUNT이 'integer expected' 오류 유발" >&2
         echo "[ASSERT] 실제 출력: $result" >&2
         return 1
@@ -327,7 +327,7 @@ EOF
     input_method_select nimf
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "^Exec=nimf$"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" 'pgrep -x nimf'
     assert_file_contains "$HOME/.config/autostart/org.fcitx.Fcitx5.desktop" "Hidden=true"
 
     cleanup_sandbox "$sb"
@@ -342,7 +342,7 @@ _test_nimf_autostart_without_fcitx5_system() {
     input_method_select nimf
 
     assert_file_exists "$HOME/.config/autostart/nimf.desktop"
-    assert_file_contains "$HOME/.config/autostart/nimf.desktop" "^Exec=nimf$"
+    assert_file_contains "$HOME/.config/autostart/nimf.desktop" 'pgrep -x nimf'
 
     cleanup_sandbox "$sb"
 }
@@ -403,7 +403,7 @@ _test_flameshot_autostart_runs_native() {
     local exec_line
     exec_line=$(grep '^Exec=' "$desktop" | head -1)
     # prun이 없어야 함 — native 실행
-    if echo "$exec_line" | grep -q "prun"; then
+    if grep -q "prun" <<< "$exec_line"; then
         echo "[ASSERT] flameshot autostart가 여전히 prun을 사용: ${exec_line}" >&2
         return 1
     fi
@@ -432,7 +432,7 @@ _test_prun_no_dbus_propagation() {
     local prun="${PREFIX}/bin/prun"
     assert_file_exists "$prun"
     # DBUS_ENV 변수 사용이 없어야 함
-    if grep -v '^\s*#' "$prun" | grep -q 'DBUS_ENV'; then
+    if grep -q 'DBUS_ENV' <<< "$(grep -v '^\s*#' "$prun")"; then
         echo "[ASSERT] prun에 작동 불가능한 DBUS_ENV 전파 코드가 남아있다" >&2
         cleanup_sandbox "$sb"
         return 1

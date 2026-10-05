@@ -158,7 +158,7 @@ _test_deploy_catalogs_unzip_failure_preserves_original() {
 
     assert_nonzero "$rc" "unzip 실패를 호출자에 전파"
     assert_file_exists "${dest}/marker.txt"
-    ! compgen -G "${dest}.bak."* > /dev/null 2>&1
+    if compgen -G "${dest}.bak.*" > /dev/null 2>&1; then return 1; fi
     cleanup_sandbox "$sb"
 }
 it "unzip 실패 시 기존 locale 보존 + .bak 생성 안 함" _test_deploy_catalogs_unzip_failure_preserves_original
@@ -197,10 +197,97 @@ _test_deploy_catalogs_merges_when_bak_exists() {
 
     assert_file_exists "${dest}/ko/LC_MESSAGES/x.mo"
     assert_file_exists "${dest}/old.txt"
-    ! compgen -G "${dest}/locale_ko.*" > /dev/null 2>&1
+    if compgen -G "${dest}/locale_ko.*" > /dev/null 2>&1; then return 1; fi
     cleanup_sandbox "$sb"
 }
 it ".bak 존재 재실행 시 tmp가 dest 하위로 중첩되지 않고 병합된다" _test_deploy_catalogs_merges_when_bak_exists
+
+
+_locale_original_fixture() {
+    mkdir -p "$PREFIX/share/locale/en/LC_MESSAGES"
+    printf 'original English catalog\n' > "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo"
+    printf 'original marker\n' > "$PREFIX/share/locale/marker.txt"
+}
+_assert_locale_transaction_clean() {
+    [ -z "$(find "$PREFIX/share" -maxdepth 1 \( -name 'locale.stage.*' -o -name 'locale.previous.*' \) -print)" ]
+}
+_test_deploy_catalogs_preserves_existing_catalogs() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    chmod 750 "$PREFIX/share/locale"
+    _deploy_locale_catalogs "$sb/locale.zip"
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_file_exists "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo"
+    assert_eq 750 "$(stat -c %a "$PREFIX/share/locale")"
+    compgen -G "$PREFIX/share/locale.bak.*/marker.txt" >/dev/null
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "첫 한글 배치는 기존 언어와 권한을 보존하고 원본 백업을 남긴다" _test_deploy_catalogs_preserves_existing_catalogs
+
+_test_deploy_catalogs_copy_failure_preserves_original() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    cp() {
+        case "$2" in
+            */locale_ko.*/*)
+                command cp "$@" || return 1
+                return 1 ;;
+        esac
+        command cp "$@"
+    }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    [ ! -e "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo" ]
+    if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "부분 복사 실패는 활성 카탈로그를 바꾸거나 백업으로 옮기지 않는다" _test_deploy_catalogs_copy_failure_preserves_original
+
+_locale_commit_failure_case() {
+    local existing_backup="$1" sb
+    sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    if [ "$existing_backup" = true ]; then
+        mkdir -p "$PREFIX/share/locale.bak.saved"
+        printf 'saved backup\n' > "$PREFIX/share/locale.bak.saved/marker.txt"
+    fi
+    mv() {
+        case "$2" in *.stage.*) return 1 ;; esac
+        command mv "$@"
+    }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    [ ! -e "$PREFIX/share/locale/ko/LC_MESSAGES/gtk30.mo" ]
+    if [ "$existing_backup" = true ]; then
+        assert_eq 'saved backup' "$(cat "$PREFIX/share/locale.bak.saved/marker.txt")"
+        assert_eq 1 "$(find "$PREFIX/share" -maxdepth 1 -name 'locale.bak.*' | wc -l | tr -d ' ')"
+    else
+        if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
+    fi
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+_test_deploy_catalogs_commit_failure_restores_original() { _locale_commit_failure_case false; }
+_test_deploy_catalogs_commit_failure_keeps_backup() { _locale_commit_failure_case true; }
+it "최종 rename 실패는 기존 카탈로그를 원래 위치로 복원한다" _test_deploy_catalogs_commit_failure_restores_original
+it "재배치 rename 실패는 활성 카탈로그와 이전 영구 백업을 모두 보존한다" _test_deploy_catalogs_commit_failure_keeps_backup
+
+_test_deploy_catalogs_backup_move_failure_preserves_original() {
+    local sb; sb=$(make_sandbox); _load_domain "$sb"
+    _locale_original_fixture
+    mv() { return 1; }
+    if _deploy_locale_catalogs "$sb/locale.zip"; then return 1; fi
+    assert_eq 'original English catalog' "$(cat "$PREFIX/share/locale/en/LC_MESSAGES/existing.mo")"
+    assert_eq 'original marker' "$(cat "$PREFIX/share/locale/marker.txt")"
+    if compgen -G "$PREFIX/share/locale.bak.*" >/dev/null; then return 1; fi
+    _assert_locale_transaction_clean
+    cleanup_sandbox "$sb"
+}
+it "기존 카탈로그 rename 실패는 원본과 활성 경로를 그대로 보존한다" _test_deploy_catalogs_backup_move_failure_preserves_original
 
 # =============================================================================
 # _build_force_gettext — clang 빌드
@@ -229,16 +316,13 @@ it "clang -shared로 force_gettext.so를 빌드한다" _test_force_gettext_build
 _test_force_gettext_idempotent() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
+    _build_force_gettext
     reset_mock_calls
-
-    # 이미 빌드된 .so가 있음
-    printf 'shared library\n' > "${PREFIX}/lib/force_gettext.so"
-
-    _build_force_gettext 2>/dev/null || true
+    _build_force_gettext
     assert_not_called "clang"
     cleanup_sandbox "$sb"
 }
-it "멱등성 — force_gettext.so 이미 존재 시 빌드하지 않는다" _test_force_gettext_idempotent
+it "멱등성 — 같은 소스로 빌드된 force_gettext.so는 재빌드하지 않는다" _test_force_gettext_idempotent
 
 _test_force_gettext_warns_if_src_missing() {
     local sb; sb=$(make_sandbox)

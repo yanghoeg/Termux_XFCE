@@ -24,10 +24,6 @@ exec > >(tee -a "$LOG") 2>&1
 # proot 제거 헬퍼 — 미설치도 안전 (no-op)
 _teardown() {
     local distro="$1"
-    if [ ! -d "$PREFIX/var/lib/proot-distro/installed-rootfs/${distro}" ]; then
-        echo "  [teardown] ${distro} 미설치 — skip"
-        return 0
-    fi
     PROOT_DISTRO="$distro" PROOT_USER="$PROOT_USER" \
     bash -c '
         set -uo pipefail
@@ -38,6 +34,10 @@ _teardown() {
             archlinux) source adapters/output/pkg_arch.sh   ;;
         esac
         source domain/proot_env.sh
+        if [ ! -d "$(_proot_rootfs)" ]; then
+            echo "  [teardown] ${PROOT_DISTRO} 미설치 — skip"
+            exit 0
+        fi
         teardown_proot
     '
 }

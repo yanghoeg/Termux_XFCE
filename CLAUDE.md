@@ -90,11 +90,14 @@ Termux_XFCE/
 
 ## 남은 TODO (실기기 검증 — PC에서는 mock/정적 검사만 가능)
 
-없음 — 아래 항목 모두 실기기 검증 완료.
+2026-10-01 리뷰 수정은 격리된 mock 환경으로 검증한다. 새 컨테이너의 GPU/IME 선택,
+Wine 설치·제거 및 실제 GUI 임포트는 설치 환경을 변경하는 별도 검증 대상이다.
+Wayland의 아래 알려진 차단 문제도 남아 있다.
 
 ### 완료 (2026-09-05~06 실기기 검증)
 
-- `prun` GPU env(`/etc/profile.d/termux-xfce-env.sh`) 전파 확인
+- 당시 `prun` GPU env 전파 확인. 현재 GPU 설정 소유자는 App Installer의
+  `/etc/profile.d/gpu-accel.sh`이며 부모 기본 프로필에는 DISPLAY·XDG_RUNTIME_DIR만 둔다.
 - zsh + Powerlevel10k 설정 순서 검증(`_setup_zsh_p10k` → `_setup_aliases`, 코드 수정 불필요)
 - Termux native nimf `pgrep -x` 가드(`nimf.desktop` Exec)
 - `korean_proot` 로케일: Arch `~/.bash_profile→~/.bashrc` 체인이 `~/.profile`을 무시하는 버그를
@@ -108,6 +111,17 @@ Termux_XFCE/
 - Claude Code 핀 2.1.286 `/login` 검증 완료 — 사인인 URL → 브라우저 인증 → 터미널 복귀 →
   인증 후 실제 요청까지 정상. 환경·셸 프로필 어디에도 토큰이 없어 결과가 가려지지 않은
   조건. 회귀 시 롤백: `app_rollback_claude_code 2.1.261`
+- codex 핀 0.159.3 검증 완료 (`d2fefe0` 커밋 메시지의 "실기기 검증 미실시"는 그 시점 기준,
+  이후 완료) — `app_upgrade codex` 실행 시 sha256 2건(본체·code-mode 헬퍼) 검증 통과,
+  래퍼 경유 `codex --version` = 0.159.3, `codex doctor` **20 ok / 0 fail**(DNS·TLS·websocket·
+  reachability 포함), TUI 기동 시 `no complete local package` 치명 오류 해소 확인,
+  Code Mode는 `$PREFIX/share/codex/codex-code-mode-host` 프로세스 spawn까지 실측.
+  회귀 시 롤백은 본체·code-mode 헬퍼의 sha256이 둘 다 등록된 버전으로만 가능하다.
+  0.153.4는 본체 sha256만 등록돼 있으므로 헬퍼 해시를 검증·등록하기 전에는
+  `CODEX_PIN_VERSION`을 해당 버전으로 되돌려 재설치할 수 없다.
+- codex의 `exec` 기본 sandbox는 Android에서 못 뜬다 — `sandbox failed: Permission denied
+  (os error 13)`. 0.153.4 때부터 같은 bwrap/Android 비호환이며 이번 상향과 무관하다.
+  명령을 실제로 돌리려면 `-c sandbox_mode=danger-full-access` 같은 해제가 필요하다.
 
 ## 주의사항
 

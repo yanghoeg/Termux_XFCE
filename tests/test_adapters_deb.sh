@@ -17,10 +17,25 @@ describe "pkg_common_termux.sh — pkg_install_deb_url sha256 검증"
 # mock_wget이 -O 대상 경로에 항상 "PKmock\n"을 쓰므로 그 sha256을 오라클로 사용
 _MOCK_DEB_SHA256="4a35a4a6b53fe111142894049b5f24c79fd28aed9a4d2ea3b55573965894a0de"
 
+_mock_deb_metadata() {
+    dpkg-deb() {
+        case "${!#}" in
+            Package) printf 'nimf\n' ;;
+            Version) printf '1.4.19\n' ;;
+            Architecture) printf 'aarch64\n' ;;
+            *) return 1 ;;
+        esac
+    }
+    dpkg-query() {
+        printf '%s\t%s\taarch64\n' "${REVIEW_DEB_STATUS:-install ok installed}" "${REVIEW_DEB_VERSION:-1.4.19}"
+    }
+}
+
 _test_deb_url_wrong_checksum_blocks_dpkg() {
     source "${ADAPTER_DIR}/pkg_common_termux.sh"
     mock_wget
     reset_mock_calls
+    _mock_deb_metadata
     dpkg() { _record_call "dpkg $*"; return 0; }
     apt() { _record_call "apt $*"; return 0; }
 
@@ -41,6 +56,7 @@ _test_deb_url_correct_checksum_calls_dpkg() {
     source "${ADAPTER_DIR}/pkg_common_termux.sh"
     mock_wget
     reset_mock_calls
+    _mock_deb_metadata
     dpkg() { _record_call "dpkg $*"; return 0; }
     apt() { _record_call "apt $*"; return 0; }
 
@@ -56,6 +72,7 @@ _test_deb_url_no_checksum_skips_verification() {
     source "${ADAPTER_DIR}/pkg_common_termux.sh"
     mock_wget
     reset_mock_calls
+    _mock_deb_metadata
     dpkg() { _record_call "dpkg $*"; return 0; }
     apt() { _record_call "apt $*"; return 0; }
 
@@ -67,5 +84,51 @@ _test_deb_url_no_checksum_skips_verification() {
     assert_was_called "dpkg"
 }
 it "체크섬 인자가 없으면 검증 없이 기존 동작을 유지한다 (하위 호환)" _test_deb_url_no_checksum_skips_verification
+
+_test_deb_repair_without_installation_fails() {
+    source "${ADAPTER_DIR}/pkg_common_termux.sh"
+    mock_wget
+    _mock_deb_metadata
+    dpkg() { return 1; }
+    apt() { return 0; }
+    REVIEW_DEB_STATUS='deinstall ok config-files'
+    if pkg_install_deb_url 'https://example.invalid/nimf.deb'; then return 1; fi
+}
+it 'dependency repair that leaves the package uninstalled fails' _test_deb_repair_without_installation_fails
+
+_test_deb_repair_wrong_version_fails() {
+    source "${ADAPTER_DIR}/pkg_common_termux.sh"
+    mock_wget
+    _mock_deb_metadata
+    dpkg() { return 1; }
+    apt() { return 0; }
+    REVIEW_DEB_VERSION=1.4.18
+    if pkg_install_deb_url 'https://example.invalid/nimf.deb'; then return 1; fi
+}
+it 'dependency repair must install the requested version' _test_deb_repair_wrong_version_fails
+
+_test_deb_repair_success() {
+    source "${ADAPTER_DIR}/pkg_common_termux.sh"
+    mock_wget
+    _mock_deb_metadata
+    dpkg() { return 1; }
+    apt() { return 0; }
+    pkg_install_deb_url 'https://example.invalid/nimf.deb'
+}
+it 'dependency repair accepts the exact installed package' _test_deb_repair_success
+
+_test_held_package_remains_installed() {
+    source "${ADAPTER_DIR}/pkg_common_termux.sh"
+    dpkg-query() { printf '%s' 'hold ok installed'; }
+    pkg_is_installed nimf
+    dpkg-query() { printf '%s' 'deinstall ok config-files'; }
+    if pkg_is_installed nimf; then return 1; fi
+    mock_wget
+    _mock_deb_metadata
+    dpkg() { return 0; }
+    REVIEW_DEB_STATUS='hold ok installed'
+    pkg_install_deb_url 'https://example.invalid/nimf.deb'
+}
+it 'a held package is installed while residual configuration is not' _test_held_package_remains_installed
 
 print_results

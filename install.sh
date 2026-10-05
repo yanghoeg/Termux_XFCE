@@ -21,25 +21,74 @@ IFS=$'\n\t'
 # -----------------------------------------------------------------------------
 # 0. 경로 설정
 # -----------------------------------------------------------------------------
-SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "${BASH_SOURCE[0]}")")" && pwd)"
+_installer_source="${BASH_SOURCE[0]:-}"
+if [ -n "$_installer_source" ]; then
+    SCRIPT_DIR="$(cd "$(dirname "$(readlink -f "$_installer_source")")" && pwd)"
+else
+    SCRIPT_DIR=""
+fi
+unset _installer_source
 export SCRIPT_DIR
 ARCH=$(uname -m)
 
 # curl로 직접 실행 시 (파일이 없는 경우) 임시 디렉토리에 클론
-if [ ! -d "$SCRIPT_DIR/domain" ]; then
+if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR/domain" ]; then
+    # Git is not part of a fresh Termux bootstrap. Prepare it before cloning or
+    # replacing the checkout used by an existing app-installer command.
+    if ! command -v git >/dev/null 2>&1; then
+        case "${PREFIX:-}" in
+            /data/data/com.termux/files/usr) ;;
+            *) echo "[ERROR] Git 설치에는 Android Termux 환경이 필요합니다." >&2; exit 1 ;;
+        esac
+        echo "[INFO] 저장소 복제에 필요한 Git을 설치합니다..."
+        # The package adapter is not loaded yet; skip pkg's mirror test here too
+        # (see adapters/output/pkg_common_termux.sh).
+        if ! TERMUX_PKG_NO_MIRROR_SELECT=1 pkg install -y -o Dpkg::Options::="--force-confold" git ||
+           ! command -v git >/dev/null 2>&1; then
+            echo "[ERROR] Git을 준비하지 못했습니다. 네트워크와 패키지 저장소를 확인하세요." >&2
+            exit 1
+        fi
+    fi
     echo "[INFO] 저장소를 클론합니다..."
     local_dir="$HOME/.termux-xfce-installer"
-    rm -rf "$local_dir"
+    _bootstrap_stage=$(mktemp -d "${local_dir}.new.XXXXXX")
+    _bootstrap_backup=""
+    _bootstrap_cleanup() {
+        local code=$?
+        if [ -n "$_bootstrap_backup" ] && { [ -e "$_bootstrap_backup" ] || [ -L "$_bootstrap_backup" ]; } &&
+           [ ! -e "$local_dir" ] && [ ! -L "$local_dir" ]; then
+            mv -T -- "$_bootstrap_backup" "$local_dir" || \
+                echo "[ERROR] 이전 저장소 복원 실패: $_bootstrap_backup" >&2
+        fi
+        if [ -n "$_bootstrap_stage" ]; then
+            rm -rf -- "$_bootstrap_stage" || \
+                echo "[WARN] 임시 저장소를 정리하지 못했습니다: $_bootstrap_stage" >&2
+        fi
+        return "$code"
+    }
+    trap _bootstrap_cleanup EXIT
     git clone --depth=1 -b "${INSTALL_BRANCH:-main}" \
-        https://github.com/yanghoeg/Termux_XFCE.git "$local_dir"
+        https://github.com/yanghoeg/Termux_XFCE.git "$_bootstrap_stage"
 
     # 서브모듈은 핀이 깨져도(고아 커밋 등) main HEAD로 fallback
-    if ! git -C "$local_dir" submodule update --init --depth=1 2>/dev/null; then
+    if ! git -C "$_bootstrap_stage" submodule update --init --depth=1 2>/dev/null; then
         echo "[WARN] 서브모듈 핀이 원격에 없습니다 — App-Installer main HEAD로 fallback합니다."
-        rm -rf "$local_dir/app-installer" "$local_dir/.git/modules/app-installer"
-        sub_url=$(git -C "$local_dir" config --file .gitmodules submodule.app-installer.url)
-        git clone --depth=1 "$sub_url" "$local_dir/app-installer"
+        rm -rf "$_bootstrap_stage/app-installer" "$_bootstrap_stage/.git/modules/app-installer"
+        sub_url=$(git -C "$_bootstrap_stage" config --file .gitmodules submodule.app-installer.url)
+        git clone --depth=1 "$sub_url" "$_bootstrap_stage/app-installer"
     fi
+    if [ -e "$local_dir" ] || [ -L "$local_dir" ]; then
+        _bootstrap_backup=$(mktemp -d "${local_dir}.old.XXXXXX")
+        rmdir -- "$_bootstrap_backup"
+        mv -T -- "$local_dir" "$_bootstrap_backup"
+    fi
+    mv -T -- "$_bootstrap_stage" "$local_dir"
+    _bootstrap_stage=""
+    if [ -n "$_bootstrap_backup" ]; then
+        rm -rf -- "$_bootstrap_backup" || \
+            echo "[WARN] 이전 저장소를 정리하지 못했습니다: $_bootstrap_backup" >&2
+    fi
+    trap - EXIT
     exec bash "$local_dir/install.sh" "$@"
 fi
 
@@ -83,6 +132,19 @@ source "$SCRIPT_DIR/adapters/output/script_builder_zenity.sh"
 # -----------------------------------------------------------------------------
 source "$SCRIPT_DIR/adapters/input/cli.sh"
 parse_cli_args "$@"
+
+# Check runtime dependencies before prompting or modifying the installation.
+# CLI parsing handles --help even when the submodule has not been initialized.
+# A stale checkout can be readable yet lack functions this installer calls, so
+# load the helpers in a subshell and require those functions.
+if ! (
+    source "$SCRIPT_DIR/app-installer/lib/input_method.sh" &&
+        source "$SCRIPT_DIR/app-installer/domain/desktop.sh" &&
+        declare -F input_method_setup desktop_migrate_proot_launcher desktop_import_proot
+) >/dev/null 2>&1; then
+    echo "[ERROR] app-installer 서브모듈이 없거나 이 설치기와 버전이 맞지 않습니다: git submodule update --init --recursive" >&2
+    exit 1
+fi
 
 # -----------------------------------------------------------------------------
 # 5. Input Adapter — 빠진 값 대화형으로 채우기
@@ -203,8 +265,11 @@ else
     _cfg_display_server="${DISPLAY_SERVER}"
 fi
 
-# PROOT_DISTRO/PROOT_USER: 이번 실행 값이 있으면 사용, 없으면 기존 값 유지
+# native-only를 명시하면 선택을 비운다. 그 외에는 이번 값 또는 기존 값을 사용한다.
 if [ "${SKIP_PROOT:-false}" = true ]; then
+    if [ -n "$_existing_proot_distro" ]; then
+        ui_warn "native 전용으로 전환합니다. 기존 컨테이너는 유지되며 prun 대상 선택은 해제됩니다."
+    fi
     _cfg_proot_distro=""
     _cfg_proot_user=""
 else

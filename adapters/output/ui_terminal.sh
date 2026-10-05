@@ -42,9 +42,9 @@ ui_select() {
         echo ""
     } >&2
 
-    local choice
+    local choice=""
     while true; do
-        read -r -p "선택 (1-${#options[@]}): " choice </dev/tty
+        read -r -p "선택 (1-${#options[@]}): " choice </dev/tty || return 1
         if [[ "$choice" =~ ^[0-9]+$ ]] && \
            [ "$choice" -ge 1 ] && \
            [ "$choice" -le "${#options[@]}" ]; then
@@ -57,10 +57,10 @@ ui_select() {
 
 ui_confirm() {
     local message="$1"
-    local answer
+    local answer=""
 
     while true; do
-        read -r -p "${message} (y/n): " answer </dev/tty
+        read -r -p "${message} (y/n): " answer </dev/tty || return 1
         case "$answer" in
             [Yy]) return 0 ;;
             [Nn]) return 1 ;;
@@ -72,13 +72,13 @@ ui_confirm() {
 ui_input() {
     local prompt="$1"
     local default="${2:-}"
-    local value
+    local value=""
 
     if [ -n "$default" ]; then
-        read -r -p "${prompt} [기본값: ${default}]: " value </dev/tty
+        read -r -p "${prompt} [기본값: ${default}]: " value </dev/tty || return 1
         echo "${value:-$default}"
     else
-        read -r -p "${prompt}: " value </dev/tty
+        read -r -p "${prompt}: " value </dev/tty || return 1
         echo "$value"
     fi
 }

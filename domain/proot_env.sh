@@ -157,10 +157,30 @@ mkdir -p "$XDG_RUNTIME_DIR" 2>/dev/null
 chmod 700 "$XDG_RUNTIME_DIR" 2>/dev/null
 EOF
 
-    # 2) .bashrc: 기존 생성 블록(마커 ~ code() 줄)을 먼저 제거 →
-    #    멱등성 + 구버전(export/무가드 alias 포함) 설치본 마이그레이션. 사용자 라인은 보존된다.
+    # 2) 삭제 범위는 설치기가 생성한 줄로 한정한다. code()가 없는 구버전도
+    #    사용자 프롬프트와 conda 설정을 보존한다.
     if [ -f "$bashrc" ] && grep -q '^# termux-xfce-proot-env$' "$bashrc"; then
-        sed -i '/^# termux-xfce-proot-env$/,/^code() {/d' "$bashrc"
+        local cleaned target
+        # 완성된 사본을 rename으로 교체한다 — 쓰기 실패가 원본을 자르지 않고,
+        # 심볼릭 링크로 관리되는 .bashrc는 링크 대상이 갱신된다.
+        target=$(readlink -f -- "$bashrc") || return 1
+        cleaned=$(mktemp "${target}.XXXXXX") || return 1
+        awk '
+            /^# termux-xfce-proot-env$/ { managed=1; next }
+            /^# termux-xfce-proot-env-end$/ { managed=0; next }
+            managed && (/^$/ || /^# aliases$/ || /^# Termux Turnip Vulkan ICD/ ||
+                /^export (DISPLAY|LD_PRELOAD|XDG_RUNTIME_DIR|MESA_[A-Z_]+|TU_DEBUG|ZINK_DESCRIPTORS|vblank_mode|VK_ICD_FILENAMES|VK_DRIVER_FILES)=/ ||
+                /^mkdir -p "\$XDG_RUNTIME_DIR" 2>\/dev\/null$/ ||
+                /^\[ -f \/etc\/profile.d\/termux-xfce-env.sh \]/ ||
+                /^alias (hud|ls|ll|shutdown|cat|python|pip|start)=/ ||
+                /^command -v (eza|bat) .*alias (ls|cat)=/) { next }
+            managed && /^code\(\) \{/ { managed=0; next }
+            { managed=0; print }
+        ' "$target" > "$cleaned" || { rm -f "$cleaned"; return 1; }
+        chmod --reference="$target" "$cleaned" && mv -f -- "$cleaned" "$target" || {
+            rm -f -- "$cleaned"
+            return 1
+        }
     fi
 
     cat >> "$bashrc" << 'EOF'
@@ -175,6 +195,7 @@ alias shutdown='kill -9 -1'
 command -v bat >/dev/null 2>&1 && alias cat='bat'
 alias start='echo "Termux에서 실행하세요."'
 code() { nohup dbus-run-session /usr/bin/code --no-sandbox "$@" >/dev/null 2>&1 & disown; }
+# termux-xfce-proot-env-end
 EOF
 }
 
@@ -304,13 +325,48 @@ setup_proot_alias() {
     # (bash|zsh, 기본 bash). 설치 후 사용자가 config의 PROOT_SHELL을 바꾸면 즉시 반영되고,
     # 서브셸이라 config의 다른 변수는 사용자 셸로 새지 않는다.
     local _proot_alias="alias ${distro}='proot-distro login ${distro} --user ${user} --shared-tmp -- env -u LD_PRELOAD \"\$(. \"\$HOME/.config/termux-xfce/config\" 2>/dev/null; echo \"\${PROOT_SHELL:-bash}\")\" --login'"
+    # Shapes written by earlier installers, refreshed like the current one.
+    local _legacy_aliases="alias ${distro}='proot-distro login ${distro} --user @user@ --shared-tmp'
+alias ${distro}='proot-distro login ${distro} --user @user@ --shared-tmp -- env -u LD_PRELOAD \${PROOT_SHELL:-bash} --login'"
 
-    local bashrc="$PREFIX/etc/bash.bashrc"
-    grep -q "alias ${distro}=" "$bashrc" 2>/dev/null || echo "$_proot_alias" >> "$bashrc"
-
-    if [ -f "$HOME/.zshrc" ]; then
-        grep -q "alias ${distro}=" "$HOME/.zshrc" 2>/dev/null || echo "$_proot_alias" >> "$HOME/.zshrc"
-    fi
+    local rc target staged
+    for rc in "$PREFIX/etc/bash.bashrc" "$HOME/.zshrc"; do
+        if [ ! -f "$rc" ]; then
+            [ "$rc" != "$HOME/.zshrc" ] || continue
+            : > "$rc" || return 1
+        fi
+        target=$(readlink -f -- "$rc") || return 1
+        staged=$(mktemp "${target}.XXXXXX") || return 1
+        # The installer writes its alias at column 0 in one of the shapes above;
+        # refresh it in place for the configured user. Any other active alias for
+        # this distro (indented in a guard, or after `cond &&`) is the user's own
+        # and suppresses the managed one.
+        PROOT_ALIAS="$_proot_alias" PROOT_LEGACY_ALIASES="$_legacy_aliases" awk -v distro="$distro" '
+            function shape(line) {
+                sub(/ --user [^[:space:]]+ /, " --user @user@ ", line)
+                return line
+            }
+            BEGIN {
+                current = ENVIRON["PROOT_ALIAS"]
+                managed[shape(current)] = 1
+                n = split(ENVIRON["PROOT_LEGACY_ALIASES"], legacy, "\n")
+                for (i = 1; i <= n; i++) managed[legacy[i]] = 1
+                defines = "(^|[^[:alnum:]_-])alias[[:space:]]+" distro "="
+            }
+            (shape($0) in managed) { if (!refreshed) print current; refreshed = 1; next }
+            $0 !~ /^[[:space:]]*#/ && $0 ~ defines { custom = 1 }
+            { print }
+            END { if (!refreshed && !custom) print current }
+        ' "$target" > "$staged" || { rm -f "$staged"; return 1; }
+        if cmp -s "$staged" "$target"; then
+            rm -f -- "$staged"
+            continue
+        fi
+        chmod --reference="$target" "$staged" && mv -f -- "$staged" "$target" || {
+            rm -f -- "$staged"
+            return 1
+        }
+    done
 }
 
 # -----------------------------------------------------------------------------
@@ -381,7 +437,7 @@ _setup_proot_sudoers() {
     sed -i 's/^#[[:space:]]*%wheel[[:space:]]*ALL=(ALL)[[:space:]]*NOPASSWD:/%wheel ALL=(ALL) NOPASSWD:/' "$sudoers"
 
     # 유저 직접 항목 (wheel 그룹 설정 없을 때 폴백)
-    grep -q "^${username}" "$sudoers" || \
+    awk -v user="$username" '$1 == user && $2 ~ /^ALL=/ { found=1 } END { exit !found }' "$sudoers" || \
         echo "${username} ALL=(ALL) NOPASSWD:ALL" >> "$sudoers"
 
     chmod 440 "$sudoers"

@@ -28,6 +28,22 @@ _test_tmp_base() {
     printf '%s\n' "$base"
 }
 
+# 임시 파일/디렉토리 생성 — TMPDIR 이 런 도중 외부에서 사라지면(Claude Code·apt 의
+# tmp 정리 등) mktemp 가 실패한다. _test_tmp_base 가 베이스를 다시 만들므로 한 번
+# 재시도하고, 그래도 실패하면 호출자에게 실패를 전파한다 — 조용히 건너뛰지 않기 위해.
+#   사용: _test_mktemp <이름접두사> [mktemp 플래그...]
+_test_mktemp() {
+    local prefix="$1"; shift
+    local base out i
+    for i in 1 2; do
+        base=$(_test_tmp_base) || continue
+        out=$(mktemp "$@" "${base}/${prefix}XXXXXX" 2>/dev/null) || continue
+        printf '%s\n' "$out"
+        return 0
+    done
+    return 1
+}
+
 # 테스트 스위트 시작
 describe() {
     _CURRENT_SUITE="$1"
@@ -43,7 +59,12 @@ it() {
     # NOTE: `if (...)` 형태로 감싸면 bash가 subshell 내부 set -e를 무시함
     # (POSIX: "if 조건의 명령은 set -e 면제"). 별도로 $?를 캡처해야 함.
     local _tmpfile
-    _tmpfile=$(mktemp "$(_test_tmp_base)/termux_test_stderr_XXXXXX") || return 1
+    _tmpfile=$(_test_mktemp termux_test_stderr_) || {
+        echo -e "  ${_RED}✗${_NC} ${name}"
+        echo "    [HARNESS] 임시 파일 생성 실패 — 테스트를 실행하지 못했습니다 (TMPDIR=${TMPDIR:-})"
+        (( _FAIL++ )) || true
+        return 1
+    }
     (set -euo pipefail; "$test_fn") 2>"$_tmpfile"
     local _rc=$?
     if [ "$_rc" -eq 0 ]; then
@@ -142,7 +163,7 @@ assert_cmd_exists() {
 
 assert_output_contains() {
     local cmd_output="$1" pattern="$2"
-    if ! echo "$cmd_output" | grep -q -- "$pattern"; then
+    if ! grep -q -- "$pattern" <<< "$cmd_output"; then
         echo "[ASSERT] output does not contain '${pattern}'" >&2
         echo "[ASSERT] actual output: ${cmd_output}" >&2
         return 1
@@ -161,7 +182,10 @@ print_results() {
 # 임시 디렉토리 기반 샌드박스 생성
 make_sandbox() {
     local dir
-    dir=$(mktemp -d "$(_test_tmp_base)/termux_test_XXXXXX")
+    dir=$(_test_mktemp termux_test_ -d) || {
+        echo "[HARNESS] 샌드박스 생성 실패 (TMPDIR=${TMPDIR:-})" >&2
+        return 1
+    }
     echo "$dir"
 }
 

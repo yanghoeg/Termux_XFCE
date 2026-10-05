@@ -51,7 +51,7 @@ mock_pkg_adapter() {
     pkg_autoremove()      { _record_call "pkg_autoremove"; }
     pkg_is_installed() {
         local pkg="$1"
-        echo "$MOCK_INSTALLED_PKGS" | grep -qw "$pkg"
+        grep -qw "$pkg" <<< "$MOCK_INSTALLED_PKGS"
     }
     # NOTE: 옛 구현(`shift; bash -c "$*"`)은 첫 인자(보통 "bash")를 떨어뜨린 뒤
     # 잔여 `-c "..."` 를 다시 `bash -c "..."` 로 감싸 invalid option 에러로 침묵 종료했다.

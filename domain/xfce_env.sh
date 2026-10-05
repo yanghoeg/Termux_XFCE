@@ -217,7 +217,7 @@ _install_fluent_cursor() (
 )
 
 _install_cascadia_code() (
-    [ -f "$HOME/.fonts/CascadiaCode.otf" ] && return 0
+    [ -f "$HOME/.fonts/CascadiaCode-Regular.otf" ] && return 0
 
     local tmpdir
     tmpdir=$(mktemp -d)
@@ -372,25 +372,49 @@ _migrate_remove_actions_plugin() {
     local xml="$HOME/.config/xfce4/xfconf/xfce-perchannel-xml/xfce4-panel.xml"
     [ -f "$xml" ] || return 0
     grep -q 'value="actions"' "$xml" 2>/dev/null || return 0
-    # plugin-ids에서 plugin-20 제거
-    sed -i '/<value type="int" value="20"\/>/d' "$xml"
-    # actions 플러그인 정의 블록 제거 — depth 추적 awk 사용
-    # (line-range sed는 중첩 <property>(예: items 배열)가 있으면 그 첫 </property>에서
-    #  멈춰 plugin-20 자신의 종료 태그가 남는 XML 손상을 유발함)
-    local tmp="${xml}.tmp"
+    # Plugin IDs belong to the user configuration, not to the preset. Discover
+    # actions definitions first, then remove only their plugin-ids references and
+    # complete definition blocks. Stage both changes together so an awk failure
+    # also preserves the original panel references.
+    local tmp
+    tmp=$(mktemp "${xml}.tmp.XXXXXX") || {
+        ui_warn "xfce4-panel 마이그레이션 임시 파일 생성 실패 — 건너뜁니다."
+        return 0
+    }
     awk '
-        skip == 0 && /<property name="plugin-20"[^>]*value="actions"/ { skip = 1 }
-        skip == 1 {
-            line = $0
-            opens = gsub(/<property[^>]*>/, "&", line)
-            selfclose = gsub(/<property[^>]*\/>/, "&", line)
+        function attribute(line, key, value) {
+            if (!match(line, "(^|[[:space:]])" key "=\"[^\"]*\"")) return ""
+            value = substr(line, RSTART, RLENGTH)
+            sub(/^[^\"]*\"/, "", value)
+            sub(/\"$/, "", value)
+            return value
+        }
+        function property_delta(line, opens, selfclose, closes) {
+            opens = gsub(/<property([[:space:]][^>]*)?>/, "&", line)
+            selfclose = gsub(/<property([[:space:]][^>]*)?\/>/, "&", line)
             closes = gsub(/<\/property>/, "&", line)
-            depth += (opens - selfclose) - closes
-            if (depth <= 0) { skip = 0 }
+            return opens - selfclose - closes
+        }
+        FNR == NR {
+            name = attribute($0, "name")
+            if (/<property[[:space:]]/ && name ~ /^plugin-[0-9]+$/ &&
+                attribute($0, "value") == "actions") actions[substr(name, 8)] = 1
             next
         }
-        { print }
-    ' "$xml" > "$tmp" && mv "$tmp" "$xml" || {
+        {
+            delta = property_delta($0)
+            if (skip_depth > 0) { skip_depth += delta; next }
+            name = attribute($0, "name")
+            if (/<property[[:space:]]/ && name ~ /^plugin-[0-9]+$/ &&
+                substr(name, 8) in actions) { skip_depth = delta; next }
+            if (name == "plugin-ids" && delta > 0) ids_depth = depth + 1
+            if (ids_depth > 0 && /<value[[:space:]]/ &&
+                attribute($0, "value") in actions) next
+            print
+            depth += delta
+            if (depth < ids_depth) ids_depth = 0
+        }
+    ' "$xml" "$xml" > "$tmp" && mv "$tmp" "$xml" || {
         rm -f "$tmp"
         ui_warn "xfce4-panel actions 플러그인 제거 마이그레이션 실패 — 건너뜁니다."
         return 0

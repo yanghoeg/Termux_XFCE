@@ -57,7 +57,7 @@ it "모든 installer 스크립트 — shebang 단일 #" _test_all_shebangs
 describe "app-installer — 명백한 타이포"
 
 _test_no_wget_wget() {
-    if grep -r "wget wget" "${APP_DIR}"/ 2>/dev/null | grep -q .; then
+    if [ -n "$(grep -r "wget wget" "${APP_DIR}"/ 2>/dev/null)" ]; then
         grep -r "wget wget" "${APP_DIR}"/ >&2
         echo "[ASSERT] 'wget wget' 이중 명령 발견" >&2
         return 1
@@ -66,7 +66,7 @@ _test_no_wget_wget() {
 it "miniforge.sh — 'wget wget' 이중 명령 없음" _test_no_wget_wget
 
 _test_no_home_dotdot() {
-    if grep -r 'HOME/../usr' "${APP_DIR}"/ 2>/dev/null | grep -q .; then
+    if [ -n "$(grep -r 'HOME/../usr' "${APP_DIR}"/ 2>/dev/null)" ]; then
         grep -r 'HOME/../usr' "${APP_DIR}"/ >&2
         echo "[ASSERT] '\$HOME/../usr/' 경로 발견 — \$PREFIX 사용 필요" >&2
         return 1
@@ -286,7 +286,7 @@ _test_wine_has_proot_distro_check() {
 it "wine.sh — PROOT_DISTRO 분기 처리" _test_wine_has_proot_distro_check
 
 _test_wine_has_native_fallback() {
-    grep -q '_install_wine_native\|which wine' "${APP_DIR}/domain/installers/wine.sh"
+    grep -q '_wine_install_native' "${APP_DIR}/domain/installers/wine.sh"
 }
 it "wine.sh — no-proot native 설치 경로 있음" _test_wine_has_native_fallback
 
@@ -297,7 +297,7 @@ _test_wine_creates_desktop() {
 it "wine.sh — .desktop 파일 생성 로직 있음" _test_wine_creates_desktop
 
 _test_wine_idempotent_check() {
-    grep -q 'which wine' "${APP_DIR}/domain/installers/wine.sh"
+    grep -q 'test -x /opt/wine-staging/bin/wine' "${APP_DIR}/domain/installers/wine.sh"
 }
 it "wine.sh — 이미 설치된 경우 건너뛰는 멱등성 체크 있음" _test_wine_idempotent_check
 

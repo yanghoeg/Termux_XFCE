@@ -71,6 +71,28 @@ _test_deb_reuse() {
 }
 it 'the exact installed version is reused and protected from replacement' _test_deb_reuse
 
+_test_deb_reuse_after_hold() {
+    local sb; sb=$(make_sandbox)
+    mock_ui_adapter
+    # A rerun sees the selection that the previous run's apt-mark hold left.
+    dpkg-query() { echo 'hold ok installed 5.13.3'; }
+    fetch_verified() { return 99; }
+    apt() { return 99; }
+    apt-mark() { printf '%s\n' "$*" > "$sb/held"; }
+    _anland_deb anland 5.13.3 unused unused "$sb/anland.deb"
+    assert_eq 'hold anland' "$(cat "$sb/held")"
+    # An upgrade of a held package is checked against its held status too.
+    dpkg-query() {
+        if [ -e "$sb/installed" ]; then echo 'hold ok installed 5.13.3'
+        else echo 'hold ok installed 5.12'; fi
+    }
+    fetch_verified() { printf package > "$2"; }
+    apt() { touch "$sb/installed"; }
+    _anland_deb anland 5.13.3 unused unused "$sb/anland.deb"
+    cleanup_sandbox "$sb"
+}
+it 'a held package from an earlier run is reused and a held upgrade verifies' _test_deb_reuse_after_hold
+
 _test_hash_failure() {
     local sb; sb=$(make_sandbox)
     _anland_load_fetch
@@ -112,6 +134,59 @@ _test_launcher() {
     cleanup_sandbox "$sb"
 }
 it 'Wayland launcher uses Anland and waits for Plasma readiness' _test_launcher
+
+_test_launcher_deadline_case() {
+    local ready_at="$1" expected_rc="$2" expected_clock="$3"
+    local sb; sb=$(make_sandbox)
+    TEST_LAUNCHER_SB="$sb"
+    trap 'if [ -r "$TEST_LAUNCHER_SB/state/session.pid" ]; then read -r _pid _name < "$TEST_LAUNCHER_SB/state/session.pid"; kill "$_pid" 2>/dev/null || true; fi; cleanup_sandbox "$TEST_LAUNCHER_SB"' EXIT
+    setup_fs_sandbox "$sb"
+    export SESSION_STATE_DIR="$sb/state" XDG_RUNTIME_DIR="$sb/run"
+    export TEST_SLEEP_BIN="$(command -v sleep)" TEST_READY_AT="$ready_at"
+    mkdir -p "$SESSION_STATE_DIR" "$XDG_RUNTIME_DIR"
+    # A socket inode is sufficient for the launcher's readiness check; no actual
+    # compositor or Android process is started by this test.
+    # Bind by a relative name: AF_UNIX paths cap at 108 bytes and TMPDIR can be long.
+    python3 - "$XDG_RUNTIME_DIR" <<'PY'
+import os, socket, sys
+os.chdir(sys.argv[1])
+s = socket.socket(socket.AF_UNIX)
+s.bind('wayland-test')
+PY
+    cat > "$sb/launcher" <<'CLOCK'
+_virtual_now=1000
+printf() {
+    if [ "${1:-}" = -v ] && [ "${3:-}" = '%(%s)T' ]; then
+        builtin printf -v "$2" '%s' "$_virtual_now"
+    else
+        builtin printf "$@"
+    fi
+}
+setsid() {
+    builtin printf '%s\n' "$ANLAND_STARTUP_DEADLINE" > "$SESSION_STATE_DIR/worker-deadline"
+    exec "$TEST_SLEEP_BIN" 120
+}
+sleep() {
+    _virtual_now=$((_virtual_now + 1))
+    builtin printf '%s\n' "$_virtual_now" > "$SESSION_STATE_DIR/clock"
+    if [ "$_virtual_now" -eq "$TEST_READY_AT" ]; then
+        builtin printf 'wayland-test\n' > "$SESSION_STATE_DIR/anland-ready"
+    fi
+}
+CLOCK
+    display_emit_session_launch >> "$sb/launcher"
+    local rc=0
+    bash "$sb/launcher" > "$sb/output" 2>&1 || rc=$?
+    assert_eq "$expected_rc" "$rc"
+    assert_eq "$expected_clock" "$(cat "$SESSION_STATE_DIR/clock")"
+    assert_eq 1090 "$(cat "$SESSION_STATE_DIR/worker-deadline")"
+}
+_test_launcher_slow_ready() { _test_launcher_deadline_case 1065 0 1065; }
+it 'a healthy supervisor becoming ready after 60 polls can complete within the shared 90s deadline' _test_launcher_slow_ready
+_test_launcher_ready_at_deadline() { _test_launcher_deadline_case 1092 0 1092; }
+it 'a session the supervisor finds as its deadline passes is not killed by the launcher' _test_launcher_ready_at_deadline
+_test_launcher_startup_timeout() { _test_launcher_deadline_case 9999 1 1105; }
+it 'a supervisor that never becomes ready stops the launcher shortly after its deadline' _test_launcher_startup_timeout
 
 _test_supervisor() {
     local sb; sb=$(make_sandbox)
