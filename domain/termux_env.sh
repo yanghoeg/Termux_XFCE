@@ -696,10 +696,11 @@ _setup_hostinfo() {
     # 실행 중인 데몬이 읽는 inode를 건드리지 않도록 새 파일로 바꿔 넣는다
     cat > "$bin.new" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-# 사용: termux-xfce-hostinfo [start|once]
+# 사용: termux-xfce-hostinfo [start|once|exec 명령 [인자...]]
 #   start  실행 중이 아니면 백그라운드로 띄운다 (prun이 호출, 기본값)
 #   once   한 번만 갱신한다 (점검용)
-# proot·chroot-ng 게스트가 하나도 없으면 스스로 종료한다.
+#   exec   Termux 네이티브 프로그램(htop 등)에 hostinfo_proc.so 훅을 붙여 실행한다
+# proot·chroot-ng 게스트도, exec로 띄운 프로그램도 없으면 스스로 종료한다.
 # HOSTINFO_DIR / HOSTINFO_CPU_ROOT / HOSTINFO_UPTIME은 테스트용 경로 재지정이다.
 OUT="${HOSTINFO_DIR:-$PREFIX/tmp/termux-xfce-hostinfo}"
 CPU_ROOT="${HOSTINFO_CPU_ROOT:-/sys/devices/system/cpu}"
@@ -790,6 +791,9 @@ _tick() {
     printf -v up '%d.%02d %d.%02d' $(( up / 100 )) $(( up % 100 )) $(( ti / 100 )) $(( ti % 100 ))
 
     _put "$OUT/stat" "$stat"
+    # 네이티브 프로그램은 hostinfo_proc.so 훅이 이 디렉터리의 같은 이름 파일을 대신 연다
+    _put "$OUT/uptime" "$up"$'\n'
+    _put "$OUT/loadavg" "$LOADAVG 1/1 1"$'\n'
     # proot-distro는 막힌 /proc 항목 대신 sysdata의 같은 이름 파일을 바인드한다
     for sd in "$CONTAINERS"/*/sysdata; do
         [ -d "$sd" ] && [ ! -L "$sd" ] || continue
@@ -799,13 +803,21 @@ _tick() {
     done
 }
 
+# exec로 띄운 프로그램은 holders/에 PID를 남긴다 (exec 뒤에도 PID가 그대로다)
 _guests_alive() {
-    pgrep -f "^$PREFIX/bin/(proot|chroot-ng)( |$)" >/dev/null 2>&1
+    local h
+    pgrep -f "^$PREFIX/bin/(proot|chroot-ng)( |$)" >/dev/null 2>&1 && return 0
+    for h in "$OUT"/holders/*; do
+        [ -e "$h" ] || continue
+        [ -d "/proc/${h##*/}" ] && return 0
+        rm -f "$h"
+    done
+    return 1
 }
 
 _running() {
     local pid
-    read -r pid < "$OUT/pid" 2>/dev/null && kill -0 "$pid" 2>/dev/null &&
+    read -r pid 2>/dev/null < "$OUT/pid" && kill -0 "$pid" 2>/dev/null &&
         grep -q termux-xfce-hostinfo "/proc/$pid/cmdline" 2>/dev/null
 }
 
@@ -825,17 +837,66 @@ case "${1:-start}" in
             _tick
             (( ++i % 5 )) || _load
             (( i % 10 )) && continue
-            # 다른 인스턴스가 이어받았거나 게스트가 20초 넘게 없으면 끝낸다
-            read -r pid < "$OUT/pid" 2>/dev/null; [ "$pid" = $$ ] || exit 0
+            # 다른 인스턴스가 이어받았거나 게스트도 exec 프로그램도 20초 넘게 없으면 끝낸다
+            read -r pid 2>/dev/null < "$OUT/pid"; [ "$pid" = $$ ] || exit 0
             if _guests_alive; then idle=0; elif (( ++idle >= 2 )); then rm -f "$OUT/pid"; exit 0; fi
         done
         ;;
+    exec)
+        shift
+        [ $# -gt 0 ] || { echo "사용법: termux-xfce-hostinfo exec 명령 [인자...]" >&2; exit 2; }
+        # 훅이 없으면(clang 없이 설치) 그대로 실행한다. 데몬보다 PID를 먼저 남겨 바로 끝나지 않게 한다
+        SHIM="$PREFIX/lib/hostinfo_proc.so"
+        if [ -s "$SHIM" ] && mkdir -p "$OUT/holders" && : > "$OUT/holders/$$" && "$0" start >/dev/null 2>&1; then
+            export TERMUX_XFCE_HOSTINFO="$OUT" LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
+        fi
+        exec "$@"
+        ;;
     *)
-        echo "사용법: termux-xfce-hostinfo [start|once]" >&2; exit 2 ;;
+        echo "사용법: termux-xfce-hostinfo [start|once|exec 명령 [인자...]]" >&2; exit 2 ;;
 esac
 EOF
 
     chmod +x "$bin.new" && mv -f "$bin.new" "$bin"
+
+    # Termux 네이티브 htop도 막힌 /proc 대신 브리지 파일을 읽도록 훅을 붙여 실행한다
+    _build_hostinfo_proc || true
+    local block rc
+    block=$(cat << 'HOSTINFO'
+
+# termux-xfce-hostinfo — Android이 막은 /proc/stat 등을 채워 htop에 CPU·부하·업타임 표시
+alias htop='termux-xfce-hostinfo exec htop'
+HOSTINFO
+)
+    while IFS= read -r rc; do
+        _append_to_rc "# termux-xfce-hostinfo" "$block" "$rc"
+    done < <(_rc_targets)
+}
+
+# 네이티브 htop용 /proc 훅. 기본 설치는 컴파일러를 새로 받지 않으므로 clang이 있을 때만 빌드한다.
+_build_hostinfo_proc() {
+    local src="${SCRIPT_DIR}/assets/hostinfo_proc.c"
+    local dst="$PREFIX/lib/hostinfo_proc.so"
+    local source_hash built
+
+    source_hash=$(sha256sum "$src") || return 1
+    source_hash=${source_hash%% *}
+    if [ -s "$dst" ] && [ "$(cat "${dst}.sha256" 2>/dev/null)" = "$source_hash" ]; then
+        return 0
+    fi
+    if ! command -v clang >/dev/null 2>&1; then
+        ui_info "clang이 없어 네이티브 htop의 CPU·부하 표시 훅을 건너뜁니다 (pkg install clang 뒤 설치를 다시 실행하면 적용)."
+        return 0
+    fi
+    built=$(mktemp "${dst}.XXXXXX") || return 1
+    if clang -shared -fPIC -O2 -o "$built" "$src" -ldl && [ -s "$built" ] &&
+       chmod 755 "$built" && mv -f "$built" "$dst"; then
+        printf '%s\n' "$source_hash" > "${dst}.sha256"
+    else
+        rm -f "$built"
+        ui_warn "네이티브 htop용 /proc 훅(hostinfo_proc.so) 빌드에 실패했습니다."
+        return 1
+    fi
 }
 
 # prun-gui: proot GUI 앱 실행 시 로딩 알림 표시

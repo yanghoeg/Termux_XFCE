@@ -154,12 +154,17 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
   - `$PREFIX`를 같은 경로로 바인드해야 proot-distro link2symlink의 절대경로 `.l2s` 링크
     (terminfo·zoneinfo·locale-archive 등)가 풀린다. `-l`은 `.l2s` 저장소 이름 규칙이 proot와
     달라 켜지 않는다
-- **Host Info Bridge** (`termux-xfce-hostinfo`, prun이 기동): Android이 막은 `/proc/stat`을 코어별
+- **Host Info Bridge** (`termux-xfce-hostinfo`, prun과 `htop` alias가 기동): Android이 막은 `/proc/stat`을 코어별
   cpuidle 체류 시간으로 만들어 proot-distro `sysdata/{stat,uptime,loadavg}`와 chroot-ng 바인드용 파일에
   1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
   - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다
+  - Termux 네이티브에서도 `/proc/{stat,uptime,loadavg}`는 EACCES다. Termux htop은 `access()`로 먼저 확인해
+    막혀 있으면 CPU를 읽지 않아 offline으로 표시한다. `htop` alias가 `termux-xfce-hostinfo exec`로
+    `hostinfo_proc.so`(`assets/hostinfo_proc.c`, clang이 있을 때만 빌드) LD_PRELOAD 훅을 붙여, EACCES인
+    읽기 전용 열기·확인만 브리지 파일로 바꾼다. exec는 PID를 `holders/`에 남겨 게스트가 없어도 데몬을 유지한다.
+    bionic 훅이 glibc 프로그램에 물리면 로드에 실패하므로 전역 LD_PRELOAD에는 넣지 않는다
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
   - Wayland 어댑터(`display_wayland.sh`): Anland 5.13.3 + 패치 KWin + **KDE Plasma** (ARM64 Adreno)
