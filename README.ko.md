@@ -105,6 +105,7 @@ startXFCE             # 설치 시 선택한 백엔드 시작: XFCE 또는 Plasm
 ubuntu                # Ubuntu proot 진입 (설치한 경우)
 archlinux             # Arch Linux proot 진입 (설치한 경우)
 prun libreoffice      # 설정된 proot 배포판에서 명령 실행
+PRUN_RUNTIME=chroot-ng prun libreoffice  # ptrace 없이 실행 (App Installer `chroot_ng` 설치 후)
 cp2menu               # proot .desktop 런처를 native 메뉴로 가져오기
 app-installer         # 추가 앱 GUI
 screenshot            # 현재 데스크탑 전체 스크린샷
@@ -126,10 +127,10 @@ GPU 가속은 App Installer에서 선택해 설치합니다. Termux:X11용 `gpu_
 런처에서 관리하며 모든 셸에 강제로 적용하지 않습니다. X11의 GTK4 호환 설정인
 `GSK_RENDERER=cairo`는 유지합니다.
 
-proot 앱에는 `gpu_proot`를 따로 설치합니다. 컨테이너의 glibc Mesa 드라이버로
-`vulkaninfo`를 실행해 KGSL의 Turnip을 확인한 뒤 Zink를 활성화합니다. 배포판의
-Mesa가 KGSL을 지원하지 않으면 오류를 알리고 설정을 적용하지 않습니다.
-Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다. `gpu_proot`를 제거하면
+proot 앱에는 `gpu_proot`를 따로 설치합니다. 배포판 Turnip은 데스크톱용 DRM(msm)만
+지원하므로, Termux glibc 저장소의 KGSL Turnip 드라이버(버전·SHA-256 고정)를 컨테이너에
+넣고 Zink에는 배포판 Mesa를 그대로 씁니다. `vulkaninfo`로 KGSL의 Turnip을 확인한 뒤에만
+Zink를 활성화합니다. Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다. `gpu_proot`를 제거하면
 기존 기본 설치기가 남긴 GPU 설정도 함께 해제됩니다. 변경 후 실행 중인 앱을 다시 시작하세요.
 
 ```bash

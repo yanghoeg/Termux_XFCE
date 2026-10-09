@@ -384,6 +384,39 @@ EOF
 }
 it "--proot-only 재실행해도 기존 PROOT_SHELL=zsh가 유지된다 (never reset)" _test_config_preserves_proot_shell_zsh
 
+_test_config_preserves_prun_runtime() {
+    local sandbox; sandbox=$(mktemp -d)
+    mkdir -p "$sandbox/home/.config/termux-xfce"
+    cat > "$sandbox/home/.config/termux-xfce/config" << 'EOF'
+PROOT_DISTRO="ubuntu"
+PROOT_USER="lideok"
+PRUN_RUNTIME="chroot-ng"
+EOF
+
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --proot-only --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_contains "$cfg" 'PRUN_RUNTIME="chroot-ng"'
+    rm -rf "$sandbox"
+}
+it "재실행해도 사용자가 켠 PRUN_RUNTIME=chroot-ng가 유지된다" _test_config_preserves_prun_runtime
+
+_test_config_omits_unset_prun_runtime() {
+    local sandbox; sandbox=$(mktemp -d)
+    HOME="$sandbox/home" PREFIX="$sandbox/usr" \
+    _TRACE_FILE="$TRACE_FILE" _INSTALL_HOOK="$HOOK_FILE" \
+        bash "$REPO_ROOT/install.sh" --distro ubuntu --user lideok \
+        >/dev/null 2>&1
+
+    local cfg="$sandbox/home/.config/termux-xfce/config"
+    assert_file_exists "$cfg" && assert_file_not_contains "$cfg" 'PRUN_RUNTIME'
+    local rc=$?; rm -rf "$sandbox"; return "$rc"
+}
+it "PRUN_RUNTIME을 켠 적이 없으면 config에 기록하지 않는다 (기본 proot)" _test_config_omits_unset_prun_runtime
+
 _test_config_merge_tolerates_missing_keys() {
     local sandbox; sandbox=$(mktemp -d)
     mkdir -p "$sandbox/home/.config/termux-xfce"

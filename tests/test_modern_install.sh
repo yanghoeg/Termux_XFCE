@@ -134,7 +134,7 @@ PROFILE
     _gpu_proot_has_kgsl() { return 0; }
     proot_pkg_install_wine_mesa() { return 0; }
     proot_pkg_install_gpu_tools() { return 0; }
-    touch "$rootfs/usr/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+    _gpu_proot_install_termux_turnip() { : > "$rootfs$GPU_PROOT_TURNIP_ICD"; }
     proot_exec() { echo 'llvmpipe'; }
     if app_install_gpu_proot >/dev/null 2>&1; then return 1; fi
     [ ! -f "$rootfs/etc/profile.d/gpu-accel.sh" ]

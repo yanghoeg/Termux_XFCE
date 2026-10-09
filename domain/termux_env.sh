@@ -33,6 +33,7 @@ setup_termux_shortcuts() {
     _setup_start_xfce
     _setup_kill_display
     _setup_prun
+    _setup_hostinfo
     _setup_prun_gui
     _setup_cp2menu
     _setup_app_installer
@@ -582,7 +583,10 @@ _setup_prun() {
     cat > "$bin" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 CONFIG="$HOME/.config/termux-xfce/config"
+_PRUN_RUNTIME_ENV="${PRUN_RUNTIME:-}"
 [ -f "$CONFIG" ] && source "$CONFIG"
+# 실행 시 지정한 PRUN_RUNTIME이 config 값보다 우선한다. 기본은 proot(-distro).
+PRUN_RUNTIME="${_PRUN_RUNTIME_ENV:-${PRUN_RUNTIME:-proot}}"
 
 _prun_error() {
     echo "[ERROR] $1" >&2
@@ -628,17 +632,210 @@ unset LD_PRELOAD
 # Inherit the active display, including KWin's dynamically assigned Xwayland.
 # A terminal outside a graphical session may still target Termux:X11's default.
 export DISPLAY="${DISPLAY:-:0.0}"
+
+# Android Host Info Bridge: 실제 CPU 사용률(/proc/stat)과 기기 정보(DMI·cpuinfo)를 게스트에 공급한다.
+# proot는 proot-distro sysdata로 /proc/stat을 받고, 기기 정보만 바인드한다.
+HOSTINFO="$PREFIX/tmp/termux-xfce-hostinfo"
+HOSTINFO_BINDS=()
+if command -v termux-xfce-hostinfo >/dev/null 2>&1 && termux-xfce-hostinfo start >/dev/null 2>&1; then
+    HOSTINFO_BINDS=("$HOSTINFO/cpuinfo:/proc/cpuinfo" "$HOSTINFO/dmi:/sys/class/dmi/id"
+        "$HOSTINFO/dmi:/sys/devices/virtual/dmi/id")
+fi
+
+# PRUN_RUNTIME=chroot-ng: ptrace 없는 chroot-ng(App Installer 'chroot_ng')로 같은 rootfs를 실행한다.
+# root 작업(apt/pacman, 사용자 생성)은 계속 proot-distro 몫이다.
+if [ "$PRUN_RUNTIME" = chroot-ng ]; then
+    CHROOT_NG="$PREFIX/bin/chroot-ng"
+    [ -x "$CHROOT_NG" ] || _prun_error "chroot-ng가 없습니다. App Installer에서 'proot 가속 런타임 (chroot-ng)'을 설치하세요."
+    # proot-distro --change-id와 같은 신원: rootfs /etc/passwd의 uid:gid와 홈
+    read -r GUEST_UID GUEST_GID GUEST_HOME < <(awk -F: -v u="$USER_NAME" \
+        '$1 == u { print $3, $4, $6; exit }' "$ROOTFS/etc/passwd" 2>/dev/null)
+    [ -n "${GUEST_UID:-}" ] || _prun_error "rootfs에 사용자 ${USER_NAME}이(가) 없습니다."
+    # --shared-proc: 실행 간 프로세스를 공유해야 profile.d의 pgrep IME 가드가 동작한다
+    # $PREFIX 바인드: proot-distro link2symlink가 남긴 절대경로 링크(.l2s)를 그대로 해석한다
+    # 게스트 env는 상속되지 않으므로 proot-distro가 넣던 값을 직접 넘긴다
+    CNG=("$CHROOT_NG" --shared-proc --fake-id="$GUEST_UID:$GUEST_GID" -w "$GUEST_HOME"
+        -b "$PREFIX:$PREFIX" -b "$PREFIX/tmp:/tmp" -b /sys:/sys
+        -E HOME="$GUEST_HOME" -E USER="$USER_NAME" -E LOGNAME="$USER_NAME"
+        -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        -E DISPLAY="$DISPLAY" -E PULSE_SERVER=127.0.0.1 -E MOZ_FAKE_NO_SANDBOX=1)
+    for p in /dev/kgsl-3d0 /dev/dma_heap /sdcard /storage; do
+        [ -e "$p" ] && CNG+=(-b "$p:$p")
+    done
+    for p in "${HOSTINFO_BINDS[@]}"; do CNG+=(-b "$p"); done
+    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat")
+    if [ $# -eq 0 ]; then
+        exec "${CNG[@]}" "$ROOTFS" /usr/bin/env "${PROOT_SHELL:-bash}" --login
+    fi
+    exec "${CNG[@]}" "$ROOTFS" /usr/bin/env bash --login -c 'exec "$@"' prun "$@"
+fi
+
+PD_BINDS=()
+for p in "${HOSTINFO_BINDS[@]}"; do PD_BINDS+=(--bind "$p"); done
+
 # 인자 없으면 PROOT_SHELL(config) 기반 인터랙티브 로그인 셸 실행
 if [ $# -eq 0 ]; then
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp "${PD_BINDS[@]}" \
         -- env -u LD_PRELOAD DISPLAY="$DISPLAY" "${PROOT_SHELL:-bash}" --login
 else
-    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp \
+    exec proot-distro login "$DISTRO" --user "$USER_NAME" --shared-tmp "${PD_BINDS[@]}" \
         -- env -u LD_PRELOAD DISPLAY="$DISPLAY" bash --login -c 'exec "$@"' prun "$@"
 fi
 EOF
 
     chmod +x "$bin"
+}
+
+# termux-xfce-hostinfo: Android Host Info Bridge
+# Android은 앱에 /proc/stat·/proc/schedstat을 막아 게스트 htop/top의 CPU 사용률이 멈춘다
+# (proot-distro는 고정 값 파일을 바인드). 코어별 cpuidle 체류 시간으로 실제 값을 만들어
+# proot-distro sysdata와 chroot-ng 바인드용 파일을 1초마다 교체하고, 기기 정보(DMI·cpuinfo)를 만든다.
+_setup_hostinfo() {
+    local bin="$PREFIX/bin/termux-xfce-hostinfo"
+
+    # 실행 중인 데몬이 읽는 inode를 건드리지 않도록 새 파일로 바꿔 넣는다
+    cat > "$bin.new" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+# 사용: termux-xfce-hostinfo [start|once]
+#   start  실행 중이 아니면 백그라운드로 띄운다 (prun이 호출, 기본값)
+#   once   한 번만 갱신한다 (점검용)
+# proot·chroot-ng 게스트가 하나도 없으면 스스로 종료한다.
+# HOSTINFO_DIR / HOSTINFO_CPU_ROOT / HOSTINFO_UPTIME은 테스트용 경로 재지정이다.
+OUT="${HOSTINFO_DIR:-$PREFIX/tmp/termux-xfce-hostinfo}"
+CPU_ROOT="${HOSTINFO_CPU_ROOT:-/sys/devices/system/cpu}"
+UPTIME="${HOSTINFO_UPTIME:-/system/bin/uptime}"   # sysinfo(2) 기반이라 앱에서도 동작
+CONTAINERS="$PREFIX/var/lib/proot-distro/containers"
+umask 022
+
+declare -A BUSY IDLE LAST LEN
+BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
+
+_static_files() {
+    local socm
+    mkdir -p "$OUT/dmi" || return 1
+    getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
+    getprop ro.product.model > "$OUT/dmi/product_name"
+    getprop ro.board.platform > "$OUT/dmi/board_name"
+    socm=$(getprop ro.soc.manufacturer)
+    [ "$socm" = QTI ] && socm="Qualcomm Technologies, Inc"
+    { cat /proc/cpuinfo; printf 'Hardware\t: %s %s\n' "$socm" "$(getprop ro.soc.model)"; } > "$OUT/cpuinfo"
+}
+
+_load() {
+    local line
+    line=$("$UPTIME" 2>/dev/null) || return 0
+    line=${line##*load average: }
+    LOADAVG=${line//,/}
+}
+
+_init() {
+    local since
+    since=$("$UPTIME" -s 2>/dev/null) && BTIME=$(date -d "$since" +%s 2>/dev/null)
+    [ "${BTIME:-0}" -gt 0 ] 2>/dev/null || BTIME=${EPOCHSECONDS}
+    _load
+}
+
+# 같은 inode에 덮어쓴다: top/vmstat은 /proc/stat fd를 열어 둔 채 되감아 다시 읽으므로
+# 파일을 바꿔치기하면 옛 값에 멈춘다. 누적 카운터라 거의 늘기만 하고, 짧아질 때만 잘라 쓴다.
+_put() {
+    local f="$1" data="$2"
+    [ -L "$f" ] && rm -f "$f"
+    if [ -n "${LEN[$f]}" ] && [ -f "$f" ] && (( ${#data} >= LEN[$f] )); then
+        printf '%s' "$data" 1<> "$f"
+    else
+        printf '%s' "$data" > "$f"
+    fi
+    LEN[$f]=${#data}
+}
+
+# 코어별 누적 busy/idle(µs)을 갱신하고 /proc/stat·uptime·loadavg를 다시 쓴다.
+# 커널은 idle 시간을 idle에서 깰 때 더하므로, 한 구간에서 늘어난 idle은 경과 시간으로 자른다.
+_tick() {
+    local now w n c t v s d last lines="" tb=0 ti=0 up stat sd
+    now=${EPOCHREALTIME/./}
+    w=$(( now - PREV ))
+    read -r last < "$CPU_ROOT/possible" || last=0
+    last=${last##*-}
+    for (( n = 0; n <= last; n++ )); do
+        c="$CPU_ROOT/cpu$n"
+        [ -d "$c" ] || continue
+        if [ -r "$c/online" ] && read -r v < "$c/online" && [ "$v" = 0 ]; then
+            continue    # 커널처럼 꺼진 코어는 줄을 뺀다
+        fi
+        s=0
+        for t in "$c"/cpuidle/state*/time; do
+            [ -r "$t" ] && read -r v < "$t" && s=$(( s + v ))
+        done
+        if [ -z "${LAST[$n]}" ]; then
+            # 첫 표본은 부팅 이후 누적값으로 시작해, 다시 떠도 카운터가 크게 튀지 않게 한다
+            IDLE[$n]=$s
+            BUSY[$n]=$(( now - BTIME * 1000000 - s ))
+            (( BUSY[$n] < 0 )) && BUSY[$n]=0
+        else
+            d=$(( s - LAST[$n] ))
+            (( d < 0 )) && d=0
+            (( d > w )) && d=$w
+            IDLE[$n]=$(( IDLE[$n] + d ))
+            BUSY[$n]=$(( BUSY[$n] + w - d ))
+        fi
+        LAST[$n]=$s
+        lines+="cpu$n $(( BUSY[$n] / 10000 )) 0 0 $(( IDLE[$n] / 10000 )) 0 0 0 0 0 0"$'\n'
+        tb=$(( tb + BUSY[$n] / 10000 ))
+        ti=$(( ti + IDLE[$n] / 10000 ))
+    done
+    PREV=$now
+    stat="cpu  $tb 0 0 $ti 0 0 0 0 0 0"$'\n'"${lines}intr 0"$'\n'"ctxt 0"$'\n'"btime $BTIME"$'\n'
+    stat+="processes 0"$'\n'"procs_running 1"$'\n'"procs_blocked 0"$'\n'"softirq 0 0 0 0 0 0 0 0 0 0 0"$'\n'
+    up=$(( now / 10000 - BTIME * 100 ))
+    printf -v up '%d.%02d %d.%02d' $(( up / 100 )) $(( up % 100 )) $(( ti / 100 )) $(( ti % 100 ))
+
+    _put "$OUT/stat" "$stat"
+    # proot-distro는 막힌 /proc 항목 대신 sysdata의 같은 이름 파일을 바인드한다
+    for sd in "$CONTAINERS"/*/sysdata; do
+        [ -d "$sd" ] && [ ! -L "$sd" ] || continue
+        _put "$sd/stat" "$stat"
+        _put "$sd/uptime" "$up"$'\n'
+        _put "$sd/loadavg" "$LOADAVG 1/1 1"$'\n'
+    done
+}
+
+_guests_alive() {
+    pgrep -f "^$PREFIX/bin/(proot|chroot-ng)( |$)" >/dev/null 2>&1
+}
+
+_running() {
+    local pid
+    read -r pid < "$OUT/pid" 2>/dev/null && kill -0 "$pid" 2>/dev/null &&
+        grep -q termux-xfce-hostinfo "/proc/$pid/cmdline" 2>/dev/null
+}
+
+case "${1:-start}" in
+    once)
+        _static_files && _init && _tick ;;
+    start)
+        _running && exit 0
+        _static_files && _init && _tick || exit 1
+        nohup "$0" run </dev/null >/dev/null 2>&1 &
+        ;;
+    run)
+        echo $$ > "$OUT/pid"
+        _init; _tick
+        i=0 idle=0
+        while sleep 1; do
+            _tick
+            (( ++i % 5 )) || _load
+            (( i % 10 )) && continue
+            # 다른 인스턴스가 이어받았거나 게스트가 20초 넘게 없으면 끝낸다
+            read -r pid < "$OUT/pid" 2>/dev/null; [ "$pid" = $$ ] || exit 0
+            if _guests_alive; then idle=0; elif (( ++idle >= 2 )); then rm -f "$OUT/pid"; exit 0; fi
+        done
+        ;;
+    *)
+        echo "사용법: termux-xfce-hostinfo [start|once]" >&2; exit 2 ;;
+esac
+EOF
+
+    chmod +x "$bin.new" && mv -f "$bin.new" "$bin"
 }
 
 # prun-gui: proot GUI 앱 실행 시 로딩 알림 표시
