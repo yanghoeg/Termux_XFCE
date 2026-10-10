@@ -128,12 +128,12 @@ _test_hostinfo_binds_chroot_ng() {
     PRUN_RUNTIME=chroot-ng _run_prun htop >/dev/null
     local hi="${PREFIX}/tmp/termux-xfce-hostinfo" rc=0 line
     for line in "$hi/stat:/proc/stat" "$hi/cpuinfo:/proc/cpuinfo" "$hi/dmi:/sys/class/dmi/id" \
-        "$hi/net:/sys/class/net"; do
+        "$hi/net:/sys/class/net" "$hi/proc_net:/proc/net"; do
         _assert_log_line "$sb/chroot-ng.log" "$line" || rc=1
     done
     cleanup_sandbox "$sb"; return "$rc"
 }
-it "chroot-ng에는 /proc/stat·cpuinfo·DMI를 바인드하고, 막힌 /sys/class/net은 netstats 카운터 디렉터리로 가린다" _test_hostinfo_binds_chroot_ng
+it "chroot-ng에는 /proc/stat·cpuinfo·DMI를 바인드하고, 막힌 /sys/class/net·/proc/net은 netstats 카운터 디렉터리로 가린다" _test_hostinfo_binds_chroot_ng
 
 _test_hostinfo_binds_proot() {
     local sb; sb=$(make_sandbox); _setup_runtime "$sb"; _install_fake_hostinfo
@@ -142,13 +142,15 @@ _test_hostinfo_binds_proot() {
     local hi="${PREFIX}/tmp/termux-xfce-hostinfo" rc=0
     _assert_log_line "$sb/proot-distro.log" --bind || rc=1
     _assert_log_line "$sb/proot-distro.log" "$hi/cpuinfo:/proc/cpuinfo" || rc=1
+    # /proc/net/dev 파일 바인드는 self/net 링크 때문에 적용되지 않아 디렉터리째 가린다
+    _assert_log_line "$sb/proot-distro.log" "$hi/proc_net:/proc/net" || rc=1
     # /proc/stat은 proot-distro sysdata로 공급한다 — 겹치는 바인드는 실행마다 경고를 낸다
     if grep -qF -- ':/proc/stat' "$sb/proot-distro.log"; then
         echo "[ASSERT] proot-distro에 /proc/stat 바인드를 넘기면 안 된다" >&2; rc=1
     fi
     cleanup_sandbox "$sb"; return "$rc"
 }
-it "proot에는 기기 정보만 바인드하고 /proc/stat은 sysdata로 맡긴다" _test_hostinfo_binds_proot
+it "proot에는 기기 정보와 /proc/net(네트워크 카운터)을 바인드하고 /proc/stat은 sysdata로 맡긴다" _test_hostinfo_binds_proot
 
 describe "prun — chroot-ng 실행 전 검사"
 

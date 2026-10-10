@@ -171,16 +171,20 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
   이름으로 바꾸지 않는다. fastfetch가 없으면 getprop의 SoC 제조사·모델로 돌아간다
   - cpuinfo의 processor 블록마다 `model name`도 넣는다 — ARM에는 없어 btop이 `/sys/devices` 목록(Android이 막음)을
     뒤지다 죽는다. chroot-ng는 netlink 에뮬레이션으로 인터페이스가 보이는데 `/sys/class/net` 통계가 막혀 btop이
-    죽으므로 브리지 `net/` 디렉터리로 가린다(proot는 인터페이스가 안 보여 네트워크 칸이 비어 있다)
+    죽으므로 브리지 `net/` 디렉터리로 가린다(proot는 인터페이스가 안 보여 btop 네트워크 칸이 비어 있다)
   - 네트워크 카운터: `/proc/net/dev`·`/sys/class/net`·netlink `RTM_GETLINK`가 모두 막혀 있어, TrafficStats가 쓰는
     시스템 서비스 `netstats`의 `getIfaceStats`(트랜잭션 12, 권한 불필요)를 `hostinfo_net`(`assets/hostinfo_net.c`)이
-    부른다. getifaddrs에 보이는 인터페이스마다 `net/<if>/statistics/{rx,tx}_bytes`를 쓴다. Android 16 모듈은
+    부른다. getifaddrs에 보이는 인터페이스마다 `net/<if>/statistics/{rx,tx}_bytes`(btop)와 `proc_net/dev`
+    (`/proc/net/dev` 형식 — htop 네트워크 미터·psutil·ifconfig, 에러·드롭 열은 0)를 쓴다. Android 16 모듈은
     `StatsResult getIfaceStats(String)`이다(SM-F956N에서 jar의 트랜잭션 상수와 실제 호출로 확인). 응답 모양(널 아님·
     크기 36·long 4개)이 다르면 쓰지 않으므로, Android 13~15 모듈의 `long getIfaceStats(String, int)`는 0으로
     남는다(실기기 미검증)
     - `libbinder_ndk.so`는 절대경로(`/system/lib64`)로 dlopen한다 — 이름만 쓰면 RUNPATH의 libandroid-stub 가짜가 잡힌다
     - 데몬이 `hostinfo_net -w`를 띄워 두고(1초 갱신, 부모 데몬이 끝나면 같이 끝남), `start`는 데몬이 떠 있어도
       먼저 한 번 쓴다 — btop은 처음 읽은 값을 기준으로 삼아, 0으로 읽으면 다음 갱신에 부팅 이후 누적량을 속도로 본다
+    - 네이티브는 훅이 막힌 `/proc/net/*`를 모든 모드에서 `proc_net/`으로 돌리고, 게스트는 `proc_net`을 `/proc/net`에
+      디렉터리째 바인드한다 — `/proc/net`은 `self/net` 링크라 `/proc/net/dev` 파일 바인드는 proot·chroot-ng 모두
+      적용되지 않는다. 원래 `/proc/net` 아래 69개 항목은 모두 읽을 수 없어 가려도 잃는 값은 없다
     - iftop·nethogs는 패킷 캡처(raw 소켓)라 root 없이는 불가능하다(iftop은 Termux 저장소에도 없다)
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
