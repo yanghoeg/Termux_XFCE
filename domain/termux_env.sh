@@ -663,9 +663,9 @@ if [ "$PRUN_RUNTIME" = chroot-ng ]; then
         [ -e "$p" ] && CNG+=(-b "$p:$p")
     done
     for p in "${HOSTINFO_BINDS[@]}"; do CNG+=(-b "$p"); done
-    # chroot-ng는 netlink를 에뮬레이션해 인터페이스가 보이는데 Android은 /sys/class/net 통계를 막는다.
-    # btop은 그 권한 오류로 죽으므로 빈 디렉터리로 가려 "없음"으로 보이게 한다 (proot는 인터페이스가 안 보여 무관)
-    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat" -b "$HOSTINFO/empty:/sys/class/net")
+    # chroot-ng는 netlink를 에뮬레이션해 인터페이스가 보이는데 Android은 /sys/class/net 통계를 막는다(btop은 그
+    # 권한 오류로 죽는다). hostinfo_net이 netstats 서비스 값으로 채우는 디렉터리로 가린다 (proot는 인터페이스가 안 보여 무관)
+    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat" -b "$HOSTINFO/net:/sys/class/net")
     if [ $# -eq 0 ]; then
         exec "${CNG[@]}" "$ROOTFS" /usr/bin/env "${PROOT_SHELL:-bash}" --login
     fi
@@ -692,6 +692,7 @@ EOF
 # Android은 앱에 /proc/stat·/proc/schedstat을 막아 게스트 htop/top의 CPU 사용률이 멈춘다
 # (proot-distro는 고정 값 파일을 바인드). 코어별 cpuidle 체류 시간으로 실제 값을 만들어
 # proot-distro sysdata와 chroot-ng 바인드용 파일을 1초마다 교체하고, 기기 정보(DMI·cpuinfo)를 만든다.
+# 막힌 네트워크 통계(/sys/class/net)는 netstats 시스템 서비스 값으로 채운다.
 _setup_hostinfo() {
     local bin="$PREFIX/bin/termux-xfce-hostinfo"
 
@@ -701,7 +702,8 @@ _setup_hostinfo() {
 # 사용: termux-xfce-hostinfo [start|once|build|exec 명령 [인자...]]
 #   start  실행 중이 아니면 백그라운드로 띄운다 (prun이 호출, 기본값)
 #   once   한 번만 갱신한다 (점검용)
-#   build  네이티브 htop용 hostinfo_proc.so 훅을 소스가 바뀌었을 때만 clang으로 빌드한다
+#   build  네이티브 htop용 hostinfo_proc.so 훅과 네트워크 카운터 도우미 hostinfo_net을
+#          소스가 바뀌었을 때만 clang으로 빌드한다
 #   exec   Termux 네이티브 프로그램(htop·btop 등)에 훅을 붙여 실행한다 (훅이 없고 clang이 있으면 먼저 빌드)
 # proot·chroot-ng 게스트도, exec로 띄운 프로그램도 없으면 스스로 종료한다.
 # HOSTINFO_DIR / HOSTINFO_CPU_ROOT / HOSTINFO_UPTIME은 테스트용 경로 재지정이다.
@@ -711,6 +713,8 @@ UPTIME="${HOSTINFO_UPTIME:-/system/bin/uptime}"   # sysinfo(2) 기반이라 앱�
 CONTAINERS="$PREFIX/var/lib/proot-distro/containers"
 SRC="$PREFIX/libexec/termux-xfce/hostinfo_proc.c"
 SHIM="$PREFIX/lib/hostinfo_proc.so"
+NETSRC="$PREFIX/libexec/termux-xfce/hostinfo_net.c"
+NETBIN="$PREFIX/libexec/termux-xfce/hostinfo_net"
 umask 022
 
 declare -A BUSY IDLE LAST LEN
@@ -718,7 +722,7 @@ BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
 
 _static_files() {
     local socm hw name
-    mkdir -p "$OUT/dmi" "$OUT/empty" || return 1
+    mkdir -p "$OUT/dmi" "$OUT/net" || return 1
     getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
     getprop ro.product.model > "$OUT/dmi/product_name"
     getprop ro.board.platform > "$OUT/dmi/board_name"
@@ -835,34 +839,53 @@ _running() {
         grep -q termux-xfce-hostinfo "/proc/$pid/cmdline" 2>/dev/null
 }
 
+# 막힌 /sys/class/net 통계는 hostinfo_net -w가 netstats 서비스 값으로 1초마다 채운다 (이 데몬이 끝나면 따라 끝난다).
+# 데몬이 뜬 뒤에 빌드됐거나 도중에 끝났으면 다시 띄운다
+_net() {
+    [ -x "$NETBIN" ] || return 0
+    [ -n "${NETPID:-}" ] && kill -0 "$NETPID" 2>/dev/null && return 0
+    "$NETBIN" -w "$OUT/net" &
+    NETPID=$!
+}
+
 # 기본 설치는 컴파일러를 받지 않으므로 clang이 있을 때만 만든다. 소스 해시가 그대로면 다시 빌드하지 않는다
-_build() {
-    local hash built
-    hash=$(sha256sum "$SRC" 2>/dev/null) || return 1
+_build_one() {
+    local src="$1" out="$2" hash built
+    shift 2
+    hash=$(sha256sum "$src" 2>/dev/null) || return 1
     hash=${hash%% *}
-    [ -s "$SHIM" ] && [ "$(cat "$SHIM.sha256" 2>/dev/null)" = "$hash" ] && return 0
+    [ -s "$out" ] && [ "$(cat "$out.sha256" 2>/dev/null)" = "$hash" ] && return 0
     command -v clang >/dev/null 2>&1 || return 1
-    built=$(mktemp "$SHIM.XXXXXX") || return 1
-    if clang -shared -fPIC -O2 -o "$built" "$SRC" -ldl && [ -s "$built" ] &&
-       chmod 755 "$built" && mv -f "$built" "$SHIM"; then
-        printf '%s\n' "$hash" > "$SHIM.sha256"
+    built=$(mktemp "$out.XXXXXX") || return 1
+    if clang -O2 -o "$built" "$src" "$@" && [ -s "$built" ] &&
+       chmod 755 "$built" && mv -f "$built" "$out"; then
+        printf '%s\n' "$hash" > "$out.sha256"
     else
         rm -f "$built"
         return 1
     fi
 }
 
+# 네트워크 도우미는 btop 네트워크 칸만 채우므로 만들지 못해도 훅의 결과만 돌려준다
+_build() {
+    _build_one "$NETSRC" "$NETBIN"
+    _build_one "$SRC" "$SHIM" -shared -fPIC -ldl
+}
+
 case "${1:-start}" in
     once)
         _static_files && _init && _tick ;;
     start)
+        # btop은 처음 읽은 네트워크 값을 기준으로 삼는다. 파일이 아직 없어 0으로 읽으면 다음 갱신에서
+        # 부팅 이후 누적량 전체를 속도로 보므로, 데몬이 떠 있어도 먼저 한 번 쓴다
+        [ -x "$NETBIN" ] && mkdir -p "$OUT/net" && "$NETBIN" "$OUT/net"
         _running && exit 0
         _static_files && _init && _tick || exit 1
         nohup "$0" run </dev/null >/dev/null 2>&1 &
         ;;
     run)
         echo $$ > "$OUT/pid"
-        _init; _tick
+        _init; _tick; _net
         i=0 idle=0
         while sleep 1; do
             _tick
@@ -871,6 +894,7 @@ case "${1:-start}" in
             # 다른 인스턴스가 이어받았거나 게스트도 exec 프로그램도 20초 넘게 없으면 끝낸다
             read -r pid 2>/dev/null < "$OUT/pid"; [ "$pid" = $$ ] || exit 0
             if _guests_alive; then idle=0; elif (( ++idle >= 2 )); then rm -f "$OUT/pid"; exit 0; fi
+            _net
         done
         ;;
     build)
@@ -917,11 +941,12 @@ HOSTINFO
     done < <(_rc_targets)
 }
 
-# 네이티브 htop용 /proc 훅 소스를 두고 빌드한다. 기본 설치는 컴파일러를 새로 받지 않으므로,
-# clang이 없으면 clang이 생긴 뒤 처음 htop을 실행할 때 termux-xfce-hostinfo가 빌드한다.
+# 네이티브 htop용 /proc 훅과 btop 네트워크 카운터 도우미 소스를 두고 빌드한다. 기본 설치는 컴파일러를
+# 새로 받지 않으므로, clang이 없으면 clang이 생긴 뒤 처음 htop을 실행할 때 termux-xfce-hostinfo가 빌드한다.
 _build_hostinfo_proc() {
     local libexec="$PREFIX/libexec/termux-xfce"
-    mkdir -p "$libexec" && cp -f "${SCRIPT_DIR}/assets/hostinfo_proc.c" "$libexec/hostinfo_proc.c" || return 1
+    mkdir -p "$libexec" &&
+        cp -f "${SCRIPT_DIR}/assets/hostinfo_proc.c" "${SCRIPT_DIR}/assets/hostinfo_net.c" "$libexec/" || return 1
     if ! command -v clang >/dev/null 2>&1; then
         ui_info "clang이 없어 네이티브 htop 훅은 clang이 설치된 뒤 처음 htop을 실행할 때 빌드됩니다."
         return 0

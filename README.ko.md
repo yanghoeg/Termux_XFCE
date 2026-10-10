@@ -157,7 +157,7 @@ Wayland는 별도의 Anland/KWin 런타임을 사용합니다. 자세한 내용�
 | 구성 | 이 저장소의 구현 |
 |---|---|
 | ptrace 없는 실행 | `PRUN_RUNTIME=chroot-ng`(env 또는 config)이면 App Installer `chroot_ng`가 소스 빌드한 [chroot-ng](https://github.com/sylirre/fake-chroot-ng)(Apache-2.0)로 같은 proot-distro rootfs를 실행합니다. 패키지 설치 같은 root 작업은 proot-distro가 계속 맡습니다. |
-| Android Host Info Bridge | `termux-xfce-hostinfo`가 Android이 막은 `/proc/stat`·`uptime`·`loadavg`를 코어별 cpuidle과 `sysinfo`로 만들고, getprop으로 기기 정보(DMI)와 SoC 이름을 채웁니다. 게스트의 htop·btop·glances·fastfetch·inxi와 Termux 네이티브 htop에 실제 값이 나옵니다. |
+| Android Host Info Bridge | `termux-xfce-hostinfo`가 Android이 막은 `/proc/stat`·`uptime`·`loadavg`를 코어별 cpuidle과 `sysinfo`로 만들고, getprop으로 기기 정보(DMI)와 SoC 이름을 채웁니다. 게스트의 htop·btop·glances·fastfetch·inxi와 Termux 네이티브 htop에 실제 값이 나옵니다. 인터페이스별 네트워크 바이트 수는 권한 없이 부를 수 있는 Android 시스템 서비스 `netstats`에서 받아, 네이티브와 chroot-ng의 btop 네트워크 칸에 나옵니다. |
 | GPU | `gpu_proot`가 KGSL Turnip(Vulkan)과 Freedreno KGSL(OpenGL, Ubuntu)을 넣습니다([GPU 가속](#gpu-가속)). |
 | 큰 CPU 코어 | GitHub판 Termux에는 Termux:X11 sharedUid 판을 설치합니다(일반판이 이미 있으면 제거 후 설치하도록 안내). X11 화면을 보는 동안에도 Samsung OneUI가 Termux 쪽 앱을 작은 코어로 묶지 않습니다([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). 실측: XFCE 프로세스가 `/moderate`(코어 4개)에서 `/top-app`(8개 전부)로 바뀌고, 컨테이너 sysbench 8스레드가 4809→19576 events/s(약 4.1배) |
 
@@ -171,7 +171,8 @@ Galaxy Z Fold6(SM-F956N)에서 잰 값은 다음과 같습니다.
 
 남은 한계도 있습니다.
 - 이 기기의 Termux:X11에서는 xMeM 패치 Turnip의 X11 스왑체인 생성이 실패합니다(네이티브 Termux Turnip도 같음). 그래서 Vulkan 화면 출력은 Turnip 24.2.6을 쓰고, vkcube는 실행되지 않습니다.
-- 네트워크·배터리 통계는 Android에 원천이 없어 비어 있습니다.
+- 배터리 통계는 Android에 원천이 없어 비어 있습니다. 네트워크 카운터는 Android 16의 `netstats` 형식에서만 확인했고(이 기기), proot 게스트는 네트워크 인터페이스를 볼 수 없어 btop 네트워크 칸이 비어 있습니다.
+- iftop·nethogs는 raw 소켓으로 패킷을 잡으므로 root가 필요합니다.
 - 경로 번역은 seccomp 트랩만 쓰고 LD_PRELOAD 속도 계층은 없습니다.
 - 게스트에는 상주 D-Bus 세션이 없어 GSettings(dconf) 설정이 저장되지 않습니다. 파일 열기·저장 대화상자는 정상입니다.
 

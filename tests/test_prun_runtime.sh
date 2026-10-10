@@ -128,12 +128,12 @@ _test_hostinfo_binds_chroot_ng() {
     PRUN_RUNTIME=chroot-ng _run_prun htop >/dev/null
     local hi="${PREFIX}/tmp/termux-xfce-hostinfo" rc=0 line
     for line in "$hi/stat:/proc/stat" "$hi/cpuinfo:/proc/cpuinfo" "$hi/dmi:/sys/class/dmi/id" \
-        "$hi/empty:/sys/class/net"; do
+        "$hi/net:/sys/class/net"; do
         _assert_log_line "$sb/chroot-ng.log" "$line" || rc=1
     done
     cleanup_sandbox "$sb"; return "$rc"
 }
-it "chroot-ng에는 /proc/stat·cpuinfo·DMI를 바인드하고, 막힌 /sys/class/net은 빈 디렉터리로 가린다" _test_hostinfo_binds_chroot_ng
+it "chroot-ng에는 /proc/stat·cpuinfo·DMI를 바인드하고, 막힌 /sys/class/net은 netstats 카운터 디렉터리로 가린다" _test_hostinfo_binds_chroot_ng
 
 _test_hostinfo_binds_proot() {
     local sb; sb=$(make_sandbox); _setup_runtime "$sb"; _install_fake_hostinfo

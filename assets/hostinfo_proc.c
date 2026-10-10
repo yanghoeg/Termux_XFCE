@@ -9,7 +9,8 @@
  *   - Termux btop은 실효 UID가 root가 아니면 바로 끝내므로 getuid·geteuid를 0으로 보고한다
  *   - ARM /proc/cpuinfo에는 model name이 없어 /sys/devices 목록(막힘)을 뒤지다 죽으므로 브리지 cpuinfo를 연다
  *   - 막힌 /proc/filesystems는 브리지 파일로 대신 연다
- *   - /sys/class/net 통계가 막혀(EACCES) 죽으므로 그 아래 stat의 EACCES를 ENOENT("없음")로 바꾼다
+ *   - 막힌(EACCES) /sys/class/net 아래는 hostinfo_net이 netstats 서비스 값으로 채운 net/ 아래 같은 경로로 열고,
+ *     거기도 없으면 권한 오류 대신 ENOENT("없음")를 돌려준다 (btop은 권한 오류를 예외로 죽는다)
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -30,13 +31,17 @@ static int btop_mode(void)
     return v && strcmp(v, "1") == 0;
 }
 
-/* 막힌 /proc 항목이면 alt에 대체 경로를 채우고 1을 돌려준다 */
+/* 막힌 /proc 항목이나 (btop 모드) /sys/class/net 아래 경로면 alt에 대체 경로를 채우고 1을 돌려준다 */
 static int bridged(const char *path, char alt[PATH_MAX])
 {
     const char *dir = getenv("TERMUX_XFCE_HOSTINFO");
     const char *name;
 
-    if (!path || !dir || !*dir || strncmp(path, "/proc/", 6) != 0)
+    if (!path || !dir || !*dir)
+        return 0;
+    if (btop_mode() && strncmp(path, "/sys/class/net/", 15) == 0)
+        return snprintf(alt, PATH_MAX, "%s/net/%s", dir, path + 15) < PATH_MAX;
+    if (strncmp(path, "/proc/", 6) != 0)
         return 0;
     name = path + 6;
     if (strcmp(name, "stat") != 0 && strcmp(name, "uptime") != 0 && strcmp(name, "loadavg") != 0 &&
@@ -163,29 +168,31 @@ uid_t geteuid(void)
     return real();
 }
 
-/* btop은 /sys/class/net/<if>/statistics가 없으면 0으로 보지만, 권한 오류는 예외로 죽는다 */
-static int hide_net(const char *path, int rc)
-{
-    if (rc != 0 && errno == EACCES && path && strncmp(path, "/sys/class/net/", 15) == 0 && btop_mode())
-        errno = ENOENT;
-    return rc;
-}
-
-static int real_fstatat(int dirfd, const char *path, struct stat *st, int flags)
+/* btop은 /sys/class/net/<if>/statistics가 없으면 0으로 보지만, 권한 오류는 예외로 죽는다 —
+ * 브리지 파일이 있으면 그 정보를, 없으면 ENOENT를 돌려준다 */
+static int stat_bridged(int dirfd, const char *path, struct stat *st, int flags)
 {
     static int (*real)(int, const char *, struct stat *, int);
+    char alt[PATH_MAX];
+    int rc;
 
     if (!real)
         real = (int (*)(int, const char *, struct stat *, int))dlsym(RTLD_NEXT, "fstatat");
-    return real(dirfd, path, st, flags);
+    rc = real(dirfd, path, st, flags);
+    if (rc == 0 || errno != EACCES || !path || strncmp(path, "/sys/class/net/", 15) != 0 || !bridged(path, alt))
+        return rc;
+    if (real(AT_FDCWD, alt, st, flags) == 0)
+        return 0;
+    errno = ENOENT;
+    return -1;
 }
 
 int stat(const char *path, struct stat *st)
 {
-    return hide_net(path, real_fstatat(AT_FDCWD, path, st, 0));
+    return stat_bridged(AT_FDCWD, path, st, 0);
 }
 
 int fstatat(int dirfd, const char *path, struct stat *st, int flags)
 {
-    return hide_net(path, real_fstatat(dirfd, path, st, flags));
+    return stat_bridged(dirfd, path, st, flags);
 }
