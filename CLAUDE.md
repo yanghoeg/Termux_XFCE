@@ -168,7 +168,17 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
   이름으로 바꾸지 않는다. fastfetch가 없으면 getprop의 SoC 제조사·모델로 돌아간다
   - cpuinfo의 processor 블록마다 `model name`도 넣는다 — ARM에는 없어 btop이 `/sys/devices` 목록(Android이 막음)을
     뒤지다 죽는다. chroot-ng는 netlink 에뮬레이션으로 인터페이스가 보이는데 `/sys/class/net` 통계가 막혀 btop이
-    죽으므로 빈 디렉터리로 가린다(proot는 인터페이스가 안 보여 무관)
+    죽으므로 브리지 `net/` 디렉터리로 가린다(proot는 인터페이스가 안 보여 네트워크 칸이 비어 있다)
+  - 네트워크 카운터: `/proc/net/dev`·`/sys/class/net`·netlink `RTM_GETLINK`가 모두 막혀 있어, TrafficStats가 쓰는
+    시스템 서비스 `netstats`의 `getIfaceStats`(트랜잭션 12, 권한 불필요)를 `hostinfo_net`(`assets/hostinfo_net.c`)이
+    부른다. getifaddrs에 보이는 인터페이스마다 `net/<if>/statistics/{rx,tx}_bytes`를 쓴다. Android 16 모듈은
+    `StatsResult getIfaceStats(String)`이다(SM-F956N에서 jar의 트랜잭션 상수와 실제 호출로 확인). 응답 모양(널 아님·
+    크기 36·long 4개)이 다르면 쓰지 않으므로, Android 13~15 모듈의 `long getIfaceStats(String, int)`는 0으로
+    남는다(실기기 미검증)
+    - `libbinder_ndk.so`는 절대경로(`/system/lib64`)로 dlopen한다 — 이름만 쓰면 RUNPATH의 libandroid-stub 가짜가 잡힌다
+    - 데몬이 `hostinfo_net -w`를 띄워 두고(1초 갱신, 부모 데몬이 끝나면 같이 끝남), `start`는 데몬이 떠 있어도
+      먼저 한 번 쓴다 — btop은 처음 읽은 값을 기준으로 삼아, 0으로 읽으면 다음 갱신에 부팅 이후 누적량을 속도로 본다
+    - iftop·nethogs는 패킷 캡처(raw 소켓)라 root 없이는 불가능하다(iftop은 Termux 저장소에도 없다)
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
   - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다
@@ -179,8 +189,8 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
     bionic 훅이 glibc 프로그램에 물리면 로드에 실패하므로 전역 LD_PRELOAD에는 넣지 않는다
   - Termux btop(root-repo)은 패치로 실효 UID가 0이 아니면 바로 끝낸다. `btop` alias로 `exec btop`이면
     `TERMUX_XFCE_HOSTINFO_BTOP=1`이 켜져 훅이 getuid·geteuid를 0으로 보고하고, 브리지 `cpuinfo`(model name)·
-    `filesystems`를 열며, `/sys/class/net` 아래 stat의 EACCES를 ENOENT로 바꾼다(네트워크 통계는 0으로 보인다)
-  - 훅 소스(`assets/hostinfo_proc.c`)는 `$PREFIX/libexec/termux-xfce/`에 둔다. 기본 설치는 clang을 받지 않으므로
+    `filesystems`를 열며, 막힌 `/sys/class/net` 아래 열기·stat을 브리지 `net/`의 같은 경로로 돌린다(없으면 ENOENT)
+  - 훅·도우미 소스(`assets/hostinfo_{proc,net}.c`)는 `$PREFIX/libexec/termux-xfce/`에 둔다. 기본 설치는 clang을 받지 않으므로
     설치 때 clang이 있으면 바로 빌드하고, 없으면 clang이 생긴 뒤(한글 로케일·chroot_ng 등) 첫 `htop` 실행 때
     `termux-xfce-hostinfo exec`가 빌드한다. 소스 해시가 그대로면 다시 빌드하지 않는다
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리

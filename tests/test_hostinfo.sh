@@ -7,6 +7,7 @@
 #   - getprop으로 DMI·cpuinfo Hardware 줄을 만든다
 #   - Termux 네이티브 htop: exec가 hostinfo_proc.so 훅을 붙이고, 훅은 EACCES인 /proc만 대신 연다
 #   - Termux 네이티브 btop: exec가 btop 모드를 켜고, 훅이 root로 보이게 하고 막힌 입력을 채운다
+#   - 막힌 /sys/class/net 통계: start가 hostinfo_net으로 한 번 먼저 쓰고, 데몬은 -w 갱신 루프를 띄운다
 # 가짜 sysfs·getprop·uptime으로 생성된 스크립트를 실제 실행해 검증한다.
 # =============================================================================
 
@@ -158,6 +159,48 @@ _test_cpuinfo_without_fastfetch() {
 }
 it "네이티브 fastfetch가 없거나 실패하면 getprop의 SoC 코드로 Hardware 줄을 만든다" _test_cpuinfo_without_fastfetch
 
+describe "termux-xfce-hostinfo — 네트워크 카운터"
+
+# hostinfo_net 대역: 받은 인자를 기록한다
+_write_fake_net() {
+    mkdir -p "$PREFIX/libexec/termux-xfce"
+    printf '#!%s\necho "$*" >> "%s"\n' "$_BASH" "$1/net.log" > "$PREFIX/libexec/termux-xfce/hostinfo_net"
+    chmod +x "$PREFIX/libexec/termux-xfce/hostinfo_net"
+}
+
+_test_start_writes_net_once() {
+    local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"; _write_fake_net "$sb"
+    # 이미 떠 있는 데몬처럼 보이는 프로세스를 두어 start가 진짜 데몬을 띄우지 않게 한다
+    mkdir -p "$sb/out" && mkfifo "$sb/fifo"
+    "$_BASH" -c 'read -t 30 <> "$1"' termux-xfce-hostinfo-dummy "$sb/fifo" &
+    local dummy=$! rc=0
+    echo "$dummy" > "$sb/out/pid"
+    _hostinfo "$sb" start || rc=1
+    kill "$dummy" 2>/dev/null; wait "$dummy" 2>/dev/null || true
+    assert_eq "$sb/out/net" "$(cat "$sb/net.log" 2>/dev/null)" "갱신 루프 없이 한 번만 쓴다" || rc=1
+    cleanup_sandbox "$sb"; return "$rc"
+}
+it "start는 데몬이 떠 있어도 네트워크 카운터를 먼저 한 번 쓴다 (btop이 첫 값을 0으로 읽지 않게)" _test_start_writes_net_once
+
+_test_daemon_runs_net_watcher() {
+    local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"; _write_fake_net "$sb"
+    _hostinfo_once "$sb" || { cleanup_sandbox "$sb"; return 1; }
+    local daemon n rc=0
+    # chroot-ng가 /sys/class/net에 바인드할 디렉터리는 도우미가 없어도 있어야 한다
+    assert_dir_exists "$sb/out/net" || rc=1
+    _hostinfo "$sb" run &
+    daemon=$!
+    for (( n = 0; n < 30; n++ )); do
+        grep -qxF -- "-w $sb/out/net" "$sb/net.log" 2>/dev/null && break
+        sleep 0.1
+    done
+    kill "$daemon" 2>/dev/null; wait "$daemon" 2>/dev/null || true
+    grep -qxF -- "-w $sb/out/net" "$sb/net.log" 2>/dev/null ||
+        { echo "[ASSERT] 데몬이 hostinfo_net -w를 띄우지 않았다" >&2; rc=1; }
+    cleanup_sandbox "$sb"; return "$rc"
+}
+it "데몬은 1초마다 네트워크 카운터를 쓰는 hostinfo_net -w를 띄운다" _test_daemon_runs_net_watcher
+
 describe "termux-xfce-hostinfo — Termux 네이티브 htop"
 
 _test_native_uptime_loadavg() {
@@ -203,17 +246,20 @@ _build_real_shim() {
 
 _test_build_shim_once() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
-    local so="$PREFIX/lib/hostinfo_proc.so" rc=0 before
+    local so="$PREFIX/lib/hostinfo_proc.so" net="$PREFIX/libexec/termux-xfce/hostinfo_net" rc=0 before f
     _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
     # 설치 뒤 clang이 생겼을 때 exec가 다시 빌드할 수 있도록 소스도 남긴다
-    cmp -s "${DOMAIN_DIR}/../assets/hostinfo_proc.c" "$PREFIX/libexec/termux-xfce/hostinfo_proc.c" ||
-        { echo "[ASSERT] 런타임 빌드용 소스가 없다" >&2; rc=1; }
+    for f in hostinfo_proc.c hostinfo_net.c; do
+        cmp -s "${DOMAIN_DIR}/../assets/$f" "$PREFIX/libexec/termux-xfce/$f" ||
+            { echo "[ASSERT] 런타임 빌드용 소스 $f가 없다" >&2; rc=1; }
+    done
     assert_file_exists "$so" || rc=1
+    [ -x "$net" ] || { echo "[ASSERT] 네트워크 도우미가 빌드되지 않았다" >&2; rc=1; }
     assert_eq "$(sha256sum "${DOMAIN_DIR}/../assets/hostinfo_proc.c" | cut -d' ' -f1)" "$(cat "$so.sha256")" \
         "소스 해시를 기록한다" || rc=1
-    before=$(stat -c %i "$so")
+    before="$(stat -c %i "$so") $(stat -c %i "$net")"
     _build_real_shim || rc=1
-    assert_eq "$before" "$(stat -c %i "$so")" "소스가 그대로면 다시 빌드하지 않는다" || rc=1
+    assert_eq "$before" "$(stat -c %i "$so") $(stat -c %i "$net")" "소스가 그대로면 다시 빌드하지 않는다" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 
@@ -292,9 +338,10 @@ EOF
 _test_shim_btop_mode() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
     _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
-    mkdir -p "$sb/bridge"
+    mkdir -p "$sb/bridge/net/wlan0/statistics"
     printf 'processor\t: 0\nmodel name\t: Test SoC\n' > "$sb/bridge/cpuinfo"
     printf '\tf2fs\n' > "$sb/bridge/filesystems"
+    echo 12345 > "$sb/bridge/net/wlan0/statistics/rx_bytes"
     cat > "$sb/reader.c" << 'EOF'
 #include <errno.h>
 #include <stdio.h>
@@ -314,14 +361,21 @@ static void find(const char *tag, const char *path, const char *want)
         fclose(f);
 }
 
-int main(void)
+static void net(const char *tag, const char *path)
 {
     struct stat st;
-    int rc = stat("/sys/class/net/lo/statistics/rx_bytes", &st);
-    printf("net=%s\n", rc == 0 ? "ok" : errno == ENOENT ? "ENOENT" : errno == EACCES ? "EACCES" : "other");
+    int rc = stat(path, &st);
+    printf("%s=%s\n", tag, rc == 0 ? "ok" : errno == ENOENT ? "ENOENT" : errno == EACCES ? "EACCES" : "other");
+}
+
+int main(void)
+{
+    net("net", "/sys/class/net/lo/statistics/rx_bytes");
+    net("wlan0", "/sys/class/net/wlan0/statistics/rx_bytes");
     printf("uid=%d euid=%d\n", (int)getuid(), (int)geteuid());
     find("model", "/proc/cpuinfo", "model name");
     find("fs", "/proc/filesystems", "f2fs");
+    find("rx", "/sys/class/net/wlan0/statistics/rx_bytes", "");
     return 0;
 }
 EOF
@@ -332,25 +386,52 @@ EOF
     assert_output_contains "$out" '^uid=0 euid=0$' || rc=1
     assert_output_contains "$out" $'^model=model name\t: Test SoC$' || rc=1
     assert_output_contains "$out" $'^fs=\tf2fs$' || rc=1
+    # 브리지 파일이 없는 인터페이스는 권한 오류 대신 "없음", 있는 인터페이스는 그 값을 본다
     assert_output_contains "$out" '^net=ENOENT$' || rc=1
+    assert_output_contains "$out" '^wlan0=ok$' || rc=1
+    assert_output_contains "$out" '^rx=12345$' || rc=1
     # btop 모드가 아니면 실제 UID·실제 cpuinfo·원래 권한 오류를 그대로 본다
     assert_output_contains "$plain" "^uid=$(id -u) euid=$(id -u)$" || rc=1
     assert_output_contains "$plain" '^model=none$' || rc=1
     assert_output_contains "$plain" '^fs=none$' || rc=1
     assert_output_contains "$plain" '^net=EACCES$' || rc=1
+    assert_output_contains "$plain" '^rx=none$' || rc=1
+    cleanup_sandbox "$sb"; return "$rc"
+}
+
+# 실기기 전용: Android 16 netstats(StatsResult getIfaceStats(String))에서 실제 카운터를 받는다
+_test_real_net_helper() {
+    local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
+    _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
+    local rc=0 rx
+    # chroot-ng 게스트는 바인드된 /sys/class/net에 링크를 심을 수 있다
+    mkdir -p "$sb/net/lo/statistics"
+    echo keep > "$sb/victim"
+    ln -s "$sb/victim" "$sb/net/lo/statistics/rx_bytes"
+    "$PREFIX/libexec/termux-xfce/hostinfo_net" "$sb/net" || rc=1
+    assert_eq "keep" "$(cat "$sb/victim")" "심은 링크의 대상 파일을 덮어쓰면 안 된다" || rc=1
+    # 루프백은 항상 있고, Android에서는 부팅 뒤 늘 트래픽이 있다
+    rx=$(cat "$sb/net/lo/statistics/rx_bytes" 2>/dev/null)
+    [[ "$rx" =~ ^[0-9]+$ ]] && (( rx > 0 )) || { echo "[ASSERT] lo rx_bytes가 양의 정수가 아니다: '$rx'" >&2; rc=1; }
+    assert_file_exists "$sb/net/lo/statistics/tx_bytes" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 
 if ! command -v clang >/dev/null 2>&1; then
     skip "훅 빌드·exec 연결·/proc 대체 열기 (clang 없음)"
 else
-    it "clang으로 훅을 빌드하고 소스가 그대로면 다시 빌드하지 않는다" _test_build_shim_once
+    it "clang으로 훅과 네트워크 도우미를 빌드하고 소스가 그대로면 다시 빌드하지 않는다" _test_build_shim_once
     it "설치 뒤 clang이 생기면 첫 exec가 훅을 빌드해 붙이고 데몬이 볼 PID를 남긴다" _test_exec_builds_and_attaches_shim
     if (read -r _ < /proc/stat) 2>/dev/null; then
         skip "훅의 /proc 대체 열기 (이 환경은 /proc/stat을 직접 읽을 수 있다)"
     else
         it "훅은 EACCES인 /proc/stat·uptime·loadavg 읽기·확인만 브리지 파일로 대신 연다" _test_shim_redirects_blocked_proc
         it "btop 모드의 훅은 root로 보이게 하고 cpuinfo·filesystems·막힌 /sys/class/net을 채운다" _test_shim_btop_mode
+    fi
+    if [ "$(getprop ro.build.version.sdk 2>/dev/null)" -ge 36 ] 2>/dev/null; then
+        it "hostinfo_net은 netstats 서비스에서 인터페이스별 rx/tx 바이트를 받아 쓴다 (실기기)" _test_real_net_helper
+    else
+        skip "netstats 실제 호출 (Android 16 이상 실기기 전용)"
     fi
 fi
 
