@@ -143,19 +143,26 @@ display_get_packages() {
     echo "termux-x11-nightly xdotool xclip wmctrl mesa-demos"
 }
 
-display_setup_apk() {
-    local arch
-    arch=$(uname -m)
-    local apk_name
+# 다른 UID인 일반판의 데이터 폴더는 stat부터 거부된다. 없으면 ENOENT, sharedUid 판이면 열린다
+_termux_x11_regular_installed() {
+    local err
+    err=$(LC_ALL=C stat /data/data/com.termux.x11 2>&1 >/dev/null) && return 1
+    [[ "$err" == *"Permission denied"* ]]
+}
 
-    case "$arch" in
-        aarch64) apk_name="app-arm64-v8a-debug.apk" ;;
-        x86_64)  apk_name="app-x86_64-debug.apk" ;;
-        *)
-            ui_warn "아키텍처 ${arch}용 Termux-X11 APK를 지원하지 않습니다. 수동 설치하세요."
-            return 0
-            ;;
-    esac
+display_setup_apk() {
+    # nightly는 ABI별 APK 대신 universal APK만 낸다.
+    # GitHub판 Termux와 서명이 같은 sharedUid 판은 Termux:X11 화면을 Termux 프로세스에서 띄워,
+    # 그 화면을 보는 동안에도 Termux 쪽 앱이 큰 CPU 코어를 쓴다(Samsung OneUI 8.x — termux/termux-x11#1022).
+    # F-Droid·Play판 Termux는 서명이 달라 일반판만 설치된다. 일반판 위에 덮어 설치할 수도 없다.
+    local apk_name="termux-x11-universal-debug.apk"
+    if [ "${TERMUX_APK_RELEASE:-}" = GITHUB ]; then
+        if _termux_x11_regular_installed; then
+            ui_warn "Termux:X11 일반판을 업데이트합니다. Termux:X11을 제거하고 termux-x11-universal-sharedUid-debug.apk를 설치하면 X11 화면을 보는 동안에도 큰 CPU 코어를 씁니다."
+        else
+            apk_name="termux-x11-universal-sharedUid-debug.apk"
+        fi
+    fi
 
     termux_download_and_open_apk \
         "https://github.com/termux/termux-x11/releases/download/nightly/${apk_name}" \
