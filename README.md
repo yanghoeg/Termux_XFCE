@@ -105,6 +105,7 @@ startXFCE             # Start the backend selected at installation: XFCE or Plas
 ubuntu                # Enter Ubuntu proot, if installed
 archlinux             # Enter Arch Linux proot, if installed
 prun libreoffice      # Run a command in the configured proot distro
+PRUN_RUNTIME=chroot-ng prun libreoffice  # Run without ptrace (after installing App Installer `chroot_ng`)
 cp2menu               # Import proot .desktop launchers into the native menu
 app-installer         # Extra-app GUI
 screenshot            # Full screenshot of the current desktop
@@ -127,9 +128,10 @@ model. The launcher owns these settings,
 so they are no longer forced into every shell. `GSK_RENDERER=cairo` remains the
 GTK4 compatibility setting for the X11 session.
 
-For container apps, install `gpu_proot` separately. It uses the container's glibc
-Mesa driver and enables Zink only after `vulkaninfo` detects Turnip on KGSL. A distro
-Mesa build without KGSL support is reported as unsupported; the native Bionic ICD
+For container apps, install `gpu_proot` separately. Distro Turnip builds support only
+desktop DRM (msm), so it adds the KGSL Turnip driver from Termux's glibc repository
+(pinned version and SHA-256) to the container, keeps the distro's Mesa for Zink, and
+enables Zink only after `vulkaninfo` detects Turnip on KGSL. The native Bionic ICD
 is not loaded into the container. Removing `gpu_proot` clears both current and old
 installer GPU overrides. Restart running apps after changing this setting.
 

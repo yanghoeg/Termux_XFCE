@@ -248,11 +248,13 @@ _existing_proot_shell=""
 _existing_display_server=""
 _existing_proot_distro=""
 _existing_proot_user=""
+_existing_prun_runtime=""
 if [ -f "$_cfg_file" ]; then
     _existing_proot_shell=$(grep -m1 '^PROOT_SHELL=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
     _existing_display_server=$(grep -m1 '^DISPLAY_SERVER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
     _existing_proot_distro=$(grep -m1 '^PROOT_DISTRO=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
     _existing_proot_user=$(grep -m1 '^PROOT_USER=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
+    _existing_prun_runtime=$(grep -m1 '^PRUN_RUNTIME=' "$_cfg_file" 2>/dev/null | cut -d= -f2- | tr -d '"' || true)
 fi
 
 # PROOT_SHELL: 이번 실행에 명시된 값 > 기존 config 값 > bash
@@ -286,6 +288,11 @@ DISPLAY_SERVER="${_cfg_display_server}"
 # proot 인터랙티브 셸: bash(기본) 또는 zsh (proot에 zsh 설치 후 변경 가능)
 PROOT_SHELL="${_cfg_proot_shell}"
 EOF
+# PRUN_RUNTIME은 사용자가 직접 켜는 값이라 기존 값이 있을 때만 보존한다.
+if [ -n "$_existing_prun_runtime" ]; then
+    printf '# prun 런타임: proot(기본) 또는 chroot-ng (App Installer에서 설치)\nPRUN_RUNTIME="%s"\n' \
+        "$_existing_prun_runtime" >> "$_cfg_file"
+fi
 chmod 600 "$_cfg_file"
 
 # -----------------------------------------------------------------------------

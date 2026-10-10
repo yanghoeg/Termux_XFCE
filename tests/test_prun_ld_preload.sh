@@ -79,8 +79,9 @@ _test_prun_args_use_login_shell() {
         "bash --login -c 'exec \"\$@\"' prun \"\$@\""
 
     # env -u LD_PRELOAD가 같은 논리 명령에서 bash --login보다 앞서야 함
+    # (chroot-ng 분기는 게스트 env를 상속하지 않으므로 proot-distro 줄만 본다)
     local line
-    line=$(grep -n 'bash --login -c' "${PREFIX}/bin/prun" | head -1 | cut -d: -f1)
+    line=$(grep -n 'bash --login -c' "${PREFIX}/bin/prun" | grep -v 'CNG' | head -1 | cut -d: -f1)
     if [ -z "$line" ]; then
         echo "[ASSERT] prun에 bash --login -c 분기가 없다" >&2
         cleanup_sandbox "$sb"; return 1

@@ -66,7 +66,7 @@ Termux_XFCE/
 │   ├── test_domain_{termux,xfce,proot,locale_ko}.sh
 │   ├── test_{ports,adapters,adapters_deb,app_installer}.sh
 │   ├── test_{e2e_install,input_interactive,install_matrix}.sh
-│   ├── test_prun_ld_preload.sh
+│   ├── test_prun_{ld_preload,runtime}.sh, test_hostinfo.sh
 │   ├── batch_test_appinstaller.sh
 │   └── INSTALL_MATRIX.md
 └── app-installer/                ← submodule
@@ -98,6 +98,11 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
 
 - 당시 `prun` GPU env 전파 확인. 현재 GPU 설정 소유자는 App Installer의
   `/etc/profile.d/gpu-accel.sh`이며 부모 기본 프로필에는 DISPLAY·XDG_RUNTIME_DIR만 둔다.
+  배포판 Turnip(Ubuntu 25.10·Arch 26.2.x)은 msm 전용이라 KGSL에서 GPU를 못 찾는다 →
+  `gpu_proot`는 Termux glibc-repo `mesa-vulkan-icd-freedreno-glibc`(24.2.6, sha256 고정)의
+  드라이버만 rootfs `/usr/local/lib/termux-turnip/`에 넣는다(RUNPATH 없음·GLIBC_2.38까지 →
+  배포판 라이브러리로 로드). 2026-10-10 Ubuntu에서 Zink+Turnip Adreno 750 확인. vkcube 1.4.304만
+  `vkEnumeratePhysicalDevices` -3으로 실패(proot도 동일 — 런타임 무관)
 - zsh + Powerlevel10k 설정 순서 검증(`_setup_zsh_p10k` → `_setup_aliases`, 코드 수정 불필요)
 - Termux native nimf `pgrep -x` 가드(`nimf.desktop` Exec)
 - `korean_proot` 로케일: Arch `~/.bash_profile→~/.bashrc` 체인이 `~/.profile`을 무시하는 버그를
@@ -141,6 +146,28 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
    root = `termux-root/dists/root/stable/binary-aarch64/Packages`,
    tur = `https://tur.kcubeterm.com/dists/tur-packages/tur/binary-aarch64/Packages`)
 - `proot_exec`는 `PROOT_DISTRO`, `PROOT_USER` 환경변수 필요
+- **prun 런타임**: 기본은 proot-distro. `PRUN_RUNTIME=chroot-ng`(env 또는 config, env 우선)이면
+  App Installer `chroot_ng`가 설치한 `$PREFIX/bin/chroot-ng`(ptrace 없음)로 같은 rootfs를 실행한다.
+  root 작업(apt/pacman, 사용자 생성)은 계속 proot-distro 몫이다.
+  - chroot-ng는 다른 실행과 호스트 프로세스를 숨기므로 `--shared-proc`가 있어야 profile.d의
+    `pgrep` IME 가드가 동작한다 (없으면 실행마다 `fcitx5 --replace`가 새로 뜬다)
+  - `$PREFIX`를 같은 경로로 바인드해야 proot-distro link2symlink의 절대경로 `.l2s` 링크
+    (terminfo·zoneinfo·locale-archive 등)가 풀린다. `-l`은 `.l2s` 저장소 이름 규칙이 proot와
+    달라 켜지 않는다
+- **Host Info Bridge** (`termux-xfce-hostinfo`, prun과 `htop` alias가 기동): Android이 막은 `/proc/stat`을 코어별
+  cpuidle 체류 시간으로 만들어 proot-distro `sysdata/{stat,uptime,loadavg}`와 chroot-ng 바인드용 파일에
+  1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다
+  - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
+    옛 값에 멈춘다
+  - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다
+  - Termux 네이티브에서도 `/proc/{stat,uptime,loadavg}`는 EACCES다. Termux htop은 `access()`로 먼저 확인해
+    막혀 있으면 CPU를 읽지 않아 offline으로 표시한다. `htop` alias가 `termux-xfce-hostinfo exec`로
+    `hostinfo_proc.so` LD_PRELOAD 훅을 붙여, EACCES인
+    읽기 전용 열기·확인만 브리지 파일로 바꾼다. exec는 PID를 `holders/`에 남겨 게스트가 없어도 데몬을 유지한다.
+    bionic 훅이 glibc 프로그램에 물리면 로드에 실패하므로 전역 LD_PRELOAD에는 넣지 않는다
+  - 훅 소스(`assets/hostinfo_proc.c`)는 `$PREFIX/libexec/termux-xfce/`에 둔다. 기본 설치는 clang을 받지 않으므로
+    설치 때 clang이 있으면 바로 빌드하고, 없으면 clang이 생긴 뒤(한글 로케일·chroot_ng 등) 첫 `htop` 실행 때
+    `termux-xfce-hostinfo exec`가 빌드한다. 소스 해시가 그대로면 다시 빌드하지 않는다
 - **디스플레이 서버 추상화**: `ports/display.sh` 포트로 X11/Wayland 분리
   - X11 어댑터(`display_x11.sh`): Termux:X11 APK + `termux-x11` 프로세스
   - Wayland 어댑터(`display_wayland.sh`): Anland 5.13.3 + 패치 KWin + **KDE Plasma** (ARM64 Adreno)
