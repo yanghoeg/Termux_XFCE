@@ -26,6 +26,7 @@ Android 기기의 Termux에서 **XFCE 데스크탑 환경**을 자동 설치하�
 - **헥사고날 아키텍처** — distro 추상화로 Ubuntu·Arch 공통 코드 유지
 - **재실행 지원** — 설치된 패키지는 가능한 한 건너뛰고 관리 대상 런처와 설정은 갱신
 - **선택적 GPU 가속** — App Installer로 드라이버를 설치하면 X11 런처가 Zink + Turnip 사용 여부를 판단하고 소프트웨어 렌더링으로 폴백
+- **ptrace 없는 컨테이너 실행(선택)** — chroot-ng 런타임과 Android Host Info Bridge. 미코(meeco.kr) 흡혈귀왕님의 glibc rootfs 런타임 구성을 참고해 구현([아래](#ptrace-없는-런타임과-host-info-bridge))
 - **Termux API 연동** — Android 클립보드 동기화, 배터리 모니터, 밝기/볼륨 조절
 - **zsh + Powerlevel10k** — 기본 쉘로 설정, 자동완성·구문강조 포함
 
@@ -145,6 +146,34 @@ hud glxgears      # 현재 그래픽 세션의 FPS 표시
 
 Wayland는 별도의 Anland/KWin 런타임을 사용합니다. 자세한 내용은
 [Wayland 안내](docs/wayland-anland.md)를 참고하세요.
+
+## ptrace 없는 런타임과 Host Info Bridge
+
+미코(meeco.kr)의 흡혈귀왕님이 공개한 "glibc rootfs 리눅스 런타임" 작업을 참고해 구현했습니다.
+그 작업의 핵심은 ptrace 오버헤드 없는 실행([06-16](https://meeco.kr/mini/41529519)), Android Host Info Bridge와
+앱 체크리스트([06-29](https://meeco.kr/ITplus/41603434)), Turnip/Zink GPU입니다. 원 작업은 공개되지 않아서 같은 구성을
+공개된 구성요소로 이 저장소에 직접 구현했습니다.
+
+| 구성 | 이 저장소의 구현 |
+|---|---|
+| ptrace 없는 실행 | `PRUN_RUNTIME=chroot-ng`(env 또는 config)이면 App Installer `chroot_ng`가 소스 빌드한 [chroot-ng](https://github.com/sylirre/fake-chroot-ng)(Apache-2.0)로 같은 proot-distro rootfs를 실행합니다. 패키지 설치 같은 root 작업은 proot-distro가 계속 맡습니다. |
+| Android Host Info Bridge | `termux-xfce-hostinfo`가 Android이 막은 `/proc/stat`·`uptime`·`loadavg`를 코어별 cpuidle과 `sysinfo`로 만들고, getprop으로 기기 정보(DMI)와 SoC 이름을 채웁니다. 게스트의 htop·btop·glances·fastfetch·inxi와 Termux 네이티브 htop에 실제 값이 나옵니다. |
+| GPU | `gpu_proot`가 KGSL Turnip(Vulkan)과 Freedreno KGSL(OpenGL, Ubuntu)을 넣습니다([GPU 가속](#gpu-가속)). |
+| 큰 CPU 코어 | GitHub판 Termux에는 Termux:X11 sharedUid 판을 설치합니다(일반판이 이미 있으면 제거 후 설치하도록 안내). X11 화면을 보는 동안에도 Samsung OneUI가 Termux 쪽 앱을 작은 코어로 묶지 않습니다([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). |
+
+Galaxy Z Fold6(SM-F956N)에서 잰 값은 다음과 같습니다.
+
+| 측정 | proot-distro | chroot-ng | 네이티브 |
+|---|---|---|---|
+| `prun true` | 0.6–0.9초 | 0.15초 | — |
+| `find /usr` (Ubuntu) | 4–15초 | 0.6초 | — |
+| vkmark (headless, xMeM 패치 Turnip) | 501 | 4252 | 4004 |
+
+남은 한계도 있습니다.
+- 이 기기의 Termux:X11에서는 xMeM 패치 Turnip의 X11 스왑체인 생성이 실패합니다(네이티브 Termux Turnip도 같음). 그래서 Vulkan 화면 출력은 Turnip 24.2.6을 쓰고, vkcube는 실행되지 않습니다.
+- 네트워크·배터리 통계는 Android에 원천이 없어 비어 있습니다.
+- 경로 번역은 seccomp 트랩만 쓰고 LD_PRELOAD 속도 계층은 없습니다.
+- 게스트에는 상주 D-Bus 세션이 없어 GSettings(dconf) 설정이 저장되지 않습니다. 파일 열기·저장 대화상자는 정상입니다.
 
 ## Termux API 연동
 

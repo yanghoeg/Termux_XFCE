@@ -26,6 +26,7 @@ Derived from [phoenixbyrd/Termux_XFCE](https://github.com/phoenixbyrd/Termux_XFC
 - **Hexagonal Architecture** — distro abstraction keeps Ubuntu & Arch code unified
 - **Repeatable setup** — installed packages are skipped where possible; managed launchers and settings are refreshed
 - **Optional GPU acceleration** — install the drivers with App Installer; the X11 launcher selects Zink + Turnip when available and falls back to software rendering
+- **Optional ptrace-free container runtime** — chroot-ng runtime and an Android Host Info Bridge, implemented after the glibc rootfs runtime design by 흡혈귀왕 on meeco.kr ([details](#ptrace-free-runtime-and-host-info-bridge))
 - **Termux API integration** — Android clipboard sync, battery monitor, brightness/volume control
 - **zsh + Powerlevel10k** — set as default shell with autosuggestions & syntax-highlighting
 
@@ -148,6 +149,35 @@ hud glxgears      # FPS overlay in the current graphical session
 
 Wayland uses the separate Anland/KWin runtime described in
 [the Wayland guide](docs/wayland-anland.md).
+
+## ptrace-free Runtime and Host Info Bridge
+
+This was implemented after the "glibc rootfs Linux runtime" work published by 흡혈귀왕 on
+meeco.kr. That work covers ptrace-free execution ([06-16](https://meeco.kr/mini/41529519)), an
+Android Host Info Bridge with an app checklist ([06-29](https://meeco.kr/ITplus/41603434)), and
+Turnip/Zink GPU. The original is not published, so the same structure was built here from open
+components.
+
+| Part | Implementation in this repository |
+|---|---|
+| ptrace-free execution | With `PRUN_RUNTIME=chroot-ng` (env or config), `prun` runs the same proot-distro rootfs through [chroot-ng](https://github.com/sylirre/fake-chroot-ng) (Apache-2.0), built from source by the App Installer item `chroot_ng`. Root tasks such as package installs stay with proot-distro. |
+| Android Host Info Bridge | `termux-xfce-hostinfo` rebuilds the blocked `/proc/stat`, `uptime` and `loadavg` from per-core cpuidle and `sysinfo`, and fills device (DMI) and SoC names from getprop. htop, btop, glances, fastfetch and inxi in the guest, and native Termux htop, show real values. |
+| GPU | `gpu_proot` adds KGSL Turnip (Vulkan) and Freedreno KGSL (OpenGL, Ubuntu); see [GPU Acceleration](#gpu-acceleration). |
+| Big CPU cores | GitHub Termux gets the Termux:X11 sharedUid build (if the regular build is already installed, the installer explains how to switch), so Samsung One UI does not confine Termux apps to small cores while the X11 screen is shown ([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). |
+
+Measured on a Galaxy Z Fold6 (SM-F956N):
+
+| Measurement | proot-distro | chroot-ng | Native |
+|---|---|---|---|
+| `prun true` | 0.6–0.9 s | 0.15 s | — |
+| `find /usr` (Ubuntu) | 4–15 s | 0.6 s | — |
+| vkmark (headless, xMeM-patched Turnip) | 501 | 4252 | 4004 |
+
+Known limits:
+- On this device's Termux:X11, the xMeM-patched Turnip fails to create an X11 swapchain (native Termux Turnip does too), so on-screen Vulkan uses Turnip 24.2.6 and vkcube does not start.
+- Network and battery statistics have no source on Android and stay empty.
+- Path translation uses only seccomp traps; there is no LD_PRELOAD fast path.
+- The guest has no persistent D-Bus session, so GSettings (dconf) changes are not saved. File open and save dialogs work.
 
 ## Termux API Integration
 
