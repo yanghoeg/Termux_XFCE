@@ -657,7 +657,7 @@ if [ "$PRUN_RUNTIME" = chroot-ng ]; then
     CNG=("$CHROOT_NG" --shared-proc --fake-id="$GUEST_UID:$GUEST_GID" -w "$GUEST_HOME"
         -b "$PREFIX:$PREFIX" -b "$PREFIX/tmp:/tmp" -b /sys:/sys
         -E HOME="$GUEST_HOME" -E USER="$USER_NAME" -E LOGNAME="$USER_NAME"
-        -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
         -E DISPLAY="$DISPLAY" -E PULSE_SERVER=127.0.0.1 -E MOZ_FAKE_NO_SANDBOX=1)
     for p in /dev/kgsl-3d0 /dev/dma_heap /sdcard /storage; do
         [ -e "$p" ] && CNG+=(-b "$p:$p")

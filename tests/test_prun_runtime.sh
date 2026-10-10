@@ -76,6 +76,7 @@ _test_env_selects_chroot_ng() {
     local log="$sb/chroot-ng.log" rc=0 line
     for line in --shared-proc --fake-id=10381:982 /home/testuser "${PREFIX}:${PREFIX}" \
         "${PREFIX}/tmp:/tmp" /sys:/sys HOME=/home/testuser USER=testuser PULSE_SERVER=127.0.0.1 \
+        PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games \
         "${PREFIX}/var/lib/proot-distro/installed-rootfs/archlinux" /usr/bin/env --login \
         'exec "$@"' xeyes -geometry 10x10; do
         _assert_log_line "$log" "$line" || rc=1
