@@ -1,11 +1,11 @@
-# Termux XFCE
+# usix-termux
 
 <div align="center">
 
 **[한국어](README.ko.md)** &nbsp;|&nbsp; [English](README.md)
 
 [![Android](https://img.shields.io/badge/Android-Termux-3DDC84?logo=android)](https://termux.dev)
-[![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/Termux_XFCE)
+[![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/usix-termux)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 <img src="assets/desktop.png" alt="Galaxy Fold6에서 실행 중인 Termux XFCE 데스크탑" width="720">
@@ -38,14 +38,14 @@ Android 기기의 Termux에서 **XFCE 데스크탑 환경**을 자동 설치하�
 
 ```bash
 # 저장소를 자동으로 clone한 뒤 대화형 설치 시작
-curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/yanghoeg/usix-termux/main/install.sh | bash
 ```
 
 코드를 확인하거나 다시 실행할 수 있도록 직접 clone해도 됩니다.
 
 ```bash
-git clone --recurse-submodules https://github.com/yanghoeg/Termux_XFCE.git
-cd Termux_XFCE
+git clone --recurse-submodules https://github.com/yanghoeg/usix-termux.git
+cd usix-termux
 bash install.sh
 ```
 
@@ -242,7 +242,7 @@ app-installer          # 전체 (탭: 앱 | 시스템 | Termux API | Wine)
 app-installer wine     # Wine 앱만
 ```
 
-Termux_XFCE 저장소 폴더에서 GUI 없이 실행할 수도 있습니다.
+usix-termux 저장소 폴더에서 GUI 없이 실행할 수도 있습니다.
 
 ```bash
 bash app-installer/app-install.sh list
@@ -359,7 +359,7 @@ sv up sshd          # 지금 바로 시작
 
 ## 테스트
 
-Termux_XFCE 저장소 폴더에서 실행합니다.
+usix-termux 저장소 폴더에서 실행합니다.
 
 ```bash
 bash tests/run_tests.sh
@@ -422,7 +422,7 @@ Samsung DeX에서는 Termux:X11 → Preferences → Keyboard → **Intercept sys
 ## 파일 구조
 
 ```
-Termux_XFCE/
+usix-termux/
 ├── install.sh                    ← 진입점 + DI 컨테이너
 ├── ports/                        ← 계약 정의 (인터페이스)
 ├── adapters/

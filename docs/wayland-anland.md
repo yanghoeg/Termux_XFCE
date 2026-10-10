@@ -80,7 +80,7 @@ The hardware preflight rejects other devices before configuration/package change
 for a native Wayland installation; use `--display x11` on those devices. Running Anland inside proot is outside this implementation. Existing proot
 GUI apps use the Xwayland display inherited from the Plasma session.
 
-Run from the Termux_XFCE checkout with its submodule initialized:
+Run from the usix-termux checkout with its submodule initialized:
 
 ```bash
 # Configure the native desktop without running proot setup

@@ -1010,7 +1010,7 @@ _setup_app_installer() {
     printf -v installer_path_q '%q' "${SCRIPT_DIR}/app-installer/install.sh"
 
     # SCRIPT_DIR은 install.sh 실행 시점 기준 — curl-pipe(~/.termux-xfce-installer),
-    # 수동 clone(~/Termux_XFCE) 양쪽 모두 정확한 경로를 기록한다.
+    # 수동 clone(~/usix-termux) 양쪽 모두 정확한 경로를 기록한다.
     # 항상 재생성하여 SCRIPT_DIR 변경을 반영한다.
     cat > "$bin" << EOF
 #!/data/data/com.termux/files/usr/bin/bash
