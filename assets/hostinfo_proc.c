@@ -4,6 +4,12 @@
  * Android은 앱에서 /proc/stat·/proc/uptime·/proc/loadavg 읽기를 막는다(EACCES).
  * 원래 파일이 EACCES로 열리지 않는 읽기 전용 열기·읽기 확인만 TERMUX_XFCE_HOSTINFO 디렉터리의
  * 같은 이름 파일(termux-xfce-hostinfo가 1초마다 갱신)로 다시 시도한다.
+ *
+ * TERMUX_XFCE_HOSTINFO_BTOP=1(termux-xfce-hostinfo exec btop)이면 btop 호환을 더한다:
+ *   - Termux btop은 실효 UID가 root가 아니면 바로 끝내므로 getuid·geteuid를 0으로 보고한다
+ *   - ARM /proc/cpuinfo에는 model name이 없어 /sys/devices 목록(막힘)을 뒤지다 죽으므로 브리지 cpuinfo를 연다
+ *   - 막힌 /proc/filesystems는 브리지 파일로 대신 연다
+ *   - /sys/class/net 통계가 막혀(EACCES) 죽으므로 그 아래 stat의 EACCES를 ENOENT("없음")로 바꾼다
  */
 #define _GNU_SOURCE
 #include <dlfcn.h>
@@ -14,8 +20,15 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
+
+static int btop_mode(void)
+{
+    const char *v = getenv("TERMUX_XFCE_HOSTINFO_BTOP");
+    return v && strcmp(v, "1") == 0;
+}
 
 /* 막힌 /proc 항목이면 alt에 대체 경로를 채우고 1을 돌려준다 */
 static int bridged(const char *path, char alt[PATH_MAX])
@@ -26,7 +39,8 @@ static int bridged(const char *path, char alt[PATH_MAX])
     if (!path || !dir || !*dir || strncmp(path, "/proc/", 6) != 0)
         return 0;
     name = path + 6;
-    if (strcmp(name, "stat") != 0 && strcmp(name, "uptime") != 0 && strcmp(name, "loadavg") != 0)
+    if (strcmp(name, "stat") != 0 && strcmp(name, "uptime") != 0 && strcmp(name, "loadavg") != 0 &&
+        !(btop_mode() && (strcmp(name, "cpuinfo") == 0 || strcmp(name, "filesystems") == 0)))
         return 0;
     return snprintf(alt, PATH_MAX, "%s/%s", dir, name) < PATH_MAX;
 }
@@ -39,6 +53,10 @@ FILE *fopen(const char *path, const char *mode)
 
     if (!real)
         real = (FILE *(*)(const char *, const char *))dlsym(RTLD_NEXT, "fopen");
+    /* /proc/cpuinfo는 열리지만 model name이 없다 — btop 모드면 먼저 브리지 파일을 연다 */
+    if (path && strcmp(path, "/proc/cpuinfo") == 0 && mode[0] == 'r' && !strchr(mode, '+') &&
+        bridged(path, alt) && (g = real(alt, mode)))
+        return g;
     f = real(path, mode);
     if (f || errno != EACCES || mode[0] != 'r' || strchr(mode, '+') || !bridged(path, alt))
         return f;
@@ -121,4 +139,53 @@ int access(const char *path, int mode)
 int faccessat(int dirfd, const char *path, int mode, int flags)
 {
     return access_bridged(dirfd, path, mode, flags);
+}
+
+uid_t getuid(void)
+{
+    static uid_t (*real)(void);
+
+    if (btop_mode())
+        return 0;
+    if (!real)
+        real = (uid_t (*)(void))dlsym(RTLD_NEXT, "getuid");
+    return real();
+}
+
+uid_t geteuid(void)
+{
+    static uid_t (*real)(void);
+
+    if (btop_mode())
+        return 0;
+    if (!real)
+        real = (uid_t (*)(void))dlsym(RTLD_NEXT, "geteuid");
+    return real();
+}
+
+/* btop은 /sys/class/net/<if>/statistics가 없으면 0으로 보지만, 권한 오류는 예외로 죽는다 */
+static int hide_net(const char *path, int rc)
+{
+    if (rc != 0 && errno == EACCES && path && strncmp(path, "/sys/class/net/", 15) == 0 && btop_mode())
+        errno = ENOENT;
+    return rc;
+}
+
+static int real_fstatat(int dirfd, const char *path, struct stat *st, int flags)
+{
+    static int (*real)(int, const char *, struct stat *, int);
+
+    if (!real)
+        real = (int (*)(int, const char *, struct stat *, int))dlsym(RTLD_NEXT, "fstatat");
+    return real(dirfd, path, st, flags);
+}
+
+int stat(const char *path, struct stat *st)
+{
+    return hide_net(path, real_fstatat(AT_FDCWD, path, st, 0));
+}
+
+int fstatat(int dirfd, const char *path, struct stat *st, int flags)
+{
+    return hide_net(path, real_fstatat(dirfd, path, st, flags));
 }

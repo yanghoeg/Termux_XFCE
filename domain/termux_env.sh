@@ -702,7 +702,7 @@ _setup_hostinfo() {
 #   start  실행 중이 아니면 백그라운드로 띄운다 (prun이 호출, 기본값)
 #   once   한 번만 갱신한다 (점검용)
 #   build  네이티브 htop용 hostinfo_proc.so 훅을 소스가 바뀌었을 때만 clang으로 빌드한다
-#   exec   Termux 네이티브 프로그램(htop 등)에 훅을 붙여 실행한다 (훅이 없고 clang이 있으면 먼저 빌드)
+#   exec   Termux 네이티브 프로그램(htop·btop 등)에 훅을 붙여 실행한다 (훅이 없고 clang이 있으면 먼저 빌드)
 # proot·chroot-ng 게스트도, exec로 띄운 프로그램도 없으면 스스로 종료한다.
 # HOSTINFO_DIR / HOSTINFO_CPU_ROOT / HOSTINFO_UPTIME은 테스트용 경로 재지정이다.
 OUT="${HOSTINFO_DIR:-$PREFIX/tmp/termux-xfce-hostinfo}"
@@ -732,6 +732,8 @@ _static_files() {
     # ARM cpuinfo에는 model name이 없어 btop은 /sys/devices 목록을 뒤지다 권한 오류로 죽는다 — 코어마다 넣는다
     { awk -v n="$hw" '{ print } /^processor[ \t]*:/ { print "model name\t: " n }' /proc/cpuinfo
       printf 'Hardware\t: %s\n' "$hw"; } > "$OUT/cpuinfo"
+    # 네이티브 btop은 막힌 /proc/filesystems로 실제 디스크 종류를 고른다 — Android 기기 파티션 종류
+    printf '\t%s\n' ext4 f2fs erofs vfat exfat > "$OUT/filesystems"
 }
 
 _load() {
@@ -881,6 +883,8 @@ case "${1:-start}" in
         # 데몬보다 PID를 먼저 남겨 바로 끝나지 않게 한다
         if [ -s "$SHIM" ] && mkdir -p "$OUT/holders" && : > "$OUT/holders/$$" && "$0" start >/dev/null 2>&1; then
             export TERMUX_XFCE_HOSTINFO="$OUT" LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
+            # Termux btop은 root가 아니면 바로 끝낸다 — 훅이 root로 보이게 하고 막힌 입력을 채운다
+            [ "${1##*/}" = btop ] && export TERMUX_XFCE_HOSTINFO_BTOP=1
         fi
         exec "$@"
         ;;
@@ -893,15 +897,23 @@ EOF
 
     # Termux 네이티브 htop도 막힌 /proc 대신 브리지 파일을 읽도록 훅을 붙여 실행한다
     _build_hostinfo_proc || true
-    local block rc
+    local block btop_block rc
     block=$(cat << 'HOSTINFO'
 
 # termux-xfce-hostinfo — Android이 막은 /proc/stat 등을 채워 htop에 CPU·부하·업타임 표시
 alias htop='termux-xfce-hostinfo exec htop'
 HOSTINFO
 )
+    # 기존 설치의 rc에도 들어가도록 htop 블록과 마커를 따로 둔다
+    btop_block=$(cat << 'HOSTINFO'
+
+# termux-xfce-hostinfo btop — Termux btop의 root 검사를 넘기고 막힌 입력을 채운다
+alias btop='termux-xfce-hostinfo exec btop'
+HOSTINFO
+)
     while IFS= read -r rc; do
         _append_to_rc "# termux-xfce-hostinfo" "$block" "$rc"
+        _append_to_rc "# termux-xfce-hostinfo btop" "$btop_block" "$rc"
     done < <(_rc_targets)
 }
 

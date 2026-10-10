@@ -6,6 +6,7 @@
 #     (top/vmstat은 fd를 열어 둔 채 되감아 읽으므로 바꿔치기하면 값이 멈춘다)
 #   - getprop으로 DMI·cpuinfo Hardware 줄을 만든다
 #   - Termux 네이티브 htop: exec가 hostinfo_proc.so 훅을 붙이고, 훅은 EACCES인 /proc만 대신 연다
+#   - Termux 네이티브 btop: exec가 btop 모드를 켜고, 훅이 root로 보이게 하고 막힌 입력을 채운다
 # 가짜 sysfs·getprop·uptime으로 생성된 스크립트를 실제 실행해 검증한다.
 # =============================================================================
 
@@ -141,6 +142,8 @@ _test_device_info() {
     assert_eq "$(grep -c '^processor' "$sb/out/cpuinfo")" \
         "$(grep -c "^model name"$'\t'": Qualcomm Snapdragon 8 Gen 3 \[SM8650\]$" "$sb/out/cpuinfo")" \
         "processor 블록마다 model name" || rc=1
+    # 네이티브 btop은 /proc/filesystems가 막히면 디스크를 못 고른다
+    assert_file_contains "$sb/out/filesystems" $'^\tf2fs$' || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 it "getprop으로 DMI(제조사·모델·보드)를, 네이티브 fastfetch로 cpuinfo Hardware 줄을 만든다" _test_device_info
@@ -174,8 +177,10 @@ _write_env_probe() {
 echo "pid=$$"
 echo "hostinfo=${TERMUX_XFCE_HOSTINFO-unset}"
 echo "preload=${LD_PRELOAD-}"
+echo "btop=${TERMUX_XFCE_HOSTINFO_BTOP-unset}"
 EOF
     chmod +x "$1/fakebin/probe"
+    cp "$1/fakebin/probe" "$1/fakebin/btop"
 }
 
 _test_exec_without_shim() {
@@ -220,15 +225,19 @@ _test_exec_builds_and_attaches_shim() {
     # 이미 떠 있는 데몬처럼 보이는 프로세스를 두어 exec가 진짜 데몬을 띄우지 않게 한다
     mkdir -p "$sb/out" && mkfifo "$sb/fifo"
     "$_BASH" -c 'read -t 30 <> "$1"' termux-xfce-hostinfo-dummy "$sb/fifo" &
-    local dummy=$! out pid rc=0
+    local dummy=$! out btop_out pid rc=0
     echo "$dummy" > "$sb/out/pid"
     out=$(_hostinfo "$sb" exec "$sb/fakebin/probe") || rc=1
+    btop_out=$(_hostinfo "$sb" exec "$sb/fakebin/btop") || rc=1
     kill "$dummy" 2>/dev/null; wait "$dummy" 2>/dev/null || true
     pid=$(sed -n 's/^pid=//p' <<< "$out")
     assert_file_exists "$PREFIX/lib/hostinfo_proc.so" || rc=1
     assert_file_exists "$sb/out/holders/$pid" || rc=1
     assert_output_contains "$out" "^hostinfo=$sb/out$" || rc=1
     assert_output_contains "$out" "^preload=$PREFIX/lib/hostinfo_proc.so" || rc=1
+    # btop 모드는 btop에만 켠다 (htop 등은 실제 UID를 그대로 본다)
+    assert_output_contains "$out" '^btop=unset$' || rc=1
+    assert_output_contains "$btop_out" '^btop=1$' || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 
@@ -280,6 +289,58 @@ EOF
     cleanup_sandbox "$sb"; return "$rc"
 }
 
+_test_shim_btop_mode() {
+    local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
+    _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
+    mkdir -p "$sb/bridge"
+    printf 'processor\t: 0\nmodel name\t: Test SoC\n' > "$sb/bridge/cpuinfo"
+    printf '\tf2fs\n' > "$sb/bridge/filesystems"
+    cat > "$sb/reader.c" << 'EOF'
+#include <errno.h>
+#include <stdio.h>
+#include <string.h>
+#include <sys/stat.h>
+#include <unistd.h>
+
+static void find(const char *tag, const char *path, const char *want)
+{
+    char buf[128];
+    FILE *f = fopen(path, "r");
+    const char *got = "none\n";
+    while (f && fgets(buf, sizeof(buf), f))
+        if (strstr(buf, want)) { got = buf; break; }
+    printf("%s=%s", tag, got);
+    if (f)
+        fclose(f);
+}
+
+int main(void)
+{
+    struct stat st;
+    int rc = stat("/sys/class/net/lo/statistics/rx_bytes", &st);
+    printf("net=%s\n", rc == 0 ? "ok" : errno == ENOENT ? "ENOENT" : errno == EACCES ? "EACCES" : "other");
+    printf("uid=%d euid=%d\n", (int)getuid(), (int)geteuid());
+    find("model", "/proc/cpuinfo", "model name");
+    find("fs", "/proc/filesystems", "f2fs");
+    return 0;
+}
+EOF
+    clang -O2 -o "$sb/reader" "$sb/reader.c" || { cleanup_sandbox "$sb"; return 1; }
+    local preload="$PREFIX/lib/hostinfo_proc.so${LD_PRELOAD:+:$LD_PRELOAD}" out plain rc=0
+    out=$(TERMUX_XFCE_HOSTINFO_BTOP=1 TERMUX_XFCE_HOSTINFO="$sb/bridge" LD_PRELOAD="$preload" "$sb/reader")
+    plain=$(TERMUX_XFCE_HOSTINFO="$sb/bridge" LD_PRELOAD="$preload" "$sb/reader")
+    assert_output_contains "$out" '^uid=0 euid=0$' || rc=1
+    assert_output_contains "$out" $'^model=model name\t: Test SoC$' || rc=1
+    assert_output_contains "$out" $'^fs=\tf2fs$' || rc=1
+    assert_output_contains "$out" '^net=ENOENT$' || rc=1
+    # btop 모드가 아니면 실제 UID·실제 cpuinfo·원래 권한 오류를 그대로 본다
+    assert_output_contains "$plain" "^uid=$(id -u) euid=$(id -u)$" || rc=1
+    assert_output_contains "$plain" '^model=none$' || rc=1
+    assert_output_contains "$plain" '^fs=none$' || rc=1
+    assert_output_contains "$plain" '^net=EACCES$' || rc=1
+    cleanup_sandbox "$sb"; return "$rc"
+}
+
 if ! command -v clang >/dev/null 2>&1; then
     skip "훅 빌드·exec 연결·/proc 대체 열기 (clang 없음)"
 else
@@ -289,6 +350,7 @@ else
         skip "훅의 /proc 대체 열기 (이 환경은 /proc/stat을 직접 읽을 수 있다)"
     else
         it "훅은 EACCES인 /proc/stat·uptime·loadavg 읽기·확인만 브리지 파일로 대신 연다" _test_shim_redirects_blocked_proc
+        it "btop 모드의 훅은 root로 보이게 하고 cpuinfo·filesystems·막힌 /sys/class/net을 채운다" _test_shim_btop_mode
     fi
 fi
 

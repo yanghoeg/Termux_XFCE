@@ -177,6 +177,9 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
     `hostinfo_proc.so` LD_PRELOAD 훅을 붙여, EACCES인
     읽기 전용 열기·확인만 브리지 파일로 바꾼다. exec는 PID를 `holders/`에 남겨 게스트가 없어도 데몬을 유지한다.
     bionic 훅이 glibc 프로그램에 물리면 로드에 실패하므로 전역 LD_PRELOAD에는 넣지 않는다
+  - Termux btop(root-repo)은 패치로 실효 UID가 0이 아니면 바로 끝낸다. `btop` alias로 `exec btop`이면
+    `TERMUX_XFCE_HOSTINFO_BTOP=1`이 켜져 훅이 getuid·geteuid를 0으로 보고하고, 브리지 `cpuinfo`(model name)·
+    `filesystems`를 열며, `/sys/class/net` 아래 stat의 EACCES를 ENOENT로 바꾼다(네트워크 통계는 0으로 보인다)
   - 훅 소스(`assets/hostinfo_proc.c`)는 `$PREFIX/libexec/termux-xfce/`에 둔다. 기본 설치는 clang을 받지 않으므로
     설치 때 clang이 있으면 바로 빌드하고, 없으면 clang이 생긴 뒤(한글 로케일·chroot_ng 등) 첫 `htop` 실행 때
     `termux-xfce-hostinfo exec`가 빌드한다. 소스 해시가 그대로면 다시 빌드하지 않는다
