@@ -868,70 +868,70 @@ it "_install_base_packages가 set -e 하에서 끝까지 실행된다" _test_ins
 
 describe "display_x11 — display_setup_apk"
 
-# uname -m 결과를 지정값으로 고정한 채 함수 실행
-_run_with_arch() {
-    local _MOCK_ARCH="$1"; shift
-    uname() {
-        if [ "$1" = "-m" ]; then echo "$_MOCK_ARCH"; else command uname "$@"; fi
-    }
-    "$@"
+# Termux 출처(TERMUX_APK_RELEASE)와 일반판 Termux:X11 설치 여부를 고정한 채 실행
+_run_apk_setup() {
+    local release="$1" regular="$2"
+    _termux_x11_regular_installed() { [ "$regular" = yes ]; }
+    TERMUX_APK_RELEASE="$release" display_setup_apk
 }
 
-_test_x11_apk_aarch64_path() {
+_test_x11_apk_github_uses_shared_uid() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" display_setup_apk
+    _run_apk_setup GITHUB no
 
     assert_was_called "wget"
-    assert_was_called "app-arm64-v8a-debug.apk"
+    assert_was_called "termux-x11-universal-sharedUid-debug.apk"
     cleanup_sandbox "$sb"
 }
-it "aarch64는 arm64-v8a APK를 다운로드한다" _test_x11_apk_aarch64_path
+it "GitHub판 Termux는 큰 코어를 쓰게 하는 sharedUid universal APK를 받는다" _test_x11_apk_github_uses_shared_uid
 
-_test_x11_apk_x86_64_path() {
+_test_x11_apk_fdroid_uses_regular() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
     termux-open() { :; }
     reset_mock_calls
 
-    _run_with_arch "x86_64" display_setup_apk
+    _run_apk_setup F_DROID no
 
-    assert_was_called "app-x86_64-debug.apk"
+    assert_was_called "termux-x11-universal-debug.apk"
+    assert_not_called "sharedUid"
     cleanup_sandbox "$sb"
 }
-it "x86_64는 x86_64 APK를 다운로드한다" _test_x11_apk_x86_64_path
+it "F-Droid판 Termux는 서명이 달라 일반 universal APK를 받는다" _test_x11_apk_fdroid_uses_regular
 
-_test_x11_apk_unsupported_arch_warns_and_returns() {
+_test_x11_apk_github_with_regular_installed_updates_regular() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
-    termux-open() { _record_call "termux-open $*"; }
+    termux-open() { :; }
     reset_mock_calls
 
-    _run_with_arch "armv7l" display_setup_apk
+    _run_apk_setup GITHUB yes
 
-    # wget/termux-open 둘 다 호출되지 않아야 함
-    assert_not_called "wget"
-    assert_not_called "termux-open"
+    # 일반판 위에는 sharedUid 판을 덮어 설치할 수 없으므로 일반판을 갱신하고 전환 방법을 알린다
+    assert_was_called "termux-x11-universal-debug.apk"
+    assert_not_called "sharedUid-debug.apk"
+    assert_output_contains "${UI_OUTPUT[*]:-}" "sharedUid"
     cleanup_sandbox "$sb"
 }
-it "지원되지 않는 아키텍처는 wget 없이 경고 후 종료" _test_x11_apk_unsupported_arch_warns_and_returns
+it "일반판이 설치돼 있으면 일반판을 갱신하고 sharedUid 판 전환 방법을 안내한다" _test_x11_apk_github_with_regular_installed_updates_regular
 
 _test_x11_apk_idempotent_when_present() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
     # 이미 다운로드된 상태
-    printf 'PKmock\n' > "$HOME/storage/downloads/app-arm64-v8a-debug.apk"
+    printf 'PKmock\n' > "$HOME/storage/downloads/termux-x11-universal-debug.apk"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" display_setup_apk
+    _run_apk_setup F_DROID no
 
     assert_not_called "wget"
     assert_was_called "termux-open"
@@ -943,14 +943,14 @@ _test_x11_apk_replaces_invalid_existing_file() {
     local sb; sb=$(make_sandbox)
     _load_domain "$sb"
     mkdir -p "$HOME/storage/downloads"
-    printf 'broken\n' > "$HOME/storage/downloads/app-arm64-v8a-debug.apk"
+    printf 'broken\n' > "$HOME/storage/downloads/termux-x11-universal-debug.apk"
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" display_setup_apk
+    _run_apk_setup F_DROID no
 
     assert_was_called "wget"
-    assert_output_contains "$(head -c 2 "$HOME/storage/downloads/app-arm64-v8a-debug.apk")" "PK"
+    assert_output_contains "$(head -c 2 "$HOME/storage/downloads/termux-x11-universal-debug.apk")" "PK"
     cleanup_sandbox "$sb"
 }
 it "손상된 기존 APK는 다시 다운로드한다" _test_x11_apk_replaces_invalid_existing_file
@@ -963,10 +963,10 @@ _test_x11_apk_falls_back_to_home_when_no_storage() {
     termux-open() { _record_call "termux-open $*"; }
     reset_mock_calls
 
-    _run_with_arch "aarch64" display_setup_apk
+    _run_apk_setup F_DROID no
 
     # HOME에 검증된 APK가 생성되어야 함
-    assert_file_exists "$HOME/app-arm64-v8a-debug.apk"
+    assert_file_exists "$HOME/termux-x11-universal-debug.apk"
     cleanup_sandbox "$sb"
 }
 it "storage/downloads 없을 때 HOME으로 폴백" _test_x11_apk_falls_back_to_home_when_no_storage

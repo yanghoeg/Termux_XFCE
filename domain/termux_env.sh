@@ -657,13 +657,15 @@ if [ "$PRUN_RUNTIME" = chroot-ng ]; then
     CNG=("$CHROOT_NG" --shared-proc --fake-id="$GUEST_UID:$GUEST_GID" -w "$GUEST_HOME"
         -b "$PREFIX:$PREFIX" -b "$PREFIX/tmp:/tmp" -b /sys:/sys
         -E HOME="$GUEST_HOME" -E USER="$USER_NAME" -E LOGNAME="$USER_NAME"
-        -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+        -E PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games
         -E DISPLAY="$DISPLAY" -E PULSE_SERVER=127.0.0.1 -E MOZ_FAKE_NO_SANDBOX=1)
     for p in /dev/kgsl-3d0 /dev/dma_heap /sdcard /storage; do
         [ -e "$p" ] && CNG+=(-b "$p:$p")
     done
     for p in "${HOSTINFO_BINDS[@]}"; do CNG+=(-b "$p"); done
-    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat")
+    # chroot-ng는 netlink를 에뮬레이션해 인터페이스가 보이는데 Android은 /sys/class/net 통계를 막는다.
+    # btop은 그 권한 오류로 죽으므로 빈 디렉터리로 가려 "없음"으로 보이게 한다 (proot는 인터페이스가 안 보여 무관)
+    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat" -b "$HOSTINFO/empty:/sys/class/net")
     if [ $# -eq 0 ]; then
         exec "${CNG[@]}" "$ROOTFS" /usr/bin/env "${PROOT_SHELL:-bash}" --login
     fi
@@ -715,14 +717,21 @@ declare -A BUSY IDLE LAST LEN
 BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
 
 _static_files() {
-    local socm
-    mkdir -p "$OUT/dmi" || return 1
+    local socm hw name
+    mkdir -p "$OUT/dmi" "$OUT/empty" || return 1
     getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
     getprop ro.product.model > "$OUT/dmi/product_name"
     getprop ro.board.platform > "$OUT/dmi/board_name"
     socm=$(getprop ro.soc.manufacturer)
     [ "$socm" = QTI ] && socm="Qualcomm Technologies, Inc"
-    { cat /proc/cpuinfo; printf 'Hardware\t: %s %s\n' "$socm" "$(getprop ro.soc.model)"; } > "$OUT/cpuinfo"
+    hw="$socm $(getprop ro.soc.model)"
+    # 게스트의 Linux판 fastfetch는 SoC 코드를 이름으로 바꾸지 않는다 — 네이티브 fastfetch가 아는 이름을 쓴다
+    name=$(fastfetch --pipe -l none -s CPU --format json 2>/dev/null |
+        grep -o '"cpu": *"[^"]*"' | sed 's/^"cpu": *"//; s/"$//')
+    [ -n "$name" ] && hw=$name
+    # ARM cpuinfo에는 model name이 없어 btop은 /sys/devices 목록을 뒤지다 권한 오류로 죽는다 — 코어마다 넣는다
+    { awk -v n="$hw" '{ print } /^processor[ \t]*:/ { print "model name\t: " n }' /proc/cpuinfo
+      printf 'Hardware\t: %s\n' "$hw"; } > "$OUT/cpuinfo"
 }
 
 _load() {

@@ -26,6 +26,7 @@ Android 기기의 Termux에서 **XFCE 데스크탑 환경**을 자동 설치하�
 - **헥사고날 아키텍처** — distro 추상화로 Ubuntu·Arch 공통 코드 유지
 - **재실행 지원** — 설치된 패키지는 가능한 한 건너뛰고 관리 대상 런처와 설정은 갱신
 - **선택적 GPU 가속** — App Installer로 드라이버를 설치하면 X11 런처가 Zink + Turnip 사용 여부를 판단하고 소프트웨어 렌더링으로 폴백
+- **ptrace 없는 컨테이너 실행(선택)** — chroot-ng 런타임과 Android Host Info Bridge. 미코(meeco.kr) 흡혈귀왕님의 glibc rootfs 런타임 구성을 참고해 구현([아래](#ptrace-없는-런타임과-host-info-bridge))
 - **Termux API 연동** — Android 클립보드 동기화, 배터리 모니터, 밝기/볼륨 조절
 - **zsh + Powerlevel10k** — 기본 쉘로 설정, 자동완성·구문강조 포함
 
@@ -130,7 +131,11 @@ GPU 가속은 App Installer에서 선택해 설치합니다. Termux:X11용 `gpu_
 proot 앱에는 `gpu_proot`를 따로 설치합니다. 배포판 Turnip은 데스크톱용 DRM(msm)만
 지원하므로, Termux glibc 저장소의 KGSL Turnip 드라이버(버전·SHA-256 고정)를 컨테이너에
 넣고 Zink에는 배포판 Mesa를 그대로 씁니다. `vulkaninfo`로 KGSL의 Turnip을 확인한 뒤에만
-Zink를 활성화합니다. Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다. `gpu_proot`를 제거하면
+Zink를 활성화합니다. Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다.
+Ubuntu 24.04·25.10·26.04에서는 [lfdevs](https://github.com/lfdevs/mesa-for-android-container)
+Mesa 빌드(버전·SHA-256 고정)도 배포판 Mesa 파일을 건드리지 않고 `/opt/termux-xfce-mesa`에 넣습니다.
+그리고 OpenGL을 Zink 대신 Freedreno KGSL 드라이버로 돌립니다. 화면 출력 OpenGL이 약 10배 빨라집니다.
+화면 없는 EGL 확인에서 Freedreno 렌더러가 잡힐 때만 켜고, 아니면 OpenGL은 Zink로 남습니다. `gpu_proot`를 제거하면
 기존 기본 설치기가 남긴 GPU 설정도 함께 해제됩니다. 변경 후 실행 중인 앱을 다시 시작하세요.
 
 ```bash
@@ -141,6 +146,34 @@ hud glxgears      # 현재 그래픽 세션의 FPS 표시
 
 Wayland는 별도의 Anland/KWin 런타임을 사용합니다. 자세한 내용은
 [Wayland 안내](docs/wayland-anland.md)를 참고하세요.
+
+## ptrace 없는 런타임과 Host Info Bridge
+
+미코(meeco.kr)의 흡혈귀왕님이 공개한 "glibc rootfs 리눅스 런타임" 작업을 참고해 구현했습니다.
+그 작업의 핵심은 ptrace 오버헤드 없는 실행([06-16](https://meeco.kr/mini/41529519)), Android Host Info Bridge와
+앱 체크리스트([06-29](https://meeco.kr/ITplus/41603434)), Turnip/Zink GPU입니다. 원 작업은 공개되지 않아서 같은 구성을
+공개된 구성요소로 이 저장소에 직접 구현했습니다.
+
+| 구성 | 이 저장소의 구현 |
+|---|---|
+| ptrace 없는 실행 | `PRUN_RUNTIME=chroot-ng`(env 또는 config)이면 App Installer `chroot_ng`가 소스 빌드한 [chroot-ng](https://github.com/sylirre/fake-chroot-ng)(Apache-2.0)로 같은 proot-distro rootfs를 실행합니다. 패키지 설치 같은 root 작업은 proot-distro가 계속 맡습니다. |
+| Android Host Info Bridge | `termux-xfce-hostinfo`가 Android이 막은 `/proc/stat`·`uptime`·`loadavg`를 코어별 cpuidle과 `sysinfo`로 만들고, getprop으로 기기 정보(DMI)와 SoC 이름을 채웁니다. 게스트의 htop·btop·glances·fastfetch·inxi와 Termux 네이티브 htop에 실제 값이 나옵니다. |
+| GPU | `gpu_proot`가 KGSL Turnip(Vulkan)과 Freedreno KGSL(OpenGL, Ubuntu)을 넣습니다([GPU 가속](#gpu-가속)). |
+| 큰 CPU 코어 | GitHub판 Termux에는 Termux:X11 sharedUid 판을 설치합니다(일반판이 이미 있으면 제거 후 설치하도록 안내). X11 화면을 보는 동안에도 Samsung OneUI가 Termux 쪽 앱을 작은 코어로 묶지 않습니다([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). 실측: XFCE 프로세스가 `/moderate`(코어 4개)에서 `/top-app`(8개 전부)로 바뀌고, 컨테이너 sysbench 8스레드가 4809→19576 events/s(약 4.1배) |
+
+Galaxy Z Fold6(SM-F956N)에서 잰 값은 다음과 같습니다.
+
+| 측정 | proot-distro | chroot-ng | 네이티브 |
+|---|---|---|---|
+| `prun true` | 0.6–0.9초 | 0.15초 | — |
+| `find /usr` (Ubuntu) | 4–15초 | 0.6초 | — |
+| vkmark (headless, xMeM 패치 Turnip) | 501 | 4252 | 4004 |
+
+남은 한계도 있습니다.
+- 이 기기의 Termux:X11에서는 xMeM 패치 Turnip의 X11 스왑체인 생성이 실패합니다(네이티브 Termux Turnip도 같음). 그래서 Vulkan 화면 출력은 Turnip 24.2.6을 쓰고, vkcube는 실행되지 않습니다.
+- 네트워크·배터리 통계는 Android에 원천이 없어 비어 있습니다.
+- 경로 번역은 seccomp 트랩만 쓰고 LD_PRELOAD 속도 계층은 없습니다.
+- 게스트에는 상주 D-Bus 세션이 없어 GSettings(dconf) 설정이 저장되지 않습니다. 파일 열기·저장 대화상자는 정상입니다.
 
 ## Termux API 연동
 

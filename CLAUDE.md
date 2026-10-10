@@ -103,6 +103,13 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
   드라이버만 rootfs `/usr/local/lib/termux-turnip/`에 넣는다(RUNPATH 없음·GLIBC_2.38까지 →
   배포판 라이브러리로 로드). 2026-10-10 Ubuntu에서 Zink+Turnip Adreno 750 확인. vkcube 1.4.304만
   `vkEnumeratePhysicalDevices` -3으로 실패(proot도 동일 — 런타임 무관)
+- 2026-10-10 GPU 실측(SM-F956N): Ubuntu는 OpenGL을 lfdevs `mesa-for-android-container`
+  26.3.0-devel 표준 빌드의 Freedreno KGSL(`kgsl`)로 돌린다 — 배포판 LLVM에 링크돼 Ubuntu 버전별로
+  sha256을 고정하고, 배포판 파일을 덮지 않게 `/opt/termux-xfce-mesa` + LD_LIBRARY_PATH 등으로 앞세운다.
+  화면 glmark2 kgsl 1251~1300 대 Zink 110. surfaceless `eglinfo`로 FD 렌더러를 확인한 뒤에만 켠다.
+  headless vkmark(패치 Turnip): 네이티브 4004, chroot-ng 4252, proot 501. 단 xMeM 패치 Turnip
+  (lfdevs 표준 26.3·Termux 네이티브 26.2.4)은 이 Termux:X11에서 X11 스왑체인 생성에서 죽고,
+  `turnip-` 접두어(패치 없는) 빌드는 vkcube는 되지만 FIFO 31 FPS·headless SIGBUS → Vulkan은 24.2.6 유지
 - zsh + Powerlevel10k 설정 순서 검증(`_setup_zsh_p10k` → `_setup_aliases`, 코드 수정 불필요)
 - Termux native nimf `pgrep -x` 가드(`nimf.desktop` Exec)
 - `korean_proot` 로케일: Arch `~/.bash_profile→~/.bashrc` 체인이 `~/.profile`을 무시하는 버그를
@@ -156,7 +163,12 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
     달라 켜지 않는다
 - **Host Info Bridge** (`termux-xfce-hostinfo`, prun과 `htop` alias가 기동): Android이 막은 `/proc/stat`을 코어별
   cpuidle 체류 시간으로 만들어 proot-distro `sysdata/{stat,uptime,loadavg}`와 chroot-ng 바인드용 파일에
-  1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다
+  1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다. `Hardware`에는 네이티브 fastfetch가
+  아는 SoC 이름(예: Qualcomm Snapdragon 8 Gen 3 [SM8650])을 넣는다 — 게스트의 Linux판 fastfetch는 SoC 코드를
+  이름으로 바꾸지 않는다. fastfetch가 없으면 getprop의 SoC 제조사·모델로 돌아간다
+  - cpuinfo의 processor 블록마다 `model name`도 넣는다 — ARM에는 없어 btop이 `/sys/devices` 목록(Android이 막음)을
+    뒤지다 죽는다. chroot-ng는 netlink 에뮬레이션으로 인터페이스가 보이는데 `/sys/class/net` 통계가 막혀 btop이
+    죽으므로 빈 디렉터리로 가린다(proot는 인터페이스가 안 보여 무관)
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
   - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다

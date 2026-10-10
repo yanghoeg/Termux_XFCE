@@ -49,6 +49,12 @@ case "$1" in
     ro.soc.model) echo SM8650 ;;
 esac
 EOF
+    # 네이티브 fastfetch 대역: FAKE_FASTFETCH_CPU가 없으면 실패한다
+    cat > "$sb/fakebin/fastfetch" << 'EOF'
+#!/data/data/com.termux/files/usr/bin/bash
+[ -n "${FAKE_FASTFETCH_CPU:-}" ] || exit 1
+printf '[\n  {\n    "type": "CPU",\n    "result": {\n      "cpu": "%s",\n      "vendor": "Qualcomm"\n    }\n  }\n]\n' "$FAKE_FASTFETCH_CPU"
+EOF
     cat > "$sb/fakebin/uptime" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
 if [ "$1" = -s ]; then echo "2026-10-01 00:00:00"; else echo " 10:00:00 up 1 day,  0 users,  load average: 1.50, 0.75, 0.25"; fi
@@ -124,16 +130,30 @@ describe "termux-xfce-hostinfo — 기기 정보"
 
 _test_device_info() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
-    _hostinfo_once "$sb" || { cleanup_sandbox "$sb"; return 1; }
+    FAKE_FASTFETCH_CPU='Qualcomm Snapdragon 8 Gen 3 [SM8650]' _hostinfo_once "$sb" || { cleanup_sandbox "$sb"; return 1; }
     local rc=0
     assert_eq "samsung" "$(cat "$sb/out/dmi/sys_vendor")" "sys_vendor" || rc=1
     assert_eq "SM-F956N" "$(cat "$sb/out/dmi/product_name")" "product_name" || rc=1
     assert_eq "pineapple" "$(cat "$sb/out/dmi/board_name")" "board_name" || rc=1
-    assert_eq "$(printf 'Hardware\t: Qualcomm Technologies, Inc SM8650')" "$(tail -1 "$sb/out/cpuinfo")" \
-        "cpuinfo 끝에 Hardware 줄" || rc=1
+    assert_eq "$(printf 'Hardware\t: Qualcomm Snapdragon 8 Gen 3 [SM8650]')" "$(tail -1 "$sb/out/cpuinfo")" \
+        "cpuinfo 끝에 네이티브 fastfetch가 아는 SoC 이름" || rc=1
+    # btop은 model name이 없으면 /sys/devices를 뒤지다 죽는다 — 코어마다 하나씩
+    assert_eq "$(grep -c '^processor' "$sb/out/cpuinfo")" \
+        "$(grep -c "^model name"$'\t'": Qualcomm Snapdragon 8 Gen 3 \[SM8650\]$" "$sb/out/cpuinfo")" \
+        "processor 블록마다 model name" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
-it "getprop으로 DMI(제조사·모델·보드)와 cpuinfo Hardware 줄을 만든다" _test_device_info
+it "getprop으로 DMI(제조사·모델·보드)를, 네이티브 fastfetch로 cpuinfo Hardware 줄을 만든다" _test_device_info
+
+_test_cpuinfo_without_fastfetch() {
+    local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
+    _hostinfo_once "$sb" || { cleanup_sandbox "$sb"; return 1; }
+    local rc=0
+    assert_eq "$(printf 'Hardware\t: Qualcomm Technologies, Inc SM8650')" "$(tail -1 "$sb/out/cpuinfo")" \
+        "fastfetch가 없으면 getprop의 SoC 제조사·모델" || rc=1
+    cleanup_sandbox "$sb"; return "$rc"
+}
+it "네이티브 fastfetch가 없거나 실패하면 getprop의 SoC 코드로 Hardware 줄을 만든다" _test_cpuinfo_without_fastfetch
 
 describe "termux-xfce-hostinfo — Termux 네이티브 htop"
 
