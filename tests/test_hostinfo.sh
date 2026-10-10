@@ -168,7 +168,7 @@ _test_exec_without_shim() {
     [ ! -e "$sb/out" ] || { echo "[ASSERT] 훅이 없는데 데몬을 띄우거나 PID를 남겼다" >&2; rc=1; }
     cleanup_sandbox "$sb"; return "$rc"
 }
-it "훅이 없으면(clang 없이 설치) exec는 명령을 그대로 실행하고 데몬을 띄우지 않는다" _test_exec_without_shim
+it "훅을 만들 수 없으면(소스·clang 없음) exec는 명령을 그대로 실행하고 데몬을 띄우지 않는다" _test_exec_without_shim
 
 # 샌드박스 설정이 빌드를 막아 두므로 함수를 다시 읽어 실제 clang으로 빌드한다
 _build_real_shim() {
@@ -180,6 +180,9 @@ _test_build_shim_once() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
     local so="$PREFIX/lib/hostinfo_proc.so" rc=0 before
     _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
+    # 설치 뒤 clang이 생겼을 때 exec가 다시 빌드할 수 있도록 소스도 남긴다
+    cmp -s "${DOMAIN_DIR}/../assets/hostinfo_proc.c" "$PREFIX/libexec/termux-xfce/hostinfo_proc.c" ||
+        { echo "[ASSERT] 런타임 빌드용 소스가 없다" >&2; rc=1; }
     assert_file_exists "$so" || rc=1
     assert_eq "$(sha256sum "${DOMAIN_DIR}/../assets/hostinfo_proc.c" | cut -d' ' -f1)" "$(cat "$so.sha256")" \
         "소스 해시를 기록한다" || rc=1
@@ -189,9 +192,11 @@ _test_build_shim_once() {
     cleanup_sandbox "$sb"; return "$rc"
 }
 
-_test_exec_attaches_shim() {
+_test_exec_builds_and_attaches_shim() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"; _write_env_probe "$sb"
-    _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
+    # clang 없이 설치된 상태: 소스만 있고 훅은 없다
+    mkdir -p "$PREFIX/libexec/termux-xfce"
+    cp "${DOMAIN_DIR}/../assets/hostinfo_proc.c" "$PREFIX/libexec/termux-xfce/"
     # 이미 떠 있는 데몬처럼 보이는 프로세스를 두어 exec가 진짜 데몬을 띄우지 않게 한다
     mkdir -p "$sb/out" && mkfifo "$sb/fifo"
     "$_BASH" -c 'read -t 30 <> "$1"' termux-xfce-hostinfo-dummy "$sb/fifo" &
@@ -200,6 +205,7 @@ _test_exec_attaches_shim() {
     out=$(_hostinfo "$sb" exec "$sb/fakebin/probe") || rc=1
     kill "$dummy" 2>/dev/null; wait "$dummy" 2>/dev/null || true
     pid=$(sed -n 's/^pid=//p' <<< "$out")
+    assert_file_exists "$PREFIX/lib/hostinfo_proc.so" || rc=1
     assert_file_exists "$sb/out/holders/$pid" || rc=1
     assert_output_contains "$out" "^hostinfo=$sb/out$" || rc=1
     assert_output_contains "$out" "^preload=$PREFIX/lib/hostinfo_proc.so" || rc=1
@@ -258,7 +264,7 @@ if ! command -v clang >/dev/null 2>&1; then
     skip "훅 빌드·exec 연결·/proc 대체 열기 (clang 없음)"
 else
     it "clang으로 훅을 빌드하고 소스가 그대로면 다시 빌드하지 않는다" _test_build_shim_once
-    it "exec는 훅과 브리지 경로를 붙여 실행하고 데몬이 볼 PID를 남긴다" _test_exec_attaches_shim
+    it "설치 뒤 clang이 생기면 첫 exec가 훅을 빌드해 붙이고 데몬이 볼 PID를 남긴다" _test_exec_builds_and_attaches_shim
     if (read -r _ < /proc/stat) 2>/dev/null; then
         skip "훅의 /proc 대체 열기 (이 환경은 /proc/stat을 직접 읽을 수 있다)"
     else

@@ -696,16 +696,19 @@ _setup_hostinfo() {
     # 실행 중인 데몬이 읽는 inode를 건드리지 않도록 새 파일로 바꿔 넣는다
     cat > "$bin.new" << 'EOF'
 #!/data/data/com.termux/files/usr/bin/bash
-# 사용: termux-xfce-hostinfo [start|once|exec 명령 [인자...]]
+# 사용: termux-xfce-hostinfo [start|once|build|exec 명령 [인자...]]
 #   start  실행 중이 아니면 백그라운드로 띄운다 (prun이 호출, 기본값)
 #   once   한 번만 갱신한다 (점검용)
-#   exec   Termux 네이티브 프로그램(htop 등)에 hostinfo_proc.so 훅을 붙여 실행한다
+#   build  네이티브 htop용 hostinfo_proc.so 훅을 소스가 바뀌었을 때만 clang으로 빌드한다
+#   exec   Termux 네이티브 프로그램(htop 등)에 훅을 붙여 실행한다 (훅이 없고 clang이 있으면 먼저 빌드)
 # proot·chroot-ng 게스트도, exec로 띄운 프로그램도 없으면 스스로 종료한다.
 # HOSTINFO_DIR / HOSTINFO_CPU_ROOT / HOSTINFO_UPTIME은 테스트용 경로 재지정이다.
 OUT="${HOSTINFO_DIR:-$PREFIX/tmp/termux-xfce-hostinfo}"
 CPU_ROOT="${HOSTINFO_CPU_ROOT:-/sys/devices/system/cpu}"
 UPTIME="${HOSTINFO_UPTIME:-/system/bin/uptime}"   # sysinfo(2) 기반이라 앱에서도 동작
 CONTAINERS="$PREFIX/var/lib/proot-distro/containers"
+SRC="$PREFIX/libexec/termux-xfce/hostinfo_proc.c"
+SHIM="$PREFIX/lib/hostinfo_proc.so"
 umask 022
 
 declare -A BUSY IDLE LAST LEN
@@ -821,6 +824,23 @@ _running() {
         grep -q termux-xfce-hostinfo "/proc/$pid/cmdline" 2>/dev/null
 }
 
+# 기본 설치는 컴파일러를 받지 않으므로 clang이 있을 때만 만든다. 소스 해시가 그대로면 다시 빌드하지 않는다
+_build() {
+    local hash built
+    hash=$(sha256sum "$SRC" 2>/dev/null) || return 1
+    hash=${hash%% *}
+    [ -s "$SHIM" ] && [ "$(cat "$SHIM.sha256" 2>/dev/null)" = "$hash" ] && return 0
+    command -v clang >/dev/null 2>&1 || return 1
+    built=$(mktemp "$SHIM.XXXXXX") || return 1
+    if clang -shared -fPIC -O2 -o "$built" "$SRC" -ldl && [ -s "$built" ] &&
+       chmod 755 "$built" && mv -f "$built" "$SHIM"; then
+        printf '%s\n' "$hash" > "$SHIM.sha256"
+    else
+        rm -f "$built"
+        return 1
+    fi
+}
+
 case "${1:-start}" in
     once)
         _static_files && _init && _tick ;;
@@ -842,18 +862,21 @@ case "${1:-start}" in
             if _guests_alive; then idle=0; elif (( ++idle >= 2 )); then rm -f "$OUT/pid"; exit 0; fi
         done
         ;;
+    build)
+        _build ;;
     exec)
         shift
         [ $# -gt 0 ] || { echo "사용법: termux-xfce-hostinfo exec 명령 [인자...]" >&2; exit 2; }
-        # 훅이 없으면(clang 없이 설치) 그대로 실행한다. 데몬보다 PID를 먼저 남겨 바로 끝나지 않게 한다
-        SHIM="$PREFIX/lib/hostinfo_proc.so"
+        # 설치 뒤에 clang이 생겼으면 여기서 처음 한 번 빌드한다(1~2초). 만들 수 없으면 훅 없이 그대로 실행한다
+        _build >/dev/null 2>&1
+        # 데몬보다 PID를 먼저 남겨 바로 끝나지 않게 한다
         if [ -s "$SHIM" ] && mkdir -p "$OUT/holders" && : > "$OUT/holders/$$" && "$0" start >/dev/null 2>&1; then
             export TERMUX_XFCE_HOSTINFO="$OUT" LD_PRELOAD="$SHIM${LD_PRELOAD:+:$LD_PRELOAD}"
         fi
         exec "$@"
         ;;
     *)
-        echo "사용법: termux-xfce-hostinfo [start|once|exec 명령 [인자...]]" >&2; exit 2 ;;
+        echo "사용법: termux-xfce-hostinfo [start|once|build|exec 명령 [인자...]]" >&2; exit 2 ;;
 esac
 EOF
 
@@ -873,30 +896,17 @@ HOSTINFO
     done < <(_rc_targets)
 }
 
-# 네이티브 htop용 /proc 훅. 기본 설치는 컴파일러를 새로 받지 않으므로 clang이 있을 때만 빌드한다.
+# 네이티브 htop용 /proc 훅 소스를 두고 빌드한다. 기본 설치는 컴파일러를 새로 받지 않으므로,
+# clang이 없으면 clang이 생긴 뒤 처음 htop을 실행할 때 termux-xfce-hostinfo가 빌드한다.
 _build_hostinfo_proc() {
-    local src="${SCRIPT_DIR}/assets/hostinfo_proc.c"
-    local dst="$PREFIX/lib/hostinfo_proc.so"
-    local source_hash built
-
-    source_hash=$(sha256sum "$src") || return 1
-    source_hash=${source_hash%% *}
-    if [ -s "$dst" ] && [ "$(cat "${dst}.sha256" 2>/dev/null)" = "$source_hash" ]; then
-        return 0
-    fi
+    local libexec="$PREFIX/libexec/termux-xfce"
+    mkdir -p "$libexec" && cp -f "${SCRIPT_DIR}/assets/hostinfo_proc.c" "$libexec/hostinfo_proc.c" || return 1
     if ! command -v clang >/dev/null 2>&1; then
-        ui_info "clang이 없어 네이티브 htop의 CPU·부하 표시 훅을 건너뜁니다 (pkg install clang 뒤 설치를 다시 실행하면 적용)."
+        ui_info "clang이 없어 네이티브 htop 훅은 clang이 설치된 뒤 처음 htop을 실행할 때 빌드됩니다."
         return 0
     fi
-    built=$(mktemp "${dst}.XXXXXX") || return 1
-    if clang -shared -fPIC -O2 -o "$built" "$src" -ldl && [ -s "$built" ] &&
-       chmod 755 "$built" && mv -f "$built" "$dst"; then
-        printf '%s\n' "$source_hash" > "${dst}.sha256"
-    else
-        rm -f "$built"
-        ui_warn "네이티브 htop용 /proc 훅(hostinfo_proc.so) 빌드에 실패했습니다."
-        return 1
-    fi
+    "$PREFIX/bin/termux-xfce-hostinfo" build ||
+        { ui_warn "네이티브 htop용 /proc 훅(hostinfo_proc.so) 빌드에 실패했습니다."; return 1; }
 }
 
 # prun-gui: proot GUI 앱 실행 시 로딩 알림 표시
