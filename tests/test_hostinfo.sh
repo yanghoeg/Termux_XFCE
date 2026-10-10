@@ -137,6 +137,10 @@ _test_device_info() {
     assert_eq "pineapple" "$(cat "$sb/out/dmi/board_name")" "board_name" || rc=1
     assert_eq "$(printf 'Hardware\t: Qualcomm Snapdragon 8 Gen 3 [SM8650]')" "$(tail -1 "$sb/out/cpuinfo")" \
         "cpuinfo 끝에 네이티브 fastfetch가 아는 SoC 이름" || rc=1
+    # btop은 model name이 없으면 /sys/devices를 뒤지다 죽는다 — 코어마다 하나씩
+    assert_eq "$(grep -c '^processor' "$sb/out/cpuinfo")" \
+        "$(grep -c "^model name"$'\t'": Qualcomm Snapdragon 8 Gen 3 \[SM8650\]$" "$sb/out/cpuinfo")" \
+        "processor 블록마다 model name" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 it "getprop으로 DMI(제조사·모델·보드)를, 네이티브 fastfetch로 cpuinfo Hardware 줄을 만든다" _test_device_info

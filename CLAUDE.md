@@ -166,6 +166,9 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
   1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다. `Hardware`에는 네이티브 fastfetch가
   아는 SoC 이름(예: Qualcomm Snapdragon 8 Gen 3 [SM8650])을 넣는다 — 게스트의 Linux판 fastfetch는 SoC 코드를
   이름으로 바꾸지 않는다. fastfetch가 없으면 getprop의 SoC 제조사·모델로 돌아간다
+  - cpuinfo의 processor 블록마다 `model name`도 넣는다 — ARM에는 없어 btop이 `/sys/devices` 목록(Android이 막음)을
+    뒤지다 죽는다. chroot-ng는 netlink 에뮬레이션으로 인터페이스가 보이는데 `/sys/class/net` 통계가 막혀 btop이
+    죽으므로 빈 디렉터리로 가린다(proot는 인터페이스가 안 보여 무관)
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
   - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다

@@ -663,7 +663,9 @@ if [ "$PRUN_RUNTIME" = chroot-ng ]; then
         [ -e "$p" ] && CNG+=(-b "$p:$p")
     done
     for p in "${HOSTINFO_BINDS[@]}"; do CNG+=(-b "$p"); done
-    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat")
+    # chroot-ng는 netlink를 에뮬레이션해 인터페이스가 보이는데 Android은 /sys/class/net 통계를 막는다.
+    # btop은 그 권한 오류로 죽으므로 빈 디렉터리로 가려 "없음"으로 보이게 한다 (proot는 인터페이스가 안 보여 무관)
+    [ ${#HOSTINFO_BINDS[@]} -gt 0 ] && CNG+=(-b "$HOSTINFO/stat:/proc/stat" -b "$HOSTINFO/empty:/sys/class/net")
     if [ $# -eq 0 ]; then
         exec "${CNG[@]}" "$ROOTFS" /usr/bin/env "${PROOT_SHELL:-bash}" --login
     fi
@@ -716,7 +718,7 @@ BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
 
 _static_files() {
     local socm hw name
-    mkdir -p "$OUT/dmi" || return 1
+    mkdir -p "$OUT/dmi" "$OUT/empty" || return 1
     getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
     getprop ro.product.model > "$OUT/dmi/product_name"
     getprop ro.board.platform > "$OUT/dmi/board_name"
@@ -727,7 +729,9 @@ _static_files() {
     name=$(fastfetch --pipe -l none -s CPU --format json 2>/dev/null |
         grep -o '"cpu": *"[^"]*"' | sed 's/^"cpu": *"//; s/"$//')
     [ -n "$name" ] && hw=$name
-    { cat /proc/cpuinfo; printf 'Hardware\t: %s\n' "$hw"; } > "$OUT/cpuinfo"
+    # ARM cpuinfo에는 model name이 없어 btop은 /sys/devices 목록을 뒤지다 권한 오류로 죽는다 — 코어마다 넣는다
+    { awk -v n="$hw" '{ print } /^processor[ \t]*:/ { print "model name\t: " n }' /proc/cpuinfo
+      printf 'Hardware\t: %s\n' "$hw"; } > "$OUT/cpuinfo"
 }
 
 _load() {
