@@ -715,14 +715,19 @@ declare -A BUSY IDLE LAST LEN
 BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
 
 _static_files() {
-    local socm
+    local socm hw name
     mkdir -p "$OUT/dmi" || return 1
     getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
     getprop ro.product.model > "$OUT/dmi/product_name"
     getprop ro.board.platform > "$OUT/dmi/board_name"
     socm=$(getprop ro.soc.manufacturer)
     [ "$socm" = QTI ] && socm="Qualcomm Technologies, Inc"
-    { cat /proc/cpuinfo; printf 'Hardware\t: %s %s\n' "$socm" "$(getprop ro.soc.model)"; } > "$OUT/cpuinfo"
+    hw="$socm $(getprop ro.soc.model)"
+    # 게스트의 Linux판 fastfetch는 SoC 코드를 이름으로 바꾸지 않는다 — 네이티브 fastfetch가 아는 이름을 쓴다
+    name=$(fastfetch --pipe -l none -s CPU --format json 2>/dev/null |
+        grep -o '"cpu": *"[^"]*"' | sed 's/^"cpu": *"//; s/"$//')
+    [ -n "$name" ] && hw=$name
+    { cat /proc/cpuinfo; printf 'Hardware\t: %s\n' "$hw"; } > "$OUT/cpuinfo"
 }
 
 _load() {

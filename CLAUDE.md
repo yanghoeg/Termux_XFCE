@@ -163,7 +163,9 @@ Wayland의 아래 알려진 차단 문제도 남아 있다.
     달라 켜지 않는다
 - **Host Info Bridge** (`termux-xfce-hostinfo`, prun과 `htop` alias가 기동): Android이 막은 `/proc/stat`을 코어별
   cpuidle 체류 시간으로 만들어 proot-distro `sysdata/{stat,uptime,loadavg}`와 chroot-ng 바인드용 파일에
-  1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다
+  1초마다 쓰고, getprop으로 DMI·cpuinfo `Hardware` 줄을 만든다. `Hardware`에는 네이티브 fastfetch가
+  아는 SoC 이름(예: Qualcomm Snapdragon 8 Gen 3 [SM8650])을 넣는다 — 게스트의 Linux판 fastfetch는 SoC 코드를
+  이름으로 바꾸지 않는다. fastfetch가 없으면 getprop의 SoC 제조사·모델로 돌아간다
   - 반드시 같은 inode에 덮어쓴다 — rename으로 바꿔치기하면 fd를 열어 둔 채 되감아 읽는 top/vmstat이
     옛 값에 멈춘다
   - proot에 `/proc/stat`을 `--bind`하면 sysdata 바인드와 겹쳐 실행마다 경고가 나므로 sysdata로만 공급한다
