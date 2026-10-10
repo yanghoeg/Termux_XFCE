@@ -4,7 +4,7 @@
 # Hexagonal Architecture: Ports & Adapters
 #
 # 사용법:
-#   curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
+#   curl -sL https://raw.githubusercontent.com/yanghoeg/usix-termux/main/install.sh | bash
 #   또는
 #   bash install.sh [--distro ubuntu|archlinux] [--user <name>] [--display x11|wayland]
 #
@@ -68,7 +68,7 @@ if [ -z "$SCRIPT_DIR" ] || [ ! -d "$SCRIPT_DIR/domain" ]; then
     }
     trap _bootstrap_cleanup EXIT
     git clone --depth=1 -b "${INSTALL_BRANCH:-main}" \
-        https://github.com/yanghoeg/Termux_XFCE.git "$_bootstrap_stage"
+        https://github.com/yanghoeg/usix-termux.git "$_bootstrap_stage"
 
     # 서브모듈은 핀이 깨져도(고아 커밋 등) main HEAD로 fallback
     if ! git -C "$_bootstrap_stage" submodule update --init --depth=1 2>/dev/null; then

@@ -1,11 +1,11 @@
-# Termux XFCE
+# usix-termux
 
 <div align="center">
 
 [한국어](README.ko.md) &nbsp;|&nbsp; **[English](README.md)**
 
 [![Android](https://img.shields.io/badge/Android-Termux-3DDC84?logo=android)](https://termux.dev)
-[![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/Termux_XFCE)
+[![Arch](https://img.shields.io/badge/Arch-aarch64-0070C0)](https://github.com/yanghoeg/usix-termux)
 [![License](https://img.shields.io/badge/License-MIT-yellow)](LICENSE)
 
 <img src="assets/desktop.png" alt="Termux XFCE desktop running on Galaxy Fold6" width="720">
@@ -38,14 +38,14 @@ backend. The default backend is Termux:X11 + XFCE.
 
 ```bash
 # Download, clone the repository and start interactive setup
-curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/yanghoeg/usix-termux/main/install.sh | bash
 ```
 
 For a checkout you can also inspect and rerun:
 
 ```bash
-git clone --recurse-submodules https://github.com/yanghoeg/Termux_XFCE.git
-cd Termux_XFCE
+git clone --recurse-submodules https://github.com/yanghoeg/usix-termux.git
+cd usix-termux
 bash install.sh
 ```
 
@@ -247,7 +247,7 @@ app-installer          # Full UI (tabs: Apps | System | Termux API | Wine)
 app-installer wine     # Wine apps only
 ```
 
-From the Termux_XFCE checkout, the headless CLI supports:
+From the usix-termux checkout, the headless CLI supports:
 
 ```bash
 bash app-installer/app-install.sh list
@@ -368,7 +368,7 @@ and then starts runit. An existing file is never overwritten.
 
 ## Tests
 
-Run from the Termux_XFCE checkout:
+Run from the usix-termux checkout:
 
 ```bash
 bash tests/run_tests.sh
@@ -433,7 +433,7 @@ shortcuts**.
 ## Project Structure
 
 ```
-Termux_XFCE/
+usix-termux/
 ├── install.sh                    ← entry point + DI container
 ├── ports/                        ← contract definitions (interfaces)
 ├── adapters/

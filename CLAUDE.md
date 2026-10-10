@@ -1,9 +1,12 @@
-# CLAUDE.md — Termux XFCE 프로젝트 컨텍스트
+# CLAUDE.md — usix-termux 프로젝트 컨텍스트
 
 ## 프로젝트 개요
 
 Android 기기(Termux)에서 XFCE 데스크탑 환경 + proot-distro(Ubuntu/Arch 선택)를 자동 설치하는 Bash 스크립트 모음.
 **헥사고날 아키텍처(Ports & Adapters)** 적용.
+
+저장소는 `yanghoeg/usix-termux`다(2026-10-10 `Termux_XFCE`에서 이름 변경, 옛 URL은 GitHub 리다이렉트).
+이미 설치된 기기와 호환되도록 `termux-xfce-*` 명령·경로와 `TERMUX_XFCE_*` 변수 이름은 바꾸지 않는다.
 
 ## 실행 환경
 
@@ -15,7 +18,7 @@ Android 기기(Termux)에서 XFCE 데스크탑 환경 + proot-distro(Ubuntu/Arch
 ## 설치 방법 (최종 사용자)
 
 ```bash
-curl -sL https://raw.githubusercontent.com/yanghoeg/Termux_XFCE/main/install.sh | bash
+curl -sL https://raw.githubusercontent.com/yanghoeg/usix-termux/main/install.sh | bash
 # 또는
 bash install.sh --distro archlinux --user lideok
 # 또는 환경변수
@@ -45,7 +48,7 @@ app-installer/      → Git Submodule (독립 repo)
 ### 파일 구조
 
 ```
-Termux_XFCE/
+usix-termux/
 ├── install.sh                    ← 진입점 + DI 컨테이너
 ├── ports/
 │   ├── pkg_manager.sh            ← 패키지 관리 계약

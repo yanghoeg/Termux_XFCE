@@ -8,7 +8,7 @@
 
 ## 호스트에서 실행
 
-Termux_XFCE 저장소 루트에서 서브모듈을 초기화한 상태로 실행합니다.
+usix-termux 저장소 루트에서 서브모듈을 초기화한 상태로 실행합니다.
 
 ```bash
 bash tests/run_tests.sh
