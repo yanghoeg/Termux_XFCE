@@ -132,7 +132,12 @@ For container apps, install `gpu_proot` separately. Distro Turnip builds support
 desktop DRM (msm), so it adds the KGSL Turnip driver from Termux's glibc repository
 (pinned version and SHA-256) to the container, keeps the distro's Mesa for Zink, and
 enables Zink only after `vulkaninfo` detects Turnip on KGSL. The native Bionic ICD
-is not loaded into the container. Removing `gpu_proot` clears both current and old
+is not loaded into the container. On Ubuntu 24.04, 25.10 and 26.04 it also places a
+pinned [lfdevs](https://github.com/lfdevs/mesa-for-android-container) Mesa build in
+`/opt/termux-xfce-mesa`, leaving the distro's Mesa files untouched, and uses its
+Freedreno KGSL OpenGL driver instead of Zink. On-screen OpenGL is about ten times faster.
+It is enabled only after a display-free EGL check finds the Freedreno renderer; otherwise
+OpenGL stays on Zink. Removing `gpu_proot` clears both current and old
 installer GPU overrides. Restart running apps after changing this setting.
 
 ```bash

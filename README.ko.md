@@ -130,7 +130,11 @@ GPU 가속은 App Installer에서 선택해 설치합니다. Termux:X11용 `gpu_
 proot 앱에는 `gpu_proot`를 따로 설치합니다. 배포판 Turnip은 데스크톱용 DRM(msm)만
 지원하므로, Termux glibc 저장소의 KGSL Turnip 드라이버(버전·SHA-256 고정)를 컨테이너에
 넣고 Zink에는 배포판 Mesa를 그대로 씁니다. `vulkaninfo`로 KGSL의 Turnip을 확인한 뒤에만
-Zink를 활성화합니다. Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다. `gpu_proot`를 제거하면
+Zink를 활성화합니다. Termux의 Bionic ICD를 컨테이너에서 공유하지 않습니다.
+Ubuntu 24.04·25.10·26.04에서는 [lfdevs](https://github.com/lfdevs/mesa-for-android-container)
+Mesa 빌드(버전·SHA-256 고정)도 배포판 Mesa 파일을 건드리지 않고 `/opt/termux-xfce-mesa`에 넣습니다.
+그리고 OpenGL을 Zink 대신 Freedreno KGSL 드라이버로 돌립니다. 화면 출력 OpenGL이 약 10배 빨라집니다.
+화면 없는 EGL 확인에서 Freedreno 렌더러가 잡힐 때만 켜고, 아니면 OpenGL은 Zink로 남습니다. `gpu_proot`를 제거하면
 기존 기본 설치기가 남긴 GPU 설정도 함께 해제됩니다. 변경 후 실행 중인 앱을 다시 시작하세요.
 
 ```bash
