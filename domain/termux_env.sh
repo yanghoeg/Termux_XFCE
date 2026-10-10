@@ -635,11 +635,13 @@ export DISPLAY="${DISPLAY:-:0.0}"
 
 # Android Host Info Bridge: 실제 CPU 사용률(/proc/stat)과 기기 정보(DMI·cpuinfo)를 게스트에 공급한다.
 # proot는 proot-distro sysdata로 /proc/stat을 받고, 기기 정보만 바인드한다.
+# /proc/net은 self/net 심볼릭 링크라 /proc/net/dev 파일 바인드는 적용되지 않는다 — 디렉터리째 가린다
+# (원래 안의 파일은 모두 막혀 있다). 네트워크 카운터는 hostinfo_net이 proc_net/dev에 쓴다
 HOSTINFO="$PREFIX/tmp/termux-xfce-hostinfo"
 HOSTINFO_BINDS=()
 if command -v termux-xfce-hostinfo >/dev/null 2>&1 && termux-xfce-hostinfo start >/dev/null 2>&1; then
     HOSTINFO_BINDS=("$HOSTINFO/cpuinfo:/proc/cpuinfo" "$HOSTINFO/dmi:/sys/class/dmi/id"
-        "$HOSTINFO/dmi:/sys/devices/virtual/dmi/id")
+        "$HOSTINFO/dmi:/sys/devices/virtual/dmi/id" "$HOSTINFO/proc_net:/proc/net")
 fi
 
 # PRUN_RUNTIME=chroot-ng: ptrace 없는 chroot-ng(App Installer 'chroot_ng')로 같은 rootfs를 실행한다.
@@ -692,7 +694,7 @@ EOF
 # Android은 앱에 /proc/stat·/proc/schedstat을 막아 게스트 htop/top의 CPU 사용률이 멈춘다
 # (proot-distro는 고정 값 파일을 바인드). 코어별 cpuidle 체류 시간으로 실제 값을 만들어
 # proot-distro sysdata와 chroot-ng 바인드용 파일을 1초마다 교체하고, 기기 정보(DMI·cpuinfo)를 만든다.
-# 막힌 네트워크 통계(/sys/class/net)는 netstats 시스템 서비스 값으로 채운다.
+# 막힌 네트워크 통계(/sys/class/net·/proc/net/dev)는 netstats 시스템 서비스 값으로 채운다.
 _setup_hostinfo() {
     local bin="$PREFIX/bin/termux-xfce-hostinfo"
 
@@ -722,7 +724,7 @@ BTIME=0 PREV=0 LOADAVG="0.00 0.00 0.00"
 
 _static_files() {
     local socm hw name
-    mkdir -p "$OUT/dmi" "$OUT/net" || return 1
+    mkdir -p "$OUT/dmi" "$OUT/net" "$OUT/proc_net" || return 1
     getprop ro.product.manufacturer > "$OUT/dmi/sys_vendor"
     getprop ro.product.model > "$OUT/dmi/product_name"
     getprop ro.board.platform > "$OUT/dmi/board_name"
@@ -839,12 +841,12 @@ _running() {
         grep -q termux-xfce-hostinfo "/proc/$pid/cmdline" 2>/dev/null
 }
 
-# 막힌 /sys/class/net 통계는 hostinfo_net -w가 netstats 서비스 값으로 1초마다 채운다 (이 데몬이 끝나면 따라 끝난다).
-# 데몬이 뜬 뒤에 빌드됐거나 도중에 끝났으면 다시 띄운다
+# 막힌 네트워크 통계는 hostinfo_net -w가 netstats 서비스 값으로 1초마다 채운다: net/(/sys/class/net 모양)과
+# proc_net/dev(/proc/net/dev). 이 데몬이 끝나면 따라 끝나고, 데몬이 뜬 뒤에 빌드됐거나 도중에 끝났으면 다시 띄운다
 _net() {
     [ -x "$NETBIN" ] || return 0
     [ -n "${NETPID:-}" ] && kill -0 "$NETPID" 2>/dev/null && return 0
-    "$NETBIN" -w "$OUT/net" &
+    "$NETBIN" -w "$OUT" &
     NETPID=$!
 }
 
@@ -866,7 +868,7 @@ _build_one() {
     fi
 }
 
-# 네트워크 도우미는 btop 네트워크 칸만 채우므로 만들지 못해도 훅의 결과만 돌려준다
+# 네트워크 도우미는 네트워크 통계만 채우므로 만들지 못해도 훅의 결과만 돌려준다
 _build() {
     _build_one "$NETSRC" "$NETBIN"
     _build_one "$SRC" "$SHIM" -shared -fPIC -ldl
@@ -876,9 +878,9 @@ case "${1:-start}" in
     once)
         _static_files && _init && _tick ;;
     start)
-        # btop은 처음 읽은 네트워크 값을 기준으로 삼는다. 파일이 아직 없어 0으로 읽으면 다음 갱신에서
+        # btop·htop은 처음 읽은 네트워크 값을 기준으로 삼는다. 파일이 아직 없어 0으로 읽으면 다음 갱신에서
         # 부팅 이후 누적량 전체를 속도로 보므로, 데몬이 떠 있어도 먼저 한 번 쓴다
-        [ -x "$NETBIN" ] && mkdir -p "$OUT/net" && "$NETBIN" "$OUT/net"
+        [ -x "$NETBIN" ] && mkdir -p "$OUT/net" "$OUT/proc_net" && "$NETBIN" "$OUT"
         _running && exit 0
         _static_files && _init && _tick || exit 1
         nohup "$0" run </dev/null >/dev/null 2>&1 &

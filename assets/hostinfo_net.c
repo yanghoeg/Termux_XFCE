@@ -3,10 +3,11 @@
  *
  * Android은 앱에서 /proc/net/dev·/sys/class/net 통계·netlink RTM_GETLINK를 모두 막는다.
  * TrafficStats가 쓰는 시스템 서비스 netstats의 getIfaceStats는 권한 없이 부를 수 있으므로,
- * getifaddrs()에 보이는 인터페이스마다 그 값을 받아 DIR/<if>/statistics/{rx,tx}_bytes에 쓴다.
- * btop은 /sys/class/net/<if>/statistics/{rx,tx}_bytes만 읽는다.
+ * getifaddrs()에 보이는 인터페이스마다 그 값을 받아 두 모양으로 쓴다.
+ *   - OUT/net/<if>/statistics/{rx,tx}_bytes: btop이 읽는 /sys/class/net 모양
+ *   - OUT/proc_net/dev: /proc/net/dev 형식(htop·psutil·bmon·ifconfig). 에러·드롭 등 netstats에 없는 열은 0이다
  *
- * 사용: hostinfo_net [-w] DIR — 한 번 쓰고 끝난다. -w면 1초마다 다시 쓰고, 띄운 프로세스(부모)가 끝나면 끝난다.
+ * 사용: hostinfo_net [-w] OUT — 한 번 쓰고 끝난다. -w면 1초마다 다시 쓰고, 띄운 프로세스(부모)가 끝나면 끝난다.
  *       값을 하나도 얻지 못하면 1로 끝난다.
  */
 /* libbinder_ndk는 API 29부터다 — 함수는 모두 dlsym으로 찾고 헤더는 형식에만 쓴다 */
@@ -109,47 +110,68 @@ static int query(AIBinder *svc, const char *iface, int64_t v[4])
 }
 
 /* 같은 inode에 덮어쓴다 — 바꿔치기하면 fd를 열어 둔 채 다시 읽는 프로그램이 옛 값에 멈춘다.
- * chroot-ng 게스트가 바인드된 /sys/class/net에 심은 심볼릭 링크는 따라가지 않고 일반 파일로 바꾼다 */
-static void put(const char *dir, const char *iface, const char *name, int64_t v)
+ * 게스트에 바인드된 디렉터리(/sys/class/net·/proc/net)에 심은 심볼릭 링크는 따라가지 않고 일반 파일로 바꾼다 */
+static void put(const char *path, const char *data, int len)
 {
-    char path[PATH_MAX], buf[32];
-    int fd, n = snprintf(buf, sizeof buf, "%" PRId64 "\n", v);
+    int fd = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
 
-    snprintf(path, sizeof path, "%s/%s", dir, iface);
-    mkdir(path, 0755);
-    snprintf(path, sizeof path, "%s/%s/statistics", dir, iface);
-    mkdir(path, 0755);
-    snprintf(path, sizeof path, "%s/%s/statistics/%s", dir, iface, name);
-    fd = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0 && errno == ELOOP && unlink(path) == 0)
         fd = open(path, O_WRONLY | O_CREAT | O_NOFOLLOW | O_CLOEXEC, 0644);
     if (fd < 0)
         return;
-    if (write(fd, buf, n) == n)
-        ftruncate(fd, n);
+    if (write(fd, data, len) == len)
+        ftruncate(fd, len);
     close(fd);
 }
 
-/* getifaddrs()에 보이는 인터페이스마다 rx/tx 바이트를 쓴다. 하나도 얻지 못하면 0 */
-static int update(AIBinder *svc, const char *dir)
+static void put_stat(const char *out, const char *iface, const char *name, int64_t v)
 {
+    char path[PATH_MAX], buf[32];
+    int n = snprintf(buf, sizeof buf, "%" PRId64 "\n", v);
+
+    snprintf(path, sizeof path, "%s/net/%s", out, iface);
+    mkdir(path, 0755);
+    snprintf(path, sizeof path, "%s/net/%s/statistics", out, iface);
+    mkdir(path, 0755);
+    snprintf(path, sizeof path, "%s/net/%s/statistics/%s", out, iface, name);
+    put(path, buf, n);
+}
+
+/* getifaddrs()에 보이는 인터페이스마다 값을 받아 쓴다. 하나도 얻지 못하면 0 */
+static int update(AIBinder *svc, const char *out)
+{
+    /* 커널과 같은 머리글 두 줄 — psutil 등은 두 줄을 건너뛰고 읽는다 */
+    static const char header[] =
+        "Inter-|   Receive                                                |  Transmit\n"
+        " face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n";
     struct ifaddrs *ifs, *a, *b;
+    char dev[16384], path[PATH_MAX];
     int64_t v[4];
-    int ok = 0;
+    int len = sizeof header - 1, ok = 0;
 
     if (getifaddrs(&ifs) != 0)
         return 0;
+    memcpy(dev, header, len);
     for (a = ifs; a; a = a->ifa_next) {
         /* 주소마다 항목이 하나씩이라 같은 이름이 여러 번 나온다 */
         for (b = ifs; b != a && strcmp(b->ifa_name, a->ifa_name) != 0; b = b->ifa_next)
             ;
         if (b != a || !query(svc, a->ifa_name, v))
             continue;
-        put(dir, a->ifa_name, "rx_bytes", v[0]);
-        put(dir, a->ifa_name, "tx_bytes", v[2]);
+        put_stat(out, a->ifa_name, "rx_bytes", v[0]);
+        put_stat(out, a->ifa_name, "tx_bytes", v[2]);
+        if (len < (int)sizeof dev)
+            len += snprintf(dev + len, sizeof dev - len,
+                            "%6s: %7" PRId64 " %7" PRId64 "    0    0    0     0          0         0"
+                            " %8" PRId64 " %7" PRId64 "    0    0    0     0       0          0\n",
+                            a->ifa_name, v[0], v[1], v[2], v[3]);
         ok = 1;
     }
     freeifaddrs(ifs);
+    if (ok && len < (int)sizeof dev) {
+        snprintf(path, sizeof path, "%s/proc_net/dev", out);
+        put(path, dev, len);
+    }
     return ok;
 }
 
@@ -157,19 +179,19 @@ int main(int argc, char **argv)
 {
     pid_t parent = getppid();
     int watch = argc == 3 && strcmp(argv[1], "-w") == 0;
-    const char *dir = argv[argc - 1];
+    const char *out = argv[argc - 1];
     AIBinder *svc;
     AIBinder_Class *cls;
 
     if (argc != 2 && !watch) {
-        fprintf(stderr, "사용법: hostinfo_net [-w] DIR\n");
+        fprintf(stderr, "사용법: hostinfo_net [-w] OUT\n");
         return 2;
     }
     if (!load() || !(svc = p_AServiceManager_checkService("netstats")) ||
         !(cls = p_AIBinder_Class_define("android.net.INetworkStatsService", on_create, on_destroy, on_transact)) ||
         !p_AIBinder_associateClass(svc, cls))
         return 1;
-    while (update(svc, dir)) {
+    while (update(svc, out)) {
         if (!watch)
             return 0;
         sleep(1);

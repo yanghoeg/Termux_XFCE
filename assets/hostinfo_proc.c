@@ -4,6 +4,7 @@
  * Android은 앱에서 /proc/stat·/proc/uptime·/proc/loadavg 읽기를 막는다(EACCES).
  * 원래 파일이 EACCES로 열리지 않는 읽기 전용 열기·읽기 확인만 TERMUX_XFCE_HOSTINFO 디렉터리의
  * 같은 이름 파일(termux-xfce-hostinfo가 1초마다 갱신)로 다시 시도한다.
+ * 막힌 /proc/net 아래는 proc_net/ 아래 같은 이름(hostinfo_net이 쓰는 dev)으로 다시 시도한다.
  *
  * TERMUX_XFCE_HOSTINFO_BTOP=1(termux-xfce-hostinfo exec btop)이면 btop 호환을 더한다:
  *   - Termux btop은 실효 UID가 root가 아니면 바로 끝내므로 getuid·geteuid를 0으로 보고한다
@@ -41,6 +42,9 @@ static int bridged(const char *path, char alt[PATH_MAX])
         return 0;
     if (btop_mode() && strncmp(path, "/sys/class/net/", 15) == 0)
         return snprintf(alt, PATH_MAX, "%s/net/%s", dir, path + 15) < PATH_MAX;
+    /* hostinfo_net이 쓰는 proc_net/dev — htop 네트워크 미터·psutil·ifconfig가 /proc/net/dev를 읽는다 */
+    if (strncmp(path, "/proc/net/", 10) == 0)
+        return snprintf(alt, PATH_MAX, "%s/proc_net/%s", dir, path + 10) < PATH_MAX;
     if (strncmp(path, "/proc/", 6) != 0)
         return 0;
     name = path + 6;

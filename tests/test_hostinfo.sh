@@ -7,7 +7,7 @@
 #   - getprop으로 DMI·cpuinfo Hardware 줄을 만든다
 #   - Termux 네이티브 htop: exec가 hostinfo_proc.so 훅을 붙이고, 훅은 EACCES인 /proc만 대신 연다
 #   - Termux 네이티브 btop: exec가 btop 모드를 켜고, 훅이 root로 보이게 하고 막힌 입력을 채운다
-#   - 막힌 /sys/class/net 통계: start가 hostinfo_net으로 한 번 먼저 쓰고, 데몬은 -w 갱신 루프를 띄운다
+#   - 막힌 /sys/class/net·/proc/net/dev 통계: start가 hostinfo_net으로 한 번 먼저 쓰고, 데몬은 -w 갱신 루프를 띄운다
 # 가짜 sysfs·getprop·uptime으로 생성된 스크립트를 실제 실행해 검증한다.
 # =============================================================================
 
@@ -177,7 +177,7 @@ _test_start_writes_net_once() {
     echo "$dummy" > "$sb/out/pid"
     _hostinfo "$sb" start || rc=1
     kill "$dummy" 2>/dev/null; wait "$dummy" 2>/dev/null || true
-    assert_eq "$sb/out/net" "$(cat "$sb/net.log" 2>/dev/null)" "갱신 루프 없이 한 번만 쓴다" || rc=1
+    assert_eq "$sb/out" "$(cat "$sb/net.log" 2>/dev/null)" "갱신 루프 없이 한 번만 쓴다" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 it "start는 데몬이 떠 있어도 네트워크 카운터를 먼저 한 번 쓴다 (btop이 첫 값을 0으로 읽지 않게)" _test_start_writes_net_once
@@ -186,16 +186,17 @@ _test_daemon_runs_net_watcher() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"; _write_fake_net "$sb"
     _hostinfo_once "$sb" || { cleanup_sandbox "$sb"; return 1; }
     local daemon n rc=0
-    # chroot-ng가 /sys/class/net에 바인드할 디렉터리는 도우미가 없어도 있어야 한다
+    # 게스트가 /sys/class/net·/proc/net에 바인드할 디렉터리는 도우미가 없어도 있어야 한다
     assert_dir_exists "$sb/out/net" || rc=1
+    assert_dir_exists "$sb/out/proc_net" || rc=1
     _hostinfo "$sb" run &
     daemon=$!
     for (( n = 0; n < 30; n++ )); do
-        grep -qxF -- "-w $sb/out/net" "$sb/net.log" 2>/dev/null && break
+        grep -qxF -- "-w $sb/out" "$sb/net.log" 2>/dev/null && break
         sleep 0.1
     done
     kill "$daemon" 2>/dev/null; wait "$daemon" 2>/dev/null || true
-    grep -qxF -- "-w $sb/out/net" "$sb/net.log" 2>/dev/null ||
+    grep -qxF -- "-w $sb/out" "$sb/net.log" 2>/dev/null ||
         { echo "[ASSERT] 데몬이 hostinfo_net -w를 띄우지 않았다" >&2; rc=1; }
     cleanup_sandbox "$sb"; return "$rc"
 }
@@ -290,10 +291,11 @@ _test_exec_builds_and_attaches_shim() {
 _test_shim_redirects_blocked_proc() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
     _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
-    mkdir -p "$sb/bridge"
+    mkdir -p "$sb/bridge/proc_net"
     echo "cpu  1 0 0 2 0 0 0 0 0 0" > "$sb/bridge/stat"
     echo "123.45 67.89" > "$sb/bridge/uptime"
     echo "1.50 0.75 0.25 1/1 1" > "$sb/bridge/loadavg"
+    echo "Inter-|   Receive" > "$sb/bridge/proc_net/dev"
     cat > "$sb/reader.c" << 'EOF'
 #include <fcntl.h>
 #include <stdio.h>
@@ -317,6 +319,8 @@ int main(void)
     show("openat", openat(AT_FDCWD, "/proc/loadavg", O_RDONLY));
     printf("access=%d\n", access("/proc/stat", R_OK));
     printf("access_w=%d\n", access("/proc/stat", W_OK));
+    f = fopen("/proc/net/dev", "r");
+    printf("netdev=%s", f && fgets(buf, sizeof(buf), f) ? buf : "fail\n");
     return 0;
 }
 EOF
@@ -329,9 +333,12 @@ EOF
     assert_output_contains "$out" '^openat=1.50 0.75 0.25 ' || rc=1
     assert_output_contains "$out" '^access=0$' || rc=1
     assert_output_contains "$out" '^access_w=-1$' || rc=1
+    # htop 네트워크 미터 등은 btop 모드가 아니어도 /proc/net/dev를 읽는다
+    assert_output_contains "$out" '^netdev=Inter-|   Receive$' || rc=1
     # 브리지 경로가 없으면 원래 실패(EACCES)를 그대로 돌려준다
     assert_output_contains "$plain" '^fopen=fail$' || rc=1
     assert_output_contains "$plain" '^access=-1$' || rc=1
+    assert_output_contains "$plain" '^netdev=fail$' || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 
@@ -403,17 +410,21 @@ EOF
 _test_real_net_helper() {
     local sb; sb=$(make_sandbox); _setup_hostinfo_sandbox "$sb"
     _build_real_shim || { cleanup_sandbox "$sb"; return 1; }
-    local rc=0 rx
-    # chroot-ng 게스트는 바인드된 /sys/class/net에 링크를 심을 수 있다
-    mkdir -p "$sb/net/lo/statistics"
+    local rc=0 rx dev="$sb/proc_net/dev"
+    # 게스트는 바인드된 /sys/class/net·/proc/net에 링크를 심을 수 있다
+    mkdir -p "$sb/net/lo/statistics" "$sb/proc_net"
     echo keep > "$sb/victim"
     ln -s "$sb/victim" "$sb/net/lo/statistics/rx_bytes"
-    "$PREFIX/libexec/termux-xfce/hostinfo_net" "$sb/net" || rc=1
+    "$PREFIX/libexec/termux-xfce/hostinfo_net" "$sb" || rc=1
     assert_eq "keep" "$(cat "$sb/victim")" "심은 링크의 대상 파일을 덮어쓰면 안 된다" || rc=1
     # 루프백은 항상 있고, Android에서는 부팅 뒤 늘 트래픽이 있다
     rx=$(cat "$sb/net/lo/statistics/rx_bytes" 2>/dev/null)
     [[ "$rx" =~ ^[0-9]+$ ]] && (( rx > 0 )) || { echo "[ASSERT] lo rx_bytes가 양의 정수가 아니다: '$rx'" >&2; rc=1; }
     assert_file_exists "$sb/net/lo/statistics/tx_bytes" || rc=1
+    # /proc/net/dev 형식: 머리글 두 줄 뒤에 "이름: 열 16개", 값은 같은 갱신의 sysfs 값과 같다
+    assert_eq "Inter-|" "$(head -c 7 "$dev" 2>/dev/null)" "/proc/net/dev 머리글" || rc=1
+    assert_eq "$rx 16" "$(awk -F: '$1 ~ /^ *lo$/ { n = split($2, f, " "); print f[1], n }' "$dev" 2>/dev/null)" \
+        "lo 줄은 sysfs와 같은 rx 바이트와 열 16개" || rc=1
     cleanup_sandbox "$sb"; return "$rc"
 }
 
@@ -425,11 +436,11 @@ else
     if (read -r _ < /proc/stat) 2>/dev/null; then
         skip "훅의 /proc 대체 열기 (이 환경은 /proc/stat을 직접 읽을 수 있다)"
     else
-        it "훅은 EACCES인 /proc/stat·uptime·loadavg 읽기·확인만 브리지 파일로 대신 연다" _test_shim_redirects_blocked_proc
+        it "훅은 EACCES인 /proc/stat·uptime·loadavg·net/dev 읽기·확인만 브리지 파일로 대신 연다" _test_shim_redirects_blocked_proc
         it "btop 모드의 훅은 root로 보이게 하고 cpuinfo·filesystems·막힌 /sys/class/net을 채운다" _test_shim_btop_mode
     fi
     if [ "$(getprop ro.build.version.sdk 2>/dev/null)" -ge 36 ] 2>/dev/null; then
-        it "hostinfo_net은 netstats 서비스에서 인터페이스별 rx/tx 바이트를 받아 쓴다 (실기기)" _test_real_net_helper
+        it "hostinfo_net은 netstats 서비스 값으로 /sys/class/net 모양과 /proc/net/dev를 쓴다 (실기기)" _test_real_net_helper
     else
         skip "netstats 실제 호출 (Android 16 이상 실기기 전용)"
     fi
