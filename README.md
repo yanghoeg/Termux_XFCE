@@ -163,7 +163,7 @@ components.
 | ptrace-free execution | With `PRUN_RUNTIME=chroot-ng` (env or config), `prun` runs the same proot-distro rootfs through [chroot-ng](https://github.com/sylirre/fake-chroot-ng) (Apache-2.0), built from source by the App Installer item `chroot_ng`. Root tasks such as package installs stay with proot-distro. |
 | Android Host Info Bridge | `termux-xfce-hostinfo` rebuilds the blocked `/proc/stat`, `uptime` and `loadavg` from per-core cpuidle and `sysinfo`, and fills device (DMI) and SoC names from getprop. htop, btop, glances, fastfetch and inxi in the guest, and native Termux htop, show real values. |
 | GPU | `gpu_proot` adds KGSL Turnip (Vulkan) and Freedreno KGSL (OpenGL, Ubuntu); see [GPU Acceleration](#gpu-acceleration). |
-| Big CPU cores | GitHub Termux gets the Termux:X11 sharedUid build (if the regular build is already installed, the installer explains how to switch), so Samsung One UI does not confine Termux apps to small cores while the X11 screen is shown ([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). |
+| Big CPU cores | GitHub Termux gets the Termux:X11 sharedUid build (if the regular build is already installed, the installer explains how to switch), so Samsung One UI does not confine Termux apps to small cores while the X11 screen is shown ([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). Measured: XFCE processes move from `/moderate` (4 cores) to `/top-app` (all 8), and an 8-thread sysbench in the container goes from 4809 to 19576 events/s (about 4.1×) |
 
 Measured on a Galaxy Z Fold6 (SM-F956N):
 

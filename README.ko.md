@@ -159,7 +159,7 @@ Wayland는 별도의 Anland/KWin 런타임을 사용합니다. 자세한 내용�
 | ptrace 없는 실행 | `PRUN_RUNTIME=chroot-ng`(env 또는 config)이면 App Installer `chroot_ng`가 소스 빌드한 [chroot-ng](https://github.com/sylirre/fake-chroot-ng)(Apache-2.0)로 같은 proot-distro rootfs를 실행합니다. 패키지 설치 같은 root 작업은 proot-distro가 계속 맡습니다. |
 | Android Host Info Bridge | `termux-xfce-hostinfo`가 Android이 막은 `/proc/stat`·`uptime`·`loadavg`를 코어별 cpuidle과 `sysinfo`로 만들고, getprop으로 기기 정보(DMI)와 SoC 이름을 채웁니다. 게스트의 htop·btop·glances·fastfetch·inxi와 Termux 네이티브 htop에 실제 값이 나옵니다. |
 | GPU | `gpu_proot`가 KGSL Turnip(Vulkan)과 Freedreno KGSL(OpenGL, Ubuntu)을 넣습니다([GPU 가속](#gpu-가속)). |
-| 큰 CPU 코어 | GitHub판 Termux에는 Termux:X11 sharedUid 판을 설치합니다(일반판이 이미 있으면 제거 후 설치하도록 안내). X11 화면을 보는 동안에도 Samsung OneUI가 Termux 쪽 앱을 작은 코어로 묶지 않습니다([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). |
+| 큰 CPU 코어 | GitHub판 Termux에는 Termux:X11 sharedUid 판을 설치합니다(일반판이 이미 있으면 제거 후 설치하도록 안내). X11 화면을 보는 동안에도 Samsung OneUI가 Termux 쪽 앱을 작은 코어로 묶지 않습니다([termux-x11#1022](https://github.com/termux/termux-x11/issues/1022)). 실측: XFCE 프로세스가 `/moderate`(코어 4개)에서 `/top-app`(8개 전부)로 바뀌고, 컨테이너 sysbench 8스레드가 4809→19576 events/s(약 4.1배) |
 
 Galaxy Z Fold6(SM-F956N)에서 잰 값은 다음과 같습니다.
 
